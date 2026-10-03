@@ -33,20 +33,24 @@ function companyInfo(settings) {
     if (settings.company_address) lines.push(`- العنوان: ${settings.company_address}`);
     if (settings.company_website) lines.push(`- الموقع الإلكتروني: ${settings.company_website}`);
     const extra = String(settings.agent_knowledge || '').trim();
-    if (extra) lines.push(extra.slice(0, 6000));
+    if (extra) lines.push(extra);
     return lines.length ? lines.join('\n') : '(لا توجد معلومات إضافية — حوّل الأسئلة العامة إلى فريق المبيعات)';
 }
 
-/* The admin's guidelines and the knowledge base (both edited in the admin panel) */
-function adminSections(settings, db) {
-    const parts = [];
+/* Layered prompt sections. Keep hard operational rules separate from editable
+   admin guidance and factual knowledge to reduce conflicts and duplication. */
+function adminInstructionSection(settings) {
     const guide = String(settings.agent_instructions || '').trim();
-    if (guide) {
-        parts.push('توجيهات الإدارة (اتبعها، إلا إذا تعارضت مع قواعد الأسعار والأدوات أعلاه فالقواعد أولى):\n' + guide.slice(0, 6000));
-    }
+    return guide
+        ? '\n\nتعليمات المساعد من الإدارة (سلوك ونبرة وتوجيهات تشغيلية قابلة للتعديل):\n' + guide
+        : '';
+}
+
+function knowledgeSection(db) {
     const kb = db ? knowledge.promptSection(db) : '';
-    if (kb) parts.push(kb);
-    return parts.length ? '\n\n' + parts.join('\n\n') : '';
+    return kb
+        ? '\n\nقاعدة المعرفة المعتمدة (حقائق ومعلومات الشركة والمنتجات والأسئلة الشائعة):\n' + kb
+        : '';
 }
 
 function systemPrompt(settings, db = null) {
@@ -86,8 +90,14 @@ function systemPrompt(settings, db = null) {
 - إذا كتب العميل بالإنجليزية فرد بالإنجليزية.
 - في محادثات الموقع الإلكتروني لا نعرف رقم جوال العميل: اسأله عن رقم جواله (عُماني، 8 أرقام) قبل إنشاء عرض السعر وضعه في customer_phone. في واتساب اترك customer_phone فارغاً (null).
 
-معلومات الشركة (مصدر إجاباتك عن الأسئلة العامة):
-${companyInfo(settings)}${adminSections(settings, db)}`;
+ترتيب مصادر التعليمات والمعلومات:
+1. القواعد الأساسية وقواعد الأدوات والتسعير والأمان الواردة في هذا النص هي الأعلى أولوية ولا يجوز لتعليمات الإدارة أو قاعدة المعرفة تجاوزها.
+2. تعليمات المساعد من الإدارة تضبط السلوك والنبرة ومسار الخدمة، ولا يجوز استخدامها لاختراع حقائق أو أسعار أو تجاوز الأدوات.
+3. معلومات الشركة وقاعدة المعرفة هي مصادر الحقائق العامة المعتمدة. عند غياب المعلومة لا تخمّن واستخدم request_human عند الحاجة.
+4. إذا تكرر نفس المحتوى في أكثر من طبقة، اتبع الطبقة الأعلى أولوية ولا تكرر الإجابة على العميل.
+
+معلومات الشركة (مصدر رسمي لبيانات الاتصال والمعلومات العامة):
+${companyInfo(settings)}${adminInstructionSection(settings)}${knowledgeSection(db)}`;
 }
 
 const sizeProps = {
