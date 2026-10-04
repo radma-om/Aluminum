@@ -127,3 +127,26 @@ test('whatsapp webhook verification handshake', async (t) => {
     const bad = await fetch(`http://127.0.0.1:${port}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=nope&hub.challenge=42`);
     assert.strictEqual(bad.status, 403);
 });
+
+test('slat thicknesses of the in-house calculators: details and weight per meter, validated', async (t) => {
+    const { server, call } = await start();
+    t.after(() => server.close());
+    const { body: s } = await call('GET', '/api/admin/settings');
+    assert.deepStrictEqual(s.slat_thicknesses, [
+        { details: 'شريحة نابكو 1.1 ملم', thickness: 1.1, weight: 0.63 },
+        { details: 'شريحة نابكو 1.5 ملم', thickness: 1.5, weight: 0.839 }
+    ]);
+
+    const list = [...s.slat_thicknesses, { details: '  شريحة تركية 1.2 ملم ', thickness: '1.2', weight: '0.7' }];
+    const { status, body: saved } = await call('PUT', '/api/admin/settings', { slat_thicknesses: list });
+    assert.strictEqual(status, 200);
+    assert.deepStrictEqual(saved.slat_thicknesses[2], { details: 'شريحة تركية 1.2 ملم', thickness: 1.2, weight: 0.7 });
+    // Thickness is optional; weight and details are required
+    const noMm = await call('PUT', '/api/admin/settings', { slat_thicknesses: [{ details: 'شريحة خاصة', thickness: '', weight: 0.9 }] });
+    assert.strictEqual(noMm.body.slat_thicknesses[0].thickness, null);
+    for (const bad of [[], [{ details: 'x', weight: 0 }], [{ details: '', weight: 0.6 }], 'نص']) {
+        assert.strictEqual((await call('PUT', '/api/admin/settings', { slat_thicknesses: bad })).status, 400);
+    }
+    // Other settings saved alongside are untouched by the list
+    assert.strictEqual((await call('GET', '/api/admin/settings')).body.lme, s.lme);
+});

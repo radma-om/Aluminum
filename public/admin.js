@@ -95,7 +95,7 @@ function applySettings(s) {
     $id('agentKnowledge').value = s.agent_knowledge || '';
     $id('agentInstructions').value = s.agent_instructions || '';
     $id('chatSnippet').value = `<script src="${location.origin}/chat-widget.js" async></script>`;
-    recalculateAll();
+    applySlats(s);
 }
 
 /* Save buttons on other tabs show the result next to themselves */
@@ -152,27 +152,48 @@ async function saveSettingsToServer() {
 async function loadProducts() {
     products = await api('GET', '/api/admin/products');
     renderProducts();
-    syncSlatThicknesses();
     $id('buyProduct').innerHTML = products
         .filter((p) => p.pricing_mode === 'manual')
         .map((p) => `<option value="${p.id}">${esc(CATEGORY_NAMES[p.category])} — ${esc(p.name)}${p.type ? ' — ' + esc(p.type) : ''}</option>`)
         .join('');
 }
 
-/* Feed slat weights from the database into the original calculators */
-function syncSlatThicknesses() {
-    const slats = products.filter((p) => p.pricing_mode === 'lme' && p.active && p.thickness && p.weight_per_meter);
-    if (!slats.length) return;
-    const seen = new Map();
-    for (const p of slats) seen.set(String(p.thickness), p.weight_per_meter);
-    for (const [t, w] of seen) WEIGHT_PER_METER[t] = w;
-    for (const id of ['itemThickness', 'wCalcThickness']) {
-        const sel = $id(id);
-        const current = sel.value;
-        sel.innerHTML = [...seen.keys()].sort((a, b) => a - b)
-            .map((t) => `<option value="${t}">${t} ملم</option>`).join('');
-        if (seen.has(current)) sel.value = current;
+/* ------------------- Slat thicknesses (pricing + weight tabs) ------------------- */
+
+function renderSlatRows() {
+    $id('slatRows').innerHTML = '';
+    SLATS.forEach(addSlatRow);
+}
+
+function addSlatRow(x = {}) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><input class="t-details" type="text" value="${esc(x.details ?? '')}" placeholder="مثال: شريحة نابكو 1.1 ملم" style="width:260px"></td>
+        <td><input class="t-mm" type="number" min="0" step="0.1" value="${esc(x.thickness ?? '')}" style="width:90px"></td>
+        <td><input class="t-weight" type="number" min="0" step="0.001" value="${esc(x.weight ?? '')}" style="width:110px"></td>
+        <td><button class="btn btn-outline btn-sm" onclick="this.closest('tr').remove()">حذف</button></td>`;
+    $id('slatRows').appendChild(tr);
+}
+
+async function saveSlats() {
+    if (!online) return setStatus('slatStatus', 'الخادم غير متصل — لا يمكن الحفظ', 'err');
+    const val = (tr, cls) => tr.querySelector('.' + cls).value;
+    const list = [...$id('slatRows').children].map((tr) => ({
+        details: val(tr, 't-details'), thickness: val(tr, 't-mm'), weight: val(tr, 't-weight')
+    }));
+    try {
+        const s = await api('PUT', '/api/admin/settings', { slat_thicknesses: list });
+        applySlats(s);
+        setStatus('slatStatus', 'تم الحفظ ✓', 'ok');
+    } catch (err) {
+        setStatus('slatStatus', err.message, 'err');
     }
+}
+
+function applySlats(s) {
+    if (Array.isArray(s.slat_thicknesses) && s.slat_thicknesses.length) SLATS = s.slat_thicknesses;
+    renderSlatSelects();
+    renderSlatRows();
     recalculateAll();
 }
 
@@ -1393,6 +1414,7 @@ async function initAdmin() {
 (async function boot() {
     $id('buyDate').value = new Date().toISOString().slice(0, 10);
     resetProductForm();
+    renderSlatRows();
     if (location.protocol === 'file:') {
         setStatus('settingsStatus', 'وضع بدون اتصال — شغّل الخادم لحفظ الأسعار في قاعدة البيانات');
         return;
