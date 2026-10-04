@@ -124,7 +124,7 @@ test('an expired token logs in again once; admin test message and status', async
     t.after(() => { fake.server.close(); app.server.close(); });
 
     const status = await (await fetch(app.base + '/api/admin/mazbot/status', { headers: { Authorization: 'Bearer test-token' } })).json();
-    assert.deepStrictEqual(status, { configured: true, overhead_configured: true, dry_run: false, recipients: ['96876979066', '96890660001'] });
+    assert.deepStrictEqual(status, { configured: true, overhead_configured: true, motors_configured: false, dry_run: false, recipients: ['96876979066', '96890660001'] });
 
     const r = await (await app.post('/api/admin/mazbot/test', {}, 'test-token')).json();
     assert.strictEqual(r.sent, 2);
@@ -164,6 +164,29 @@ test('the overhead calculator sends its own template (8 variables) to the sales 
     });
     await new Promise((r) => setTimeout(r, 200));
     assert.strictEqual(fake.calls.length, before);
+});
+
+test('a gate-motors request uses its own template with 6 values', async (t) => {
+    const fake = await fakeMazbot();
+    process.env.MAZBOT_MOTORS_TEMPLATE_ID = '44';
+    const app = await startApp();
+    t.after(() => { fake.server.close(); app.server.close(); delete process.env.MAZBOT_MOTORS_TEMPLATE_ID; });
+    const conf = await (await fetch(app.base + '/api/public/motors')).json();
+    const nizwa = conf.locations.flatMap((g) => g.wilayat).find((w) => w.name === 'نزوى');
+    const res = await app.post('/api/public/motor-quotes', {
+        section: 'sliding', kit_id: conf.sections[0].kits[0].id, kit_count: 2, region_id: nizwa.id,
+        customer_name: 'سالم', customer_phone: '99887766'
+    });
+    assert.strictEqual(res.status, 201);
+    const quote = await res.json();
+    await waitFor(() => fake.calls.filter((c) => c.form).length === 2);
+    const f = fake.calls.find((c) => c.form).form;
+    assert.strictEqual(f.template_id, '44');
+    assert.deepStrictEqual([1, 2, 3, 4, 5, 6].map((i) => f[`body_values[${i}]`]), [
+        quote.ref, 'سالم', '96899887766', 'الداخلية - نزوى', 'مكائن البوابات المنزلقة: مكينة بوابة منزلقة 600 كجم × 2',
+        `${quote.total.toFixed(3)} ريال عماني شامل الضريبة`
+    ]);
+    assert.ok(!('body_values[7]' in f));
 });
 
 test('the MazBot webhook records what it receives, only with the right secret', async (t) => {

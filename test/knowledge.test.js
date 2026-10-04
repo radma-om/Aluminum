@@ -74,7 +74,7 @@ test('the agent gets the guidelines and the knowledge base; a large base is sear
     knowledge.add(db, { kind: 'info', title: 'معلومة معطلة', content: 'لا تظهر', active: false });
 
     let prompt = agent.systemPrompt(getSettings(db), db);
-    assert.match(prompt, /توجيهات الإدارة[^]*رحّب بالعميل باسم ردما/);
+    assert.match(prompt, /تعليمات المساعد من الإدارة[^]*رحّب بالعميل باسم ردما/);
     assert.match(prompt, /قاعدة المعرفة[^]*س: هل المعاينة مجانية؟\nج: نعم، المعاينة مجانية داخل نزوى/);
     assert.doesNotMatch(prompt, /معلومة معطلة/);
 

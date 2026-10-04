@@ -3,6 +3,7 @@
  *
  *   <div data-radma-calculator></div>            ← rolling shutter
  *   <div data-radma-calculator="overhead"></div> ← overhead gates
+ *   <div data-radma-calculator="motors"></div>   ← gate motors (sliding / swing)
  *   <script src="https://calcshutter.radma.co/embed.js" async></script>
  *
  * The iframe grows to the calculator's height automatically. The host site must be
@@ -17,9 +18,14 @@
         if (target.getAttribute('data-radma-mounted')) return;
         target.setAttribute('data-radma-mounted', '1');
         var iframe = document.createElement('iframe');
-        var overhead = target.getAttribute('data-radma-calculator') === 'overhead';
-        iframe.src = base + (overhead ? '/overhead' : '/') + '?embed=1';
-        iframe.title = overhead ? 'حاسبة أسعار بوابات الأوفرهيد' : 'حاسبة أسعار بوابات الرولينج شتر';
+        var kind = target.getAttribute('data-radma-calculator');
+        var pages = {
+            overhead: ['/overhead', 'حاسبة أسعار بوابات الأوفرهيد'],
+            motors: ['/motors', 'مكائن البوابات المنزلقة والمتأرجحة']
+        };
+        var page = pages[kind] || ['/', 'حاسبة أسعار بوابات الرولينج شتر'];
+        iframe.src = base + page[0] + '?embed=1';
+        iframe.title = page[1];
         iframe.loading = 'lazy';
         iframe.setAttribute('scrolling', 'no');
         iframe.style.cssText = 'width:100%;border:0;display:block;min-height:900px;overflow:hidden;background:transparent';

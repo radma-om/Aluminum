@@ -134,6 +134,7 @@
         if (history.filter((h) => h.type === 'me').length === 0) {
             chips.push('<button type="button" data-say="أريد سعر بوابة رول شتر">سعر رول شتر</button>');
             chips.push('<button type="button" data-say="أريد سعر بوابة أوفرهيد">سعر أوفرهيد</button>');
+            chips.push('<button type="button" data-say="أريد سعر مكينة بوابة">سعر مكينة بوابة</button>');
         }
         if (conf.whatsapp) chips.push(`<a href="https://wa.me/${esc(conf.whatsapp)}" target="_blank" rel="noopener">واتساب المبيعات</a>`);
         $('chips').innerHTML = chips.join('');

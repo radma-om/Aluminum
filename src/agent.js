@@ -7,6 +7,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { getSettings } = require('./db');
 const doors = require('./doors');
 const overhead = require('./overhead');
+const motors = require('./motors');
 const knowledge = require('./knowledge');
 
 /* Which AI runs the agent: AI_PROVIDER=openai|anthropic, or whichever API key is set */
@@ -55,10 +56,11 @@ function knowledgeSection(db) {
 
 function systemPrompt(settings, db = null) {
     return `أنت مساعد المبيعات في ${settings.company_name} في سلطنة عُمان، وتتحدث مع العملاء عبر واتساب.
-الشركة تركّب نوعين من البوابات:
+الشركة تركّب نوعين من البوابات، وتبيع مكائن البوابات:
 - بوابات الرول شتر (الأبواب الألمنيوم الملفوفة) بأنواع مختلفة، مع إكسسوارات بفئات مختلفة.
 - بوابات الأوفرهيد (السكشنال) تُباع طقماً كاملاً بمقاسات قياسية.
-إذا لم يحدد العميل النوع فاسأله: رول شتر أم أوفرهيد؟ ويمكنه السؤال عن النوعين في نفس المحادثة.
+- مكائن البوابات المنزلقة والمتأرجحة (الدرفتين) أطقماً كاملة، وقطعاً إضافية تُباع بالقطعة.
+إذا لم يحدد العميل ما يريد فاسأله: رول شتر أم أوفرهيد أم مكينة بوابة؟ ويمكنه السؤال عن أكثر من نوع في نفس المحادثة.
 
 مسار المحادثة لطلب بوابة رول شتر:
 1. رحّب باختصار وتأكد أن العميل يريد بوابة رول شتر.
@@ -76,6 +78,13 @@ function systemPrompt(settings, db = null) {
    اختر للعميل المقاس القياسي الأقرب والأكبر من مقاسه الفعلي لكل نوع، ووضّح له المقاس المختار. إذا كانت فتحته أكبر من كل المقاسات فاستخدم request_human.
 3. اسأله عن المحرك (أو اعرض الخيارات وأسعارها)، ثم استخدم calculate_overhead_price وأعطه السعر من ... إلى ... شامل الضريبة والتركيب، ووضّح أن الفرق حسب اللون. يمكنك مقارنة Type A و Type B إن طلب.
 4. اعرض عليه عرض سعر رسمي. إن وافق، اسأله عن اسمه ثم استخدم create_overhead_quote.
+
+مسار المحادثة لطلب مكينة بوابة (منزلقة أو متأرجحة):
+1. اسأل: هل البوابة منزلقة (سحب) أم متأرجحة (درفتين)؟ وكم وزنها تقريباً؟ واسأله عن الولاية (استخدم find_region).
+2. استخدم list_motor_options: اقترح الطقم المناسب لوزن البوابة (قوة المكينة يجب أن تكون أكبر من وزن البوابة أو تساويه)، ووضّح محتويات الطقم كما في وصفه. إذا لم يتوفر قسم أو قوة مناسبة فاستخدم request_human.
+3. القطع الإضافية (مثل المسننات Rail rack بالمتر/القطعة، الريموت، المستشعرات، لمبة التحذير) تُباع بالقطعة: اسأله إن كان يحتاج قطعاً إضافية فوق ما في الطقم (مثلاً إذا كان طول البوابة أكثر من أمتار المسننات في الطقم). ويمكن للعميل شراء قطع فقط بدون مكينة.
+4. استخدم calculate_motor_price وأعطه السعر شاملاً الضريبة، ووضّح حالة التركيب كما تعيدها الأداة (التركيب حسب الولاية لكل مكينة، أو يُحدد بعد المعاينة).
+5. اعرض عليه عرض سعر رسمي. إن وافق، اسأله عن اسمه ثم استخدم create_motor_quote.
 
 قواعد مهمة:
 - لا تذكر أي سعر إلا إذا جاء من إحدى الأدوات. لا تقدّر ولا تخمّن الأسعار أبداً.
@@ -207,7 +216,50 @@ const overheadChoiceProps = {
     region_id: { type: 'integer', description: 'رقم الولاية من find_region' }
 };
 
+const motorChoiceProps = {
+    section: { type: 'string', enum: Object.keys(motors.SECTIONS), description: 'sliding = بوابة منزلقة، swing = بوابة متأرجحة (درفتين)' },
+    kit_id: { type: ['integer', 'null'], description: 'رقم طقم المكينة من list_motor_options، أو null لطلب قطع فقط' },
+    kit_count: { type: 'integer', description: 'عدد المكائن (1 عادة؛ 0 إذا لا يوجد طقم)' },
+    parts: {
+        type: 'array', description: 'قطع إضافية تُباع بالقطعة (فارغة إن لم توجد)',
+        items: {
+            type: 'object',
+            properties: { part_id: { type: 'integer', description: 'رقم القطعة من list_motor_options' }, qty: { type: 'integer' } },
+            required: ['part_id', 'qty'], additionalProperties: false
+        }
+    },
+    installation: { type: 'boolean', description: 'مع التركيب (true عادة)؛ false إذا طلب العميل توريداً فقط' },
+    region_id: { type: 'integer', description: 'رقم الولاية من find_region' }
+};
+
 TOOLS.splice(TOOLS.length - 1, 0,
+    {
+        name: 'list_motor_options',
+        description: 'يعرض مكائن البوابات المنزلقة والمتأرجحة: الأطقم (القوة ومحتويات الطقم والسعر قبل الضريبة) والقطع الإضافية التي تُباع بالقطعة.',
+        strict: true,
+        input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false }
+    },
+    {
+        name: 'calculate_motor_price',
+        description: 'يحسب سعر طلب مكائن البوابات: الطقم × العدد + القطع الإضافية + التركيب حسب الولاية + التوصيل، شامل الضريبة.',
+        strict: true,
+        input_schema: { type: 'object', properties: motorChoiceProps, required: Object.keys(motorChoiceProps), additionalProperties: false }
+    },
+    {
+        name: 'create_motor_quote',
+        description: 'يسجّل عرض سعر مكائن البوابات في النظام ويجهز ملف PDF يُرسل للعميل. استخدمه فقط بعد موافقة العميل ومعرفة اسمه.',
+        strict: true,
+        input_schema: {
+            type: 'object',
+            properties: {
+                ...motorChoiceProps, customer_name: { type: 'string' },
+                customer_phone: { type: ['string', 'null'], description: 'رقم جوال العميل — مطلوب في محادثات الموقع، و null في واتساب' },
+                notes: { type: ['string', 'null'], description: 'ملاحظات العميل إن وجدت (مثل وزن البوابة)' }
+            },
+            required: [...Object.keys(motorChoiceProps), 'customer_name', 'customer_phone', 'notes'],
+            additionalProperties: false
+        }
+    },
     {
         name: 'search_knowledge',
         description: 'يبحث في قاعدة معرفة الشركة (الأسئلة الشائعة والمعلومات والمستندات) عن إجابة سؤال عام مثل أوقات العمل أو الضمان أو طرق الدفع.',
@@ -257,6 +309,22 @@ function summarizeOverhead(p) {
         total_with_vat_from: p.total,
         total_with_vat_to: p.range.total_to,
         vat_percent: p.vat_percent,
+        note: p.delivery_installation
+    };
+}
+
+const motorArgs = (i) => ({
+    section: i.section, kitId: i.kit_id || null, kitCount: i.kit_id ? i.kit_count || 1 : 0, regionId: i.region_id,
+    parts: (i.parts || []).map((p) => ({ id: p.part_id, qty: p.qty })), installation: i.installation !== false
+});
+
+function summarizeMotors(p) {
+    return {
+        choices: p.spec.map(([label, value]) => `${label}: ${value}`),
+        lines: p.items.map((i) => ({ item: i.name, quantity: i.quantity, unit_price: i.unit_price, total: i.line_total })),
+        subtotal_before_vat: p.subtotal,
+        vat_percent: p.vat_percent,
+        total_with_vat: p.total,
         note: p.delivery_installation
     };
 }
@@ -354,6 +422,34 @@ async function executeTool(name, input, ctx) {
             });
             ctx.events.push({ type: 'quote_created', quote });
             return { ref: quote.ref, total_from: quote.total, total_to: priced.range.total_to, pdf: 'سيتم إرسال رابط ملف PDF للعميل تلقائياً بعد رسالتك' };
+        }
+        case 'list_motor_options': {
+            const view = (i) => ({ name: i.name, contents: i.description || null, unit: i.unit, price_before_vat: i.unit_price });
+            return {
+                sections: motors.publicMotors(db, { withPrices: true }).sections.map((s) => ({
+                    section: s.key, label: s.label,
+                    kits: s.kits.map((k) => ({ kit_id: k.id, ...view(k) })),
+                    parts: s.parts.map((p) => ({ part_id: p.id, ...view(p) })),
+                    available: Boolean(s.kits.length || s.parts.length)
+                })),
+                note: 'اختر قوة مكينة تساوي وزن البوابة أو أكبر. القسم غير المتوفر (available = false) حوّله لفريق المبيعات.'
+            };
+        }
+        case 'calculate_motor_price':
+            return summarizeMotors(motors.motorPrice(db, motorArgs(input)));
+        case 'create_motor_quote': {
+            const priced = motors.motorPrice(db, motorArgs(input));
+            const quote = ctx.createQuote({
+                customer_name: input.customer_name,
+                customer_phone: customerPhone(ctx, input),
+                customer_city: `${priced.region.name}، ${priced.region.governorate}`,
+                notes: input.notes,
+                source: ctx.channel,
+                priced,
+                details: { ...priced.order, spec: priced.spec, fees_note: priced.delivery_installation }
+            });
+            ctx.events.push({ type: 'quote_created', quote });
+            return { ref: quote.ref, total: quote.total, pdf: 'سيتم إرسال رابط ملف PDF للعميل تلقائياً بعد رسالتك' };
         }
         case 'request_human': {
             ctx.events.push({ type: 'human_requested', summary: input.summary });

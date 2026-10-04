@@ -1097,6 +1097,94 @@ async function saveOhRegion(id, btn) {
     }
 }
 
+/* --------------------------- Gate motors -------------------------- */
+
+let motorsData = { items: [], regions: [], sections: {}, kinds: {}, units: {} };
+
+const options = (map, value) => Object.entries(map).map(([k, label]) => `<option value="${k}" ${k === value ? 'selected' : ''}>${esc(label)}</option>`).join('');
+
+async function loadMotors() {
+    motorsData = await api('GET', '/api/admin/motors');
+    $id('mtProfit').value = motorsData.profit_percent;
+    $id('mtRows').innerHTML = '';
+    motorsData.items.forEach(addMtRow);
+    const keep = $id('mtGovFilter').value;
+    const govs = [...new Set(motorsData.regions.map((r) => r.governorate).filter(Boolean))];
+    $id('mtGovFilter').innerHTML = '<option value="">كل المحافظات</option>' + govs.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+    $id('mtGovFilter').value = keep;
+    renderMtRegions();
+}
+
+function addMtRow(m = {}) {
+    const tr = document.createElement('tr');
+    if (m.id) tr.dataset.id = m.id;
+    tr.innerHTML = `
+        <td><select class="i-section">${options(motorsData.sections, m.section || 'sliding')}</select></td>
+        <td><select class="i-kind">${options(motorsData.kinds, m.kind || 'kit')}</select></td>` +
+        cell('i-name', m.name, 'text', 200) + cell('i-desc', m.description, 'text', 260) +
+        `<td><select class="i-unit">${options(motorsData.units, m.unit || (m.kind === 'part' ? 'piece' : 'set'))}</select></td>` +
+        cell('i-cost', m.cost, 'number', 90) + cell('i-price', m.price, 'number', 90) +
+        `<td class="i-sell" dir="ltr">${m.sell_price != null ? Number(m.sell_price).toFixed(2) : '—'}</td>
+         <td><input class="i-active" type="checkbox" ${m.active === 0 ? '' : 'checked'}></td>` +
+        cell('i-link', m.link, 'url', 160) +
+        `<td><button class="btn btn-outline btn-sm" onclick="this.closest('tr').remove()">حذف</button></td>`;
+    $id('mtRows').appendChild(tr);
+}
+
+async function saveMotors() {
+    const val = (tr, cls) => tr.querySelector('.' + cls).value;
+    const items = [...$id('mtRows').children].map((tr) => ({
+        id: tr.dataset.id ? Number(tr.dataset.id) : null,
+        section: val(tr, 'i-section'), kind: val(tr, 'i-kind'), name: val(tr, 'i-name'), description: val(tr, 'i-desc'),
+        unit: val(tr, 'i-unit'), cost: val(tr, 'i-cost'), price: val(tr, 'i-price'), link: val(tr, 'i-link'),
+        active: tr.querySelector('.i-active').checked
+    }));
+    try {
+        await api('PUT', '/api/admin/motors', { items, profit_percent: $id('mtProfit').value });
+        setStatus('mtStatus', 'تم الحفظ ✓', 'ok');
+        await loadMotors();
+    } catch (err) {
+        setStatus('mtStatus', err.message, 'err');
+    }
+}
+
+function renderMtRegions() {
+    const gov = $id('mtGovFilter').value;
+    $id('mtRegionsBody').innerHTML = motorsData.regions
+        .filter((r) => !gov || r.governorate === gov)
+        .map((r) => `
+        <tr>
+            <td>${esc(r.governorate || '')}</td>
+            <td>${esc(r.name)}</td>
+            <td>${r.active ? '✓' : '—'}</td>
+            <td><input type="number" min="0" step="0.5" id="mi${r.id}" value="${r.motor_installation_fee ?? ''}" placeholder="بعد المعاينة" style="width:110px"></td>
+            <td><button class="btn btn-outline btn-sm" onclick="saveMtRegion(${r.id}, this)">حفظ</button></td>
+        </tr>`).join('');
+}
+
+async function saveMtRegion(id, btn) {
+    try {
+        const r = await api('PUT', `/api/admin/regions/${id}`, { motor_installation_fee: $id('mi' + id).value });
+        const i = motorsData.regions.findIndex((x) => x.id === id);
+        motorsData.regions[i] = { ...motorsData.regions[i], motor_installation_fee: r.motor_installation_fee };
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = 'حفظ'; }, 1500);
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+async function copyMtInstallation(from) {
+    try {
+        const r = await api('POST', '/api/admin/motors/copy-installation', { from });
+        motorsData = r;
+        renderMtRegions();
+        setStatus('mtCopyStatus', `تم نسخ ${r.copied} سعر ✓`, 'ok');
+    } catch (err) {
+        setStatus('mtCopyStatus', err.message, 'err');
+    }
+}
+
 /* --------------------------- Agent console ------------------------- */
 
 const chatSession = 'admin-' + Math.random().toString(36).slice(2, 8);
@@ -1123,6 +1211,8 @@ async function loadMazbotStatus() {
     $id('mazbotStatus').className = 'badge' + (s.configured ? ' on' : '');
     $id('mazbotOverheadStatus').textContent = 'الأوفرهيد: ' + label(s.overhead_configured);
     $id('mazbotOverheadStatus').className = 'badge' + (s.overhead_configured ? ' on' : '');
+    $id('mazbotMotorsStatus').textContent = 'المكائن: ' + label(s.motors_configured);
+    $id('mazbotMotorsStatus').className = 'badge' + (s.motors_configured ? ' on' : '');
 }
 
 async function loadInbound() {
@@ -1223,6 +1313,7 @@ window.switchTab = function (tabId) {
     if (tabId === 'products') renderProducts();
     if (tabId === 'doors') { loadDoors(); loadBackups().catch(() => {}); }
     if (tabId === 'overhead') loadOverhead();
+    if (tabId === 'motors') loadMotors();
     if (tabId === 'integrations') loadInbound().catch(() => {});
     if (tabId === 'agent') loadKnowledge().catch(() => {});
 };

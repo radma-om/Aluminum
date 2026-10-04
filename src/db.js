@@ -26,6 +26,8 @@ const DEFAULT_SETTINGS = {
     agent_knowledge: '',
     // The admin's own guidelines for the agent (tone, what to say or avoid...) — added after the built-in rules
     agent_instructions: '',
+    // Profit added to the purchase cost of gate motors and their parts (%)
+    motors_profit_percent: 15,
     website_chat_greeting: 'مرحباً بك 👋 أنا المساعد الذكي. أستطيع حساب سعر بوابات الرول شتر والأوفرهيد لك خلال دقائق. ما المقاس الذي تحتاجه؟',    // رقم واتساب الشركة بالصيغة الدولية مثل 9689XXXXXXX
     public_base_url: '',     // رابط هذا النظام (مثل https://calcshutter.radma.co)، يستخدم في رسائل واتساب وروابط PDF
     quote_validity_days: 15, // مدة صلاحية عرض السعر
@@ -242,6 +244,21 @@ CREATE TABLE IF NOT EXISTS inbound_events (
     received_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Gate motors (sliding / swing): kits and spare parts; price = cost + profit %, or a fixed price
+CREATE TABLE IF NOT EXISTS motor_items (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    section      TEXT NOT NULL DEFAULT 'sliding',
+    kind         TEXT NOT NULL DEFAULT 'kit',
+    name         TEXT NOT NULL,
+    description  TEXT,
+    unit         TEXT NOT NULL DEFAULT 'piece',
+    cost         REAL,
+    price        REAL,
+    active       INTEGER NOT NULL DEFAULT 1,
+    link         TEXT,
+    sort_order   INTEGER NOT NULL DEFAULT 0
+);
+
 -- Knowledge base of the AI agent: FAQs, information, uploaded documents (admin panel)
 CREATE TABLE IF NOT EXISTS knowledge_items (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -321,6 +338,7 @@ function seedConfigurator(db) {
     const overhead = db.prepare('SELECT (SELECT COUNT(*) FROM overhead_sizes) + (SELECT COUNT(*) FROM overhead_motors) AS n').get();
     if (overhead.n === 0) require('./radma-catalog').applyOverheadCatalog(db);
     require('./radma-catalog').addDefaultOverheadSizes(db);
+    require('./motors').seedMotors(db);
 
     if (db.prepare('SELECT COUNT(*) AS n FROM accessory_groups').get().n > 0) return;
     const findOrCreate = (p, category) => {
@@ -376,6 +394,8 @@ function migrate(db) {
     addColumns('regions', { overhead_installation_fee: 'REAL' });
     // What happened to each MazBot webhook request, and the message key used to answer it only once
     addColumns('inbound_events', { status: 'TEXT', event_key: 'TEXT' });
+    // Gate motors have their own installation fee per wilayah (NULL = set after a site visit)
+    addColumns('regions', { motor_installation_fee: 'REAL' });
 }
 
 /* "~/radma-data/aluminum.db" → the account's home folder. On shared hosting this keeps the

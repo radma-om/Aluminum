@@ -19,6 +19,7 @@ const webhooks = require('./webhooks');
 const whatsapp = require('./whatsapp');
 const doors = require('./doors');
 const overhead = require('./overhead');
+const motors = require('./motors');
 const agent = require('./agent');
 const mazbot = require('./mazbot');
 const backup = require('./backup');
@@ -217,14 +218,31 @@ function overheadTemplateValues(quote) {
     ];
 }
 
+/* The 6 values of the gate-motors MazBot template:
+   request no., name, mobile, location, order (kit + parts), price */
+function motorsTemplateValues(quote) {
+    const d = quote.details || {};
+    const order = [d.kit ? `${d.kit}${d.kit_count > 1 ? ` × ${d.kit_count}` : ''}` : null, ...(d.parts || [])].filter(Boolean);
+    return [
+        quote.ref,
+        quote.customer_name,
+        quote.customer_phone,
+        [d.governorate, d.region].filter(Boolean).join(' - ') || quote.customer_city,
+        `${d.section_label || 'مكائن البوابات'}: ${order.join(' / ')}`,
+        `${Number(quote.total).toFixed(3)} ريال عماني شامل الضريبة`
+    ];
+}
+
 /* WhatsApp template to the sales numbers (MazBot); the outcome is kept on the quote */
 async function notifySales(db, quote) {
-    if (!quote.details || !quote.details.width_cm) return null; // calculator requests only
-    const calculator = quote.details.calculator === 'overhead' ? 'overhead' : 'rolling_shutter';
+    const d = quote.details || {};
+    if (!d.width_cm && d.calculator !== 'motors') return null; // calculator requests only
+    const calculator = ['overhead', 'motors'].includes(d.calculator) ? d.calculator : 'rolling_shutter';
     if (!mazbot.isConfigured(calculator)) return null;
     const recipients = mazbot.parseRecipients(getSettings(db).mazbot_recipients);
     if (!recipients.length) return null;
-    const values = calculator === 'overhead' ? overheadTemplateValues(quote) : templateValues(quote);
+    const values = calculator === 'overhead' ? overheadTemplateValues(quote)
+        : calculator === 'motors' ? motorsTemplateValues(quote) : templateValues(quote);
     const { sent, total, results } = await mazbot.sendToAll(recipients, values, calculator);
     const status = sent === total ? `تم الإرسال ${sent}/${total}` : `فشل ${total - sent}/${total}: ${results.find((r) => !r.ok).error}`.slice(0, 300);
     db.prepare('UPDATE quotes SET notify_status = ? WHERE id = ?').run(status, quote.id);
@@ -252,7 +270,7 @@ function createApp(db, { agentClient } = {}) {
 
     // Security headers. Only the customer pages may be embedded, and only by the allowed sites;
     // the admin panel and everything else can never be framed (clickjacking protection).
-    const customerPages = new Set(['/', '/calculator.html', '/overhead', '/overhead.html', '/materials.html', '/chat', '/chat.html']);
+    const customerPages = new Set(['/', '/calculator.html', '/overhead', '/overhead.html', '/motors', '/motors.html', '/materials.html', '/chat', '/chat.html']);
     app.use((req, res, next) => {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -277,7 +295,7 @@ function createApp(db, { agentClient } = {}) {
     /* Status check for the hosting panel / uptime monitors */
     app.get('/healthz', (req, res) => {
         db.prepare('SELECT 1').get();
-        res.json({ ok: true, version: APP_VERSION, features: ['quote_terms', 'mazbot', 'backup', 'overhead', 'website_chat'], node: process.versions.node });
+        res.json({ ok: true, version: APP_VERSION, features: ['quote_terms', 'mazbot', 'backup', 'overhead', 'website_chat', 'motors'], node: process.versions.node });
     });
 
     /* ------------------------- Public API ------------------------- */
@@ -417,6 +435,22 @@ function createApp(db, { agentClient } = {}) {
             calculator: 'overhead', ...priced.gate, governorate: priced.region.governorate,
             spec: priced.spec, fees_note: priced.delivery_installation, range: priced.range
         });
+    });
+
+    /* ---- Gate motors (sliding / swing): kits and parts ---- */
+
+    app.get('/api/public/motors', (req, res) => res.json({ ...companyInfo(), ...motors.publicMotors(db) }));
+
+    const readMotors = (b) => ({
+        section: b.section, kitId: b.kit_id || null, kitCount: b.kit_count, regionId: b.region_id,
+        parts: Array.isArray(b.parts) ? b.parts : [], installation: b.installation !== false
+    });
+
+    app.post('/api/public/motor-quotes', quoteLimit, (req, res) => {
+        const body = req.body || {};
+        const customer = readCustomer(body);
+        const priced = motors.motorPrice(db, { ...readMotors(body), regionId: customer.region.id });
+        saveOrRepeat(res, customer, priced, { ...priced.order, spec: priced.spec, fees_note: priced.delivery_installation });
     });
 
     /* ---- Website chat (chat bubble on radma.co, see chat-widget.js): the same AI agent ---- */
@@ -864,6 +898,66 @@ function createApp(db, { agentClient } = {}) {
         res.json({ sizes: savedSizes, motors: savedMotors });
     });
 
+    /* ---- Gate motors: items, profit %, installation fee per wilayah ---- */
+
+    const motorsAdmin = () => ({
+        items: motors.loadItems(db, { includeInactive: true }),
+        profit_percent: motors.profitPercent(getSettings(db)),
+        sections: motors.SECTIONS, kinds: motors.KINDS, units: motors.UNITS,
+        regions: db.prepare(`SELECT id, name, governorate, active, motor_installation_fee, overhead_installation_fee, installation_fee
+                             FROM regions ORDER BY governorate, name`).all()
+    });
+
+    admin.get('/motors', (req, res) => res.json(motorsAdmin()));
+
+    admin.put('/motors', (req, res) => {
+        const b = req.body || {};
+        const money = (v, label) => {
+            if (v === '' || v == null) return null;
+            const n = Number(v);
+            if (!Number.isFinite(n) || n < 0) throw httpError(400, `قيمة غير صالحة: ${label}`);
+            return n;
+        };
+        const items = (Array.isArray(b.items) ? b.items : []).map((m) => {
+            const row = {
+                id: Number(m.id) || null,
+                section: motors.SECTIONS[m.section] ? m.section : 'sliding',
+                kind: motors.KINDS[m.kind] ? m.kind : 'kit',
+                name: text(m.name, 200), description: text(m.description, 1000),
+                unit: motors.UNITS[m.unit] ? m.unit : 'piece',
+                cost: money(m.cost, 'التكلفة'), price: money(m.price, 'سعر البيع'),
+                active: m.active === false || m.active === 0 ? 0 : 1, link: text(m.link, 500)
+            };
+            if (!row.name) throw httpError(400, 'اسم المكينة أو القطعة مطلوب');
+            if (row.active && row.cost == null && row.price == null) {
+                throw httpError(400, `أدخل التكلفة أو سعر البيع لـ «${row.name}» قبل تفعيلها`);
+            }
+            return row;
+        });
+        if (b.profit_percent !== undefined) saveSettings(db, { motors_profit_percent: money(b.profit_percent, 'نسبة الربح') ?? 0 });
+        tx(() => {
+            const keep = items.filter((r) => r.id).map((r) => r.id);
+            db.prepare(`DELETE FROM motor_items ${keep.length ? `WHERE id NOT IN (${keep.map(() => '?').join(',')})` : ''}`).run(...keep);
+            const cols = ['section', 'kind', 'name', 'description', 'unit', 'cost', 'price', 'active', 'link'];
+            const upd = db.prepare(`UPDATE motor_items SET ${cols.map((c) => `${c} = ?`).join(', ')}, sort_order = ? WHERE id = ?`);
+            const ins = db.prepare(`INSERT INTO motor_items (${cols.join(', ')}, sort_order) VALUES (${cols.map(() => '?').join(', ')}, ?)`);
+            items.forEach((r, i) => {
+                const vals = cols.map((c) => r[c]);
+                if (r.id && upd.run(...vals, i, r.id).changes) return;
+                ins.run(...vals, i);
+            });
+        });
+        res.json(motorsAdmin());
+    });
+
+    /* Start the motors installation fees from the overhead (or shutter) ones — only where empty */
+    admin.post('/motors/copy-installation', (req, res) => {
+        const from = (req.body || {}).from === 'shutter' ? 'installation_fee' : 'overhead_installation_fee';
+        const info = db.prepare(`UPDATE regions SET motor_installation_fee = ${from}
+                                 WHERE motor_installation_fee IS NULL AND ${from} IS NOT NULL`).run();
+        res.json({ ...motorsAdmin(), copied: Number(info.changes) });
+    });
+
     admin.get('/governorates', (req, res) => res.json(db.prepare('SELECT * FROM governorates ORDER BY sort_order, name').all()));
 
     admin.put('/governorates/:id', (req, res) => {
@@ -896,9 +990,9 @@ function createApp(db, { agentClient } = {}) {
         if (!current) throw httpError(404, 'الولاية غير موجودة');
         // Only fields that were sent change (saving fees must not re-enable a disabled wilayah)
         const keep = (key) => (b[key] === undefined ? current[key] : fee(b[key]));
-        const info = db.prepare(`UPDATE regions SET delivery_fee = ?, installation_fee = ?, overhead_installation_fee = ?, active = ?
-                                 WHERE id = ?`)
-            .run(keep('delivery_fee'), keep('installation_fee'), keep('overhead_installation_fee'),
+        const info = db.prepare(`UPDATE regions SET delivery_fee = ?, installation_fee = ?, overhead_installation_fee = ?,
+                                 motor_installation_fee = ?, active = ? WHERE id = ?`)
+            .run(keep('delivery_fee'), keep('installation_fee'), keep('overhead_installation_fee'), keep('motor_installation_fee'),
                 b.active === undefined ? current.active : (b.active ? 1 : 0), id);
         if (!info.changes) throw httpError(404, 'الولاية غير موجودة');
         res.json(db.prepare('SELECT * FROM regions WHERE id = ?').get(Number(req.params.id)));
@@ -984,6 +1078,7 @@ function createApp(db, { agentClient } = {}) {
     admin.get('/mazbot/status', (req, res) => res.json({
         configured: mazbot.isConfigured(),
         overhead_configured: mazbot.isConfigured('overhead'),
+        motors_configured: mazbot.isConfigured('motors'),
         dry_run: process.env.MAZBOT_DRY_RUN === '1',
         recipients: mazbot.parseRecipients(getSettings(db).mazbot_recipients)
     }));
@@ -999,11 +1094,13 @@ function createApp(db, { agentClient } = {}) {
 
     /* Test message with sample values: ?calculator=overhead tests the overhead template */
     admin.post('/mazbot/test', asyncRoute(async (req, res) => {
-        const calculator = req.query.calculator === 'overhead' ? 'overhead' : 'rolling_shutter';
+        const calculator = ['overhead', 'motors'].includes(req.query.calculator) ? req.query.calculator : 'rolling_shutter';
         if (!mazbot.isConfigured(calculator)) throw httpError(503, 'بيانات MazBot أو رقم القالب غير مضبوط على الخادم');
         const recipients = mazbot.parseRecipients(getSettings(db).mazbot_recipients);
         if (!recipients.length) throw httpError(400, 'أضف أرقام الاستقبال أولاً');
-        const values = calculator === 'overhead'
+        const values = calculator === 'motors'
+            ? ['TEST', 'رسالة تجريبية', '96890000000', 'الداخلية - نزوى', 'مكائن البوابات المنزلقة: مكينة بوابة منزلقة 600 كجم', '0.000 ريال عماني شامل الضريبة']
+            : calculator === 'overhead'
             ? ['TEST', 'رسالة تجريبية', '96890000000', 'الداخلية - نزوى', 'أوفرهيد Type A', 'العرض 415 سم × الارتفاع 250 سم',
                 'المكينة الإيطالية 1200N', '0.000 - 0.000 ريال عماني شامل الضريبة']
             : ['TEST', 'رسالة تجريبية', '96890000000', 'الداخلية - نزوى', 'رولينج شتر - الإيراني - Grade C - أبيض',
@@ -1146,6 +1243,7 @@ function createApp(db, { agentClient } = {}) {
     const publicDir = path.join(__dirname, '..', 'public');
     app.get('/', (req, res) => res.sendFile(path.join(publicDir, 'calculator.html')));
     app.get(['/overhead', '/overhead/'], (req, res) => res.sendFile(path.join(publicDir, 'overhead.html')));
+    app.get(['/motors', '/motors/'], (req, res) => res.sendFile(path.join(publicDir, 'motors.html')));
     app.get(['/chat', '/chat/'], (req, res) => res.sendFile(path.join(publicDir, 'chat.html')));
     app.get(['/admin', '/admin/'], (req, res) => res.sendFile(path.join(publicDir, 'admin.html')));
     app.get(['/index.html', '/admin.html'], (req, res) => res.redirect(301, '/admin'));
