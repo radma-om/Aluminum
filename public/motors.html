@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مكائن البوابات المنزلقة والمتأرجحة</title>
-    <meta name="description" content="احسب سعر مكائن البوابات المنزلقة والمتأرجحة مع التركيب والتوصيل حسب الولاية واطلب عرض سعر.">
+    <title>مكائن البوابات</title>
+    <meta name="description" content="احسب سعر مكائن البوابات (المنزلقة والمتأرجحة وبوابات المواقف) مع التركيب والتوصيل حسب الولاية واطلب عرض سعر.">
     <link rel="icon" type="image/png" href="images/logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -43,7 +43,7 @@
         <div class="calc-container">
             <div class="calc-header">
                 <img src="images/logo.png" alt="الشعار">
-                <h1>مكائن البوابات المنزلقة والمتأرجحة</h1>
+                <h1>مكائن البوابات</h1>
                 <p data-bind="company_tagline"></p>
                 <div class="color-offer" id="topNotice"></div>
             </div>
@@ -74,6 +74,7 @@
                     <div class="input-group">
                         <label for="section">نوع البوابة:</label>
                         <select id="section"></select>
+                        <div class="kit-info" id="sectionInfo" hidden></div>
                     </div>
                     <div class="input-group" id="kitGroup" hidden>
                         <label for="kit">المكينة (طقم كامل):</label>
@@ -85,11 +86,10 @@
                             <label class="check-row"><input type="checkbox" id="installation" checked> مع التركيب</label>
                         </div>
                     </div>
-                    <div class="submit-status status-error" id="emptySection" hidden>لا تتوفر أسعار لهذا النوع حالياً — تواصل معنا وسنخدمك.</div>
                 </div>
 
                 <div class="section" id="partsSection" hidden>
-                    <h2><i class="fas fa-puzzle-piece icon"></i> قطع إضافية (اختياري)</h2>
+                    <h2><i class="fas fa-puzzle-piece icon"></i> إكسسوارات وقطع إضافية (اختياري)</h2>
                     <div class="dimension-note">تُباع بالقطعة — اكتب العدد المطلوب لكل قطعة</div>
                     <div id="parts"></div>
                 </div>
@@ -104,6 +104,7 @@
                     <div class="result" id="result"></div>
                     <div class="breakdown" id="breakdown" style="margin-top:12px"></div>
                     <div class="fees-note" id="feesNote"></div>
+                    <div class="color-offer" id="extraFees" hidden></div>
                     <div class="success-actions" style="margin-top:14px">
                         <a class="link-btn" id="pdfLink" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> تحميل عرض السعر PDF</a>
                         <a class="link-btn whatsapp-btn" id="waLink" target="_blank" rel="noopener" hidden><i class="fab fa-whatsapp"></i> تابع عبر واتساب</a>
@@ -131,12 +132,12 @@
         <script src="calc-common.js"></script>
     <script src="location.js"></script>
     <script>
-    /* Gate motors: a full kit (motor + rack + sensors + remotes + lamp + exit button)
-       and/or parts sold separately; installation per wilayah, delivery once. */
+    /* Gate motors by section (sliding, swing, parking barrier...): a full kit and/or accessories
+       sold separately; installation per wilayah, delivery once. */
     let conf = null;
     let region = null;
 
-    const section = () => conf.sections.find((s) => s.key === $('section').value) || null;
+    const section = () => conf.sections.find((s) => s.id === Number($('section').value)) || null;
     const kit = () => { const s = section(); return s ? s.kits.find((k) => k.id === Number($('kit').value)) || null : null; };
 
     async function load() {
@@ -151,9 +152,12 @@
         renderCompany(conf, 'مكائن البوابات');
         setupLocationPicker(conf.locations, $('governorate'), $('state'), (w) => { region = w; invalidate(); });
         $('section').innerHTML = '<option value="">اختر نوع البوابة</option>' +
-            conf.sections.map((s) => `<option value="${s.key}">${esc(s.label)}</option>`).join('');
-        const first = conf.sections.find((s) => s.kits.length || s.parts.length);
-        if (first) $('section').value = first.key;
+            conf.sections.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+        if (!conf.sections.length) {
+            $('calcForm').innerHTML = '<div class="submit-status status-error">لا تتوفر أسعار المكائن حالياً — تواصل معنا وسنخدمك.</div>';
+            return;
+        }
+        if (conf.sections.length === 1) $('section').value = conf.sections[0].id;
         showSection();
         $('section').addEventListener('change', () => { showSection(); invalidate(); });
         $('kit').addEventListener('change', () => { showKit(); invalidate(); });
@@ -163,8 +167,8 @@
 
     function showSection() {
         const s = section();
-        const empty = s && !s.kits.length && !s.parts.length;
-        $('emptySection').hidden = !empty;
+        $('sectionInfo').hidden = !(s && s.description);
+        if (s) $('sectionInfo').textContent = s.description;
         $('kitGroup').hidden = !s || !s.kits.length;
         $('partsSection').hidden = !s || !s.parts.length;
         $('kit').innerHTML = '<option value="">' + (s && s.parts.length ? 'بدون مكينة (قطع فقط)' : 'اختر المكينة') + '</option>' +
@@ -211,7 +215,7 @@
             const res = await fetch('/api/public/motor-quotes', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    section: $('section').value, kit_id: k ? k.id : null, kit_count: Number($('kitCount').value) || 1,
+                    section_id: Number($('section').value), kit_id: k ? k.id : null, kit_count: Number($('kitCount').value) || 1,
                     installation: $('installation').checked, parts, region_id: region.id,
                     customer_name: name, customer_phone: phone, notes: $('notes').value
                 })
@@ -235,6 +239,9 @@
             `<div><span>ضريبة القيمة المضافة ${p.vat_percent}%</span><span dir="ltr">${money(p.vat)}</span></div>` +
             `<div class="total-row"><span>الإجمالي (ر.ع)</span><span dir="ltr">${money(p.total)}</span></div>`;
         $('feesNote').textContent = (p.details && p.details.fees_note) || '';
+        const extra = (p.details && p.details.extra_fees_note) || '';
+        $('extraFees').hidden = !extra;
+        $('extraFees').textContent = extra ? '⚠️ ' + extra : '';
         $('pdfLink').href = p.pdf_url;
         $('waLink').hidden = !p.whatsapp_link;
         if (p.whatsapp_link) $('waLink').href = p.whatsapp_link;

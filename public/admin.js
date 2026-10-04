@@ -1099,31 +1099,65 @@ async function saveOhRegion(id, btn) {
 
 /* --------------------------- Gate motors -------------------------- */
 
-let motorsData = { items: [], regions: [], sections: {}, kinds: {}, units: {} };
+let motorsData = { sections: [], items: [], extra_fees: [], regions: [], kinds: {}, units: {} };
 
-const options = (map, value) => Object.entries(map).map(([k, label]) => `<option value="${k}" ${k === value ? 'selected' : ''}>${esc(label)}</option>`).join('');
+const options = (map, value) => Object.entries(map).map(([k, label]) => `<option value="${k}" ${k === String(value) ? 'selected' : ''}>${esc(label)}</option>`).join('');
+const sectionMap = () => Object.fromEntries(motorsData.sections.map((x) => [x.id, x.name + (x.active ? '' : ' (موقوف)')]));
 
-async function loadMotors() {
-    motorsData = await api('GET', '/api/admin/motors');
+async function loadMotors(data) {
+    motorsData = data || await api('GET', '/api/admin/motors');
     $id('mtProfit').value = motorsData.profit_percent;
+    $id('mtSectionRows').innerHTML = '';
+    motorsData.sections.forEach(addMtSectionRow);
     $id('mtRows').innerHTML = '';
     motorsData.items.forEach(addMtRow);
-    const keep = $id('mtGovFilter').value;
+    $id('mtFeeRows').innerHTML = '';
+    motorsData.extra_fees.forEach(addMtFeeRow);
+    const keep = $id('mtSectionFilter').value;
+    $id('mtSectionFilter').innerHTML = '<option value="">كل الأقسام</option>' + options(sectionMap(), keep);
+    filterMtRows();
+    const keepGov = $id('mtGovFilter').value;
     const govs = [...new Set(motorsData.regions.map((r) => r.governorate).filter(Boolean))];
     $id('mtGovFilter').innerHTML = '<option value="">كل المحافظات</option>' + govs.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
-    $id('mtGovFilter').value = keep;
+    $id('mtGovFilter').value = keepGov;
     renderMtRegions();
+}
+
+function addMtSectionRow(x = {}) {
+    const tr = document.createElement('tr');
+    if (x.id) tr.dataset.id = x.id;
+    tr.innerHTML = cell('x-name', x.name, 'text', 220) + cell('x-desc', x.description, 'text', 360) + cell('x-extra', x.install_extra ?? 0, 'number', 100) +
+        `<td><input class="x-active" type="checkbox" ${x.active === 0 ? '' : 'checked'}></td>
+         <td><button class="btn btn-outline btn-sm" onclick="this.closest('tr').remove()">حذف</button></td>`;
+    $id('mtSectionRows').appendChild(tr);
+}
+
+async function saveMtSections() {
+    const val = (tr, cls) => tr.querySelector('.' + cls).value;
+    const sections = [...$id('mtSectionRows').children].map((tr) => ({
+        id: tr.dataset.id ? Number(tr.dataset.id) : null, name: val(tr, 'x-name'), description: val(tr, 'x-desc'),
+        install_extra: val(tr, 'x-extra'), active: tr.querySelector('.x-active').checked
+    }));
+    try {
+        await loadMotors(await api('PUT', '/api/admin/motors/sections', { sections }));
+        setStatus('mtSectionStatus', 'تم الحفظ ✓', 'ok');
+    } catch (err) {
+        setStatus('mtSectionStatus', err.message, 'err');
+    }
 }
 
 function addMtRow(m = {}) {
     const tr = document.createElement('tr');
     if (m.id) tr.dataset.id = m.id;
+    const section = m.section_id ?? ($id('mtSectionFilter').value || (motorsData.sections[0] || {}).id);
     tr.innerHTML = `
-        <td><select class="i-section">${options(motorsData.sections, m.section || 'sliding')}</select></td>
+        <td><select class="i-section">${options(sectionMap(), section)}</select></td>
         <td><select class="i-kind">${options(motorsData.kinds, m.kind || 'kit')}</select></td>` +
         cell('i-name', m.name, 'text', 200) + cell('i-desc', m.description, 'text', 260) +
         `<td><select class="i-unit">${options(motorsData.units, m.unit || (m.kind === 'part' ? 'piece' : 'set'))}</select></td>` +
-        cell('i-cost', m.cost, 'number', 90) + cell('i-price', m.price, 'number', 90) +
+        cell('i-cost', m.cost, 'number', 90) +
+        `<td><input class="i-profit" type="number" min="0" step="0.5" value="${esc(m.profit_percent ?? '')}" placeholder="${esc(motorsData.profit_percent)}" style="width:70px"></td>` +
+        cell('i-price', m.price, 'number', 90) +
         `<td class="i-sell" dir="ltr">${m.sell_price != null ? Number(m.sell_price).toFixed(2) : '—'}</td>
          <td><input class="i-active" type="checkbox" ${m.active === 0 ? '' : 'checked'}></td>` +
         cell('i-link', m.link, 'url', 160) +
@@ -1131,18 +1165,37 @@ function addMtRow(m = {}) {
     $id('mtRows').appendChild(tr);
 }
 
+/* Show one section's items; hidden rows are still saved */
+function filterMtRows() {
+    const f = $id('mtSectionFilter').value;
+    for (const tr of $id('mtRows').children) tr.hidden = Boolean(f) && tr.querySelector('.i-section').value !== f;
+}
+
+function addMtFeeRow(f = {}) {
+    const tr = document.createElement('tr');
+    if (f.id) tr.dataset.id = f.id;
+    tr.innerHTML = `<td><select class="f-section"><option value="">كل الأقسام</option>${options(sectionMap(), f.section_id ?? '')}</select></td>` +
+        cell('f-name', f.name, 'text', 340) + cell('f-amount', f.amount, 'number', 100) +
+        `<td><input class="f-active" type="checkbox" ${f.active === 0 ? '' : 'checked'}></td>
+         <td><button class="btn btn-outline btn-sm" onclick="this.closest('tr').remove()">حذف</button></td>`;
+    $id('mtFeeRows').appendChild(tr);
+}
+
 async function saveMotors() {
     const val = (tr, cls) => tr.querySelector('.' + cls).value;
+    const id = (tr) => (tr.dataset.id ? Number(tr.dataset.id) : null);
     const items = [...$id('mtRows').children].map((tr) => ({
-        id: tr.dataset.id ? Number(tr.dataset.id) : null,
-        section: val(tr, 'i-section'), kind: val(tr, 'i-kind'), name: val(tr, 'i-name'), description: val(tr, 'i-desc'),
-        unit: val(tr, 'i-unit'), cost: val(tr, 'i-cost'), price: val(tr, 'i-price'), link: val(tr, 'i-link'),
-        active: tr.querySelector('.i-active').checked
+        id: id(tr), section_id: Number(val(tr, 'i-section')), kind: val(tr, 'i-kind'), name: val(tr, 'i-name'),
+        description: val(tr, 'i-desc'), unit: val(tr, 'i-unit'), cost: val(tr, 'i-cost'), profit_percent: val(tr, 'i-profit'),
+        price: val(tr, 'i-price'), link: val(tr, 'i-link'), active: tr.querySelector('.i-active').checked
+    }));
+    const extra_fees = [...$id('mtFeeRows').children].map((tr) => ({
+        id: id(tr), section_id: val(tr, 'f-section') || null, name: val(tr, 'f-name'), amount: val(tr, 'f-amount'),
+        active: tr.querySelector('.f-active').checked
     }));
     try {
-        await api('PUT', '/api/admin/motors', { items, profit_percent: $id('mtProfit').value });
+        await loadMotors(await api('PUT', '/api/admin/motors', { items, extra_fees, profit_percent: $id('mtProfit').value }));
         setStatus('mtStatus', 'تم الحفظ ✓', 'ok');
-        await loadMotors();
     } catch (err) {
         setStatus('mtStatus', err.message, 'err');
     }
