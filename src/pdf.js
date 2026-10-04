@@ -175,6 +175,7 @@ function renderQuotePdf(quote, settings, out) {
     } else if (details.package_name) {
         spec.push(['نوع البوابة', `${details.door_type} — ${details.package_name}`]);
     }
+    if (given.has('المكينة')) spec.push(['المكينة', given.get('المكينة')]);
     if (details.width_cm) {
         spec.push(['المقاس', `العرض ${details.width_cm} سم — الارتفاع ${details.height_cm} سم` +
             (details.count > 1 ? ` — عدد ${details.count} بوابات` : '')]);

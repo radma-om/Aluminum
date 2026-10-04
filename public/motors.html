@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مكائن البوابات المنزلقة والمتأرجحة</title>
+    <meta name="description" content="احسب سعر مكائن البوابات المنزلقة والمتأرجحة مع التركيب والتوصيل حسب الولاية واطلب عرض سعر.">
+    <link rel="icon" type="image/png" href="images/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="calc.css">
+    <style>
+        .kit-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; margin-top: 8px; line-height: 1.8; font-size: 0.92rem; }
+        .kit-info .price { font-weight: 700; color: var(--radma-primary); }
+        .part-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px dashed #e2e8f0; }
+        .part-row:last-child { border-bottom: 0; }
+        .part-row .name { flex: 1; line-height: 1.5; }
+        .part-row .name small { display: block; color: #64748b; }
+        .part-row input { width: 80px; text-align: center; }
+        .check-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+        .check-row input { width: auto; }
+    </style>
+</head>
+<body>
+    <header class="site-header">
+        <div class="header-inner">
+            <a class="brand" href="/">
+                <img src="images/logo.png" alt="الشعار" width="48" height="48">
+                <span class="brand-name" data-bind="company_name"></span>
+            </a>
+            <a class="site-link" id="siteLink" target="_blank" rel="noopener" hidden></a>
+        </div>
+    </header>
+
+    <main class="site-main">
+        <nav class="calc-switch" aria-label="الحاسبات">
+            <a href="/">رولينج شتر</a>
+            <a href="/overhead">أوفرهيد</a>
+            <a href="/motors" aria-current="page">مكائن البوابات</a>
+        </nav>
+        <div class="calc-container">
+            <div class="calc-header">
+                <img src="images/logo.png" alt="الشعار">
+                <h1>مكائن البوابات المنزلقة والمتأرجحة</h1>
+                <p data-bind="company_tagline"></p>
+                <div class="color-offer" id="topNotice"></div>
+            </div>
+
+            <div id="calcForm">
+                <div class="section">
+                    <h2><i class="fas fa-user icon"></i> بيانات العميل</h2>
+                    <div class="input-group">
+                        <label for="clientName">اسم العميل:</label>
+                        <input type="text" id="clientName" autocomplete="name">
+                    </div>
+                    <div class="input-group">
+                        <label for="clientPhone">رقم الجوال:</label>
+                        <input type="tel" id="clientPhone" autocomplete="tel" inputmode="tel" placeholder="مثال: 9XXXXXXX">
+                    </div>
+                    <div class="input-group">
+                        <label for="governorate">المحافظة:</label>
+                        <select id="governorate"></select>
+                    </div>
+                    <div class="input-group">
+                        <label for="state">الولاية:</label>
+                        <select id="state"></select>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2><i class="fas fa-cogs icon"></i> المكينة</h2>
+                    <div class="input-group">
+                        <label for="section">نوع البوابة:</label>
+                        <select id="section"></select>
+                    </div>
+                    <div class="input-group" id="kitGroup" hidden>
+                        <label for="kit">المكينة (طقم كامل):</label>
+                        <select id="kit"></select>
+                        <div class="kit-info" id="kitInfo" hidden></div>
+                        <div id="kitExtra" hidden>
+                            <label for="kitCount" style="margin-top:10px">عدد المكائن:</label>
+                            <input type="number" id="kitCount" min="1" max="50" value="1" inputmode="numeric">
+                            <label class="check-row"><input type="checkbox" id="installation" checked> مع التركيب</label>
+                        </div>
+                    </div>
+                    <div class="submit-status status-error" id="emptySection" hidden>لا تتوفر أسعار لهذا النوع حالياً — تواصل معنا وسنخدمك.</div>
+                </div>
+
+                <div class="section" id="partsSection" hidden>
+                    <h2><i class="fas fa-puzzle-piece icon"></i> قطع إضافية (اختياري)</h2>
+                    <div class="dimension-note">تُباع بالقطعة — اكتب العدد المطلوب لكل قطعة</div>
+                    <div id="parts"></div>
+                </div>
+
+                <div class="input-group">
+                    <label for="notes">ملاحظات (اختياري):</label>
+                    <textarea id="notes" rows="2" placeholder="مثال: وزن البوابة أو طولها"></textarea>
+                </div>
+
+                <button type="button" id="calcBtn" onclick="calculate()"><i class="fas fa-calculator icon"></i> احتساب السعر</button>
+                <div id="resultBox" hidden>
+                    <div class="result" id="result"></div>
+                    <div class="breakdown" id="breakdown" style="margin-top:12px"></div>
+                    <div class="fees-note" id="feesNote"></div>
+                    <div class="success-actions" style="margin-top:14px">
+                        <a class="link-btn" id="pdfLink" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> تحميل عرض السعر PDF</a>
+                        <a class="link-btn whatsapp-btn" id="waLink" target="_blank" rel="noopener" hidden><i class="fab fa-whatsapp"></i> تابع عبر واتساب</a>
+                    </div>
+                </div>
+            </div>
+
+            <div id="submitStatus" class="submit-status" role="status" aria-live="polite"></div>
+
+            <div class="color-offer" id="bottomNotice" style="text-align:center"></div>
+            <div class="notes" id="notesBox"></div>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <div class="footer-inner">
+            <span class="footer-brand" data-bind="company_name"></span>
+            <span id="footPhone" hidden>خدمة العملاء: <a dir="ltr"></a></span>
+            <span id="footAddress" hidden>الموقع: <span></span></span>
+            <span id="footSite" hidden>الموقع الإلكتروني: <a target="_blank" rel="noopener"></a></span>
+            <span class="copyright">© <span id="year"></span> <span data-bind="company_name"></span> — جميع الحقوق محفوظة</span>
+        </div>
+    </footer>
+
+        <script src="calc-common.js"></script>
+    <script src="location.js"></script>
+    <script>
+    /* Gate motors: a full kit (motor + rack + sensors + remotes + lamp + exit button)
+       and/or parts sold separately; installation per wilayah, delivery once. */
+    let conf = null;
+    let region = null;
+
+    const section = () => conf.sections.find((s) => s.key === $('section').value) || null;
+    const kit = () => { const s = section(); return s ? s.kits.find((k) => k.id === Number($('kit').value)) || null : null; };
+
+    async function load() {
+        try {
+            const res = await fetch('/api/public/motors');
+            if (!res.ok) throw new Error();
+            conf = await res.json();
+        } catch {
+            $('calcForm').innerHTML = '<div class="submit-status status-error">تعذر تحميل الحاسبة. يرجى المحاولة لاحقاً.</div>';
+            return;
+        }
+        renderCompany(conf, 'مكائن البوابات');
+        setupLocationPicker(conf.locations, $('governorate'), $('state'), (w) => { region = w; invalidate(); });
+        $('section').innerHTML = '<option value="">اختر نوع البوابة</option>' +
+            conf.sections.map((s) => `<option value="${s.key}">${esc(s.label)}</option>`).join('');
+        const first = conf.sections.find((s) => s.kits.length || s.parts.length);
+        if (first) $('section').value = first.key;
+        showSection();
+        $('section').addEventListener('change', () => { showSection(); invalidate(); });
+        $('kit').addEventListener('change', () => { showKit(); invalidate(); });
+        for (const id of ['kitCount', 'installation']) $(id).addEventListener('input', invalidate);
+        $('parts').addEventListener('input', invalidate);
+    }
+
+    function showSection() {
+        const s = section();
+        const empty = s && !s.kits.length && !s.parts.length;
+        $('emptySection').hidden = !empty;
+        $('kitGroup').hidden = !s || !s.kits.length;
+        $('partsSection').hidden = !s || !s.parts.length;
+        $('kit').innerHTML = '<option value="">' + (s && s.parts.length ? 'بدون مكينة (قطع فقط)' : 'اختر المكينة') + '</option>' +
+            (s ? s.kits.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('') : '');
+        if (s && s.kits.length === 1) $('kit').value = s.kits[0].id;
+        $('parts').innerHTML = s ? s.parts.map((p) => `
+            <div class="part-row">
+                <div class="name"><bdi>${esc(p.name)}</bdi> <small>${[p.description, 'تُباع بال' + p.unit].filter(Boolean).map(esc).join(' — ')}</small></div>
+                <input type="number" min="0" max="500" value="0" inputmode="numeric" data-part="${p.id}" aria-label="عدد ${esc(p.name)}">
+            </div>`).join('') : '';
+        showKit();
+    }
+
+    function showKit() {
+        const k = kit();
+        $('kitInfo').hidden = !k;
+        $('kitExtra').hidden = !k;
+        if (k) $('kitInfo').innerHTML = `<strong>محتويات الطقم:</strong> ${esc(k.description || '')}`;
+    }
+
+    function invalidate() {
+        $('resultBox').hidden = true;
+        if (!$('submitStatus').classList.contains('status-pending')) setStatus('', '');
+    }
+
+    const chosenParts = () => [...document.querySelectorAll('[data-part]')]
+        .map((i) => ({ id: Number(i.dataset.part), qty: parseInt(i.value, 10) || 0 })).filter((p) => p.qty > 0);
+
+    async function calculate() {
+        const name = $('clientName').value.trim();
+        const phone = $('clientPhone').value.trim();
+        if (!name) return setStatus('error', '⚠️ يرجى إدخال اسم العميل.');
+        if (!/^(\+?968|00968)?[79]\d{7}$/.test(phone.replace(/[\s-]/g, ''))) {
+            return setStatus('error', '⚠️ يرجى إدخال رقم جوال عماني صالح (مثال: 9XXXXXXX).');
+        }
+        if (!region) return setStatus('error', '⚠️ يرجى اختيار المحافظة والولاية.');
+        if (!section()) return setStatus('error', '⚠️ يرجى اختيار نوع البوابة.');
+        const k = kit();
+        const parts = chosenParts();
+        if (!k && !parts.length) return setStatus('error', '⚠️ اختر المكينة أو اكتب عدد قطعة واحدة على الأقل.');
+        setStatus('pending', 'جاري احتساب السعر وإرسال الطلب...');
+        $('calcBtn').disabled = true;
+        try {
+            const res = await fetch('/api/public/motor-quotes', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    section: $('section').value, kit_id: k ? k.id : null, kit_count: Number($('kitCount').value) || 1,
+                    installation: $('installation').checked, parts, region_id: region.id,
+                    customer_name: name, customer_phone: phone, notes: $('notes').value
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(res.status === 429 ? 'تم تجاوز عدد المحاولات، يرجى المحاولة بعد قليل.' : data.error || 'تعذر احتساب السعر');
+            showPrice(data);
+            setStatus('success', `✅ تم إرسال طلبك إلى فريق المبيعات — رقم الطلب: <span class="quote-ref">${esc(data.ref)}</span><br>سيتواصل معك فريقنا قريباً.`);
+        } catch (err) {
+            setStatus('error', esc(err.message));
+        } finally {
+            $('calcBtn').disabled = false;
+        }
+    }
+
+    function showPrice(p) {
+        $('result').innerHTML = `السعر الإجمالي: <span style="font-size:1.2em" dir="ltr">${money(p.total)}</span> ريال عماني`;
+        $('breakdown').innerHTML = p.items.map((i) =>
+            `<div><span>${parts(i.name, i.type)}${i.quantity > 1 ? ` × ${i.quantity}` : ''}</span><span dir="ltr">${money(i.line_total)}</span></div>`).join('') +
+            `<div><span>المجموع</span><span dir="ltr">${money(p.subtotal)}</span></div>` +
+            `<div><span>ضريبة القيمة المضافة ${p.vat_percent}%</span><span dir="ltr">${money(p.vat)}</span></div>` +
+            `<div class="total-row"><span>الإجمالي (ر.ع)</span><span dir="ltr">${money(p.total)}</span></div>`;
+        $('feesNote').textContent = (p.details && p.details.fees_note) || '';
+        $('pdfLink').href = p.pdf_url;
+        $('waLink').hidden = !p.whatsapp_link;
+        if (p.whatsapp_link) $('waLink').href = p.whatsapp_link;
+        $('resultBox').hidden = false;
+        scrollToEl($('result'));
+    }
+
+    load();
+    </script>
+</body>
+</html>

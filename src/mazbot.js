@@ -17,6 +17,7 @@ const env = () => ({
     password: process.env.MAZBOT_STAFF_PASSWORD || '',
     templateId: process.env.MAZBOT_TEMPLATE_ID || '',                  // rolling-shutter template
     overheadTemplateId: process.env.MAZBOT_OVERHEAD_TEMPLATE_ID || '', // overhead-gate template
+    motorsTemplateId: process.env.MAZBOT_MOTORS_TEMPLATE_ID || '',     // gate-motors template
     baseUrl: (process.env.MAZBOT_BASE_URL || 'https://mazbot.net/api').replace(/\/$/, ''),
     dryRun: process.env.MAZBOT_DRY_RUN === '1'
 });
@@ -27,7 +28,7 @@ const hasLogin = () => {
 };
 
 /* Template of each calculator ('' = not set) */
-const templateFor = (calculator) => (calculator === 'overhead' ? env().overheadTemplateId : env().templateId);
+const templateFor = (calculator) => ({ overhead: env().overheadTemplateId, motors: env().motorsTemplateId }[calculator] ?? env().templateId);
 
 const isConfigured = (calculator = 'rolling_shutter') => hasLogin() && Boolean(templateFor(calculator));
 
