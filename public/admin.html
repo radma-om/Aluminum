@@ -1267,24 +1267,53 @@
         <div id="tab-motors" class="tab-content">
             <div class="card">
                 <div class="card-title">
-                    <span class="icon">G</span>
-                    مكائن البوابات المنزلقة والمتأرجحة — الأطقم والقطع
+                    <span class="icon">S</span>
+                    أقسام المكائن (أنواع البوابات)
                 </div>
                 <div class="range-box" style="margin-bottom: 16px;">
-                    سعر البيع = التكلفة (قبل الضريبة) + نسبة الربح، أو «سعر بيع ثابت» إن كتبته. ثم يُضاف التركيب (لكل مكينة حسب الولاية) والتوصيل (مرة واحدة)، ثم ضريبة القيمة المضافة.
-                    لا يظهر للعميل إلا البند المفعّل الذي له سعر. صفحة العميل: <a href="/motors" target="_blank" rel="noopener">/motors</a>
-                </div>
-                <div class="filter-row">
-                    <label for="mtProfit" style="font-weight:700">نسبة الربح %</label>
-                    <input type="number" id="mtProfit" min="0" step="0.5" style="width:110px">
+                    أضف قسماً لكل نوع بوابة (منزلقة، متأرجحة، بوابات المواقف...) مع وصف يظهر للعميل.
+                    «إضافة على التركيب» تُضاف إلى سعر التركيب الأساسي للولاية: مثلاً نزوى 30، المتأرجحة +20 = 50، بوابات المواقف +50 = 80.
+                    صفحة العميل: <a href="/motors" target="_blank" rel="noopener">/motors</a>
                 </div>
                 <div class="table-wrapper"><table>
-                    <thead><tr><th>القسم</th><th>النوع</th><th>الاسم</th><th>الوصف / المحتويات</th><th>الوحدة</th><th>التكلفة (ر.ع)</th><th>سعر بيع ثابت</th><th>سعر البيع</th><th>مفعّل</th><th>رابط المنتج</th><th></th></tr></thead>
+                    <thead><tr><th>اسم القسم</th><th>الوصف (يظهر للعميل)</th><th>إضافة على التركيب (ر.ع)</th><th>مفعّل</th><th></th></tr></thead>
+                    <tbody id="mtSectionRows"></tbody>
+                </table></div>
+                <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addMtSectionRow()">+ قسم</button>
+                <div class="form-buttons">
+                    <button class="btn btn-primary" onclick="saveMtSections()">حفظ الأقسام</button>
+                    <span id="mtSectionStatus" class="status-text"></span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <span class="icon">G</span>
+                    المكائن والإكسسوارات
+                </div>
+                <div class="range-box" style="margin-bottom: 16px;">
+                    سعر البيع = التكلفة (قبل الضريبة) + نسبة ربح البند، أو «سعر بيع ثابت» إن كتبته. ثم يُضاف التركيب والتوصيل وضريبة القيمة المضافة.
+                    لا يظهر للعميل إلا البند المفعّل الذي له سعر. إذا تركت نسبة ربح البند فارغة تُستخدم النسبة الافتراضية.
+                </div>
+                <div class="filter-row">
+                    <label for="mtProfit" style="font-weight:700">نسبة الربح الافتراضية %</label>
+                    <input type="number" id="mtProfit" min="0" step="0.5" style="width:110px">
+                    <select id="mtSectionFilter" onchange="filterMtRows()"><option value="">كل الأقسام</option></select>
+                </div>
+                <div class="table-wrapper"><table>
+                    <thead><tr><th>القسم</th><th>النوع</th><th>الاسم</th><th>الوصف / المحتويات</th><th>الوحدة</th><th>التكلفة (ر.ع)</th><th>الربح %</th><th>سعر بيع ثابت</th><th>سعر البيع</th><th>مفعّل</th><th>رابط المنتج</th><th></th></tr></thead>
                     <tbody id="mtRows"></tbody>
                 </table></div>
                 <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addMtRow()">+ بند</button>
+
+                <p class="sub-heading">رسوم إضافية تُبلَّغ للعميل <span class="status-text">— لا تُضاف إلى السعر، وتظهر للعميل وفي عرض السعر عند طلب التركيب (مثل عدم اكتمال التسليكات أو التأسيس). اترك المبلغ فارغاً ليُكتب «تُحدد بعد المعاينة».</span></p>
+                <div class="table-wrapper"><table>
+                    <thead><tr><th>القسم</th><th>الحالة / الوصف</th><th>المبلغ (ر.ع)</th><th>مفعّل</th><th></th></tr></thead>
+                    <tbody id="mtFeeRows"></tbody>
+                </table></div>
+                <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addMtFeeRow()">+ رسوم</button>
                 <div class="form-buttons">
-                    <button class="btn btn-primary" onclick="saveMotors()">حفظ المكائن والقطع</button>
+                    <button class="btn btn-primary" onclick="saveMotors()">حفظ المكائن والرسوم</button>
                     <span id="mtStatus" class="status-text"></span>
                 </div>
             </div>
@@ -1292,9 +1321,9 @@
             <div class="card">
                 <div class="card-title">
                     <span class="icon">M</span>
-                    سعر تركيب المكينة لكل ولاية
+                    سعر التركيب الأساسي للمكائن لكل ولاية
                 </div>
-                <p class="status-text" style="margin: 0 0 10px;">يُحسب التركيب لكل مكينة (طقم). إذا تركت السعر فارغاً لولاية فيُكتب للعميل «رسوم التركيب تُحدد بعد المعاينة». التوصيل يُؤخذ من سعر توصيل الولاية في تبويب «بوابات الشتر».</p>
+                <p class="status-text" style="margin: 0 0 10px;">هذا هو السعر الأساسي لتركيب مكينة واحدة في الولاية، وتُضاف إليه «إضافة على التركيب» الخاصة بالقسم. إذا تركت السعر فارغاً لولاية فيُكتب للعميل «رسوم التركيب تُحدد بعد المعاينة». التوصيل يُؤخذ من سعر توصيل الولاية في تبويب «بوابات الشتر».</p>
                 <div class="filter-row">
                     <select id="mtGovFilter" onchange="renderMtRegions()"><option value="">كل المحافظات</option></select>
                     <button class="btn btn-outline btn-sm" onclick="copyMtInstallation('overhead')">نسخ أسعار تركيب الأوفرهيد للفارغ</button>
@@ -1303,7 +1332,7 @@
                 </div>
                 <div class="table-wrapper">
                     <table>
-                        <thead><tr><th>المحافظة</th><th>الولاية</th><th>مفعّلة</th><th>تركيب المكينة (ر.ع)</th><th></th></tr></thead>
+                        <thead><tr><th>المحافظة</th><th>الولاية</th><th>مفعّلة</th><th>التركيب الأساسي (ر.ع)</th><th></th></tr></thead>
                         <tbody id="mtRegionsBody"></tbody>
                     </table>
                 </div>

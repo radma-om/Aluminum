@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
     agent_knowledge: '',
     // The admin's own guidelines for the agent (tone, what to say or avoid...) — added after the built-in rules
     agent_instructions: '',
-    // Profit added to the purchase cost of gate motors and their parts (%)
+    // Default profit of gate motors and their parts (%), for items without their own
     motors_profit_percent: 15,
     website_chat_greeting: 'مرحباً بك 👋 أنا المساعد الذكي. أستطيع حساب سعر بوابات الرول شتر والأوفرهيد لك خلال دقائق. ما المقاس الذي تحتاجه؟',    // رقم واتساب الشركة بالصيغة الدولية مثل 9689XXXXXXX
     public_base_url: '',     // رابط هذا النظام (مثل https://calcshutter.radma.co)، يستخدم في رسائل واتساب وروابط PDF
@@ -244,10 +244,24 @@ CREATE TABLE IF NOT EXISTS inbound_events (
     received_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Gate motors (sliding / swing): kits and spare parts; price = cost + profit %, or a fixed price
+-- Gate motors by section (sliding, swing, parking barrier... added in the admin);
+-- install_extra is added to the wilayah's base motor installation fee
+CREATE TABLE IF NOT EXISTS motor_sections (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    key           TEXT,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    install_extra REAL NOT NULL DEFAULT 0,
+    active        INTEGER NOT NULL DEFAULT 1,
+    sort_order    INTEGER NOT NULL DEFAULT 0
+);
+
+-- Kits and accessories; price = cost + the item's profit % (empty = default), or a fixed price
 CREATE TABLE IF NOT EXISTS motor_items (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     section      TEXT NOT NULL DEFAULT 'sliding',
+    section_id   INTEGER,
+    profit_percent REAL,
     kind         TEXT NOT NULL DEFAULT 'kit',
     name         TEXT NOT NULL,
     description  TEXT,
@@ -256,6 +270,17 @@ CREATE TABLE IF NOT EXISTS motor_items (
     price        REAL,
     active       INTEGER NOT NULL DEFAULT 1,
     link         TEXT,
+    sort_order   INTEGER NOT NULL DEFAULT 0
+);
+
+-- Fees told to the customer (incomplete wiring, foundation...); section_id NULL = all sections,
+-- amount NULL = set after a site visit. Never added to the total.
+CREATE TABLE IF NOT EXISTS motor_extra_fees (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id   INTEGER,
+    name         TEXT NOT NULL,
+    amount       REAL,
+    active       INTEGER NOT NULL DEFAULT 1,
     sort_order   INTEGER NOT NULL DEFAULT 0
 );
 
@@ -396,6 +421,8 @@ function migrate(db) {
     addColumns('inbound_events', { status: 'TEXT', event_key: 'TEXT' });
     // Gate motors have their own installation fee per wilayah (NULL = set after a site visit)
     addColumns('regions', { motor_installation_fee: 'REAL' });
+    // Gate motors: sections added in the admin, and a profit % per item
+    addColumns('motor_items', { section_id: 'INTEGER', profit_percent: 'REAL' });
 }
 
 /* "~/radma-data/aluminum.db" → the account's home folder. On shared hosting this keeps the
@@ -435,6 +462,7 @@ function openDatabase(file = process.env.DB_FILE || path.join(__dirname, '..', '
     migrate(db);
     seedRegions(db);        // wilayat first: the catalog import sets their installation fees
     seedConfigurator(db);
+    require('./motors').ensureSections(db);
     return db;
 }
 

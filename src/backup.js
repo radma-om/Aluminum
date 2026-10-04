@@ -29,10 +29,12 @@ const TABLES = [
     ['overhead_sizes', 'مقاسات الأوفرهيد'],
     ['overhead_motors', 'محركات الأوفرهيد'],
     ['knowledge_items', 'قاعدة المعرفة'],
-    ['motor_items', 'مكائن البوابات']
+    ['motor_sections', 'أقسام المكائن'],
+    ['motor_items', 'مكائن البوابات'],
+    ['motor_extra_fees', 'رسوم المكائن الإضافية']
 ];
 /* Sheets added after the first backups: an older file without them keeps the current data */
-const OPTIONAL = new Set(['overhead_sizes', 'overhead_motors', 'knowledge_items', 'motor_items']);
+const OPTIONAL = new Set(['overhead_sizes', 'overhead_motors', 'knowledge_items', 'motor_sections', 'motor_items', 'motor_extra_fees']);
 const INFO_SHEET = 'معلومات';
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
 
@@ -117,6 +119,8 @@ async function restoreWorkbook(db, buffer) {
                 for (const row of data[table].rows) insert.run(...cols.map((c) => row[c] ?? null));
                 counts[table] = data[table].rows.length;
             }
+            // Motors items from a backup of version 3.0.0 (no sections yet) join the current sections
+            require('./motors').linkItems(db);
             const broken = db.prepare('PRAGMA foreign_key_check').all();
             if (broken.length) throw err400(`بيانات غير مترابطة في الملف (مثلاً ${broken[0].table} يشير إلى سجل غير موجود في ${broken[0].parent})`);
             db.exec('COMMIT');

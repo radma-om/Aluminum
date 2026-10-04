@@ -265,6 +265,7 @@ function renderQuotePdf(quote, settings, out) {
     const notes = [];
     if (quote.notes) notes.push('ملاحظات العميل: ' + quote.notes);
     if (details.fees_note) notes.push(details.fees_note);
+    if (details.extra_fees_note) notes.push(details.extra_fees_note);
     for (const n of notes) { ensureSpace(20); y = w.paragraph('• ' + n, left, y, width, { size: 9.5, color: COLORS.light }) - 4; }
 
     // ---- Terms and conditions (admin setting; one term per line, numbered here) ----

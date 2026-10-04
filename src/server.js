@@ -437,12 +437,12 @@ function createApp(db, { agentClient } = {}) {
         });
     });
 
-    /* ---- Gate motors (sliding / swing): kits and parts ---- */
+    /* ---- Gate motors (sections: sliding, swing, parking barrier...): kits and accessories ---- */
 
     app.get('/api/public/motors', (req, res) => res.json({ ...companyInfo(), ...motors.publicMotors(db) }));
 
     const readMotors = (b) => ({
-        section: b.section, kitId: b.kit_id || null, kitCount: b.kit_count, regionId: b.region_id,
+        sectionId: b.section_id ?? b.section, kitId: b.kit_id || null, kitCount: b.kit_count, regionId: b.region_id,
         parts: Array.isArray(b.parts) ? b.parts : [], installation: b.installation !== false
     });
 
@@ -450,7 +450,9 @@ function createApp(db, { agentClient } = {}) {
         const body = req.body || {};
         const customer = readCustomer(body);
         const priced = motors.motorPrice(db, { ...readMotors(body), regionId: customer.region.id });
-        saveOrRepeat(res, customer, priced, { ...priced.order, spec: priced.spec, fees_note: priced.delivery_installation });
+        saveOrRepeat(res, customer, priced, {
+            ...priced.order, spec: priced.spec, fees_note: priced.delivery_installation, extra_fees_note: priced.extra_fees_note || null
+        });
     });
 
     /* ---- Website chat (chat bubble on radma.co, see chat-widget.js): the same AI agent ---- */
@@ -898,55 +900,102 @@ function createApp(db, { agentClient } = {}) {
         res.json({ sizes: savedSizes, motors: savedMotors });
     });
 
-    /* ---- Gate motors: items, profit %, installation fee per wilayah ---- */
+    /* ---- Gate motors: sections, items (profit % each), extra fees, installation fee per wilayah ---- */
 
     const motorsAdmin = () => ({
+        sections: motors.loadSections(db, { includeInactive: true }),
         items: motors.loadItems(db, { includeInactive: true }),
+        extra_fees: motors.loadExtraFees(db, { includeInactive: true }),
         profit_percent: motors.profitPercent(getSettings(db)),
-        sections: motors.SECTIONS, kinds: motors.KINDS, units: motors.UNITS,
+        kinds: motors.KINDS, units: motors.UNITS,
         regions: db.prepare(`SELECT id, name, governorate, active, motor_installation_fee, overhead_installation_fee, installation_fee
                              FROM regions ORDER BY governorate, name`).all()
     });
 
+    const motorMoney = (v, label) => {
+        if (v === '' || v == null) return null;
+        const n = Number(v);
+        if (!Number.isFinite(n) || n < 0) throw httpError(400, `قيمة غير صالحة: ${label}`);
+        return n;
+    };
+    const isOn = (v) => (v === false || v === 0 ? 0 : 1);
+
+    /* Upsert rows by id inside a transaction; rows missing from the list are deleted */
+    const replaceRows = (table, cols, rows) => {
+        const keep = rows.filter((r) => r.id).map((r) => r.id);
+        db.prepare(`DELETE FROM ${table} ${keep.length ? `WHERE id NOT IN (${keep.map(() => '?').join(',')})` : ''}`).run(...keep);
+        const upd = db.prepare(`UPDATE ${table} SET ${cols.map((c) => `${c} = ?`).join(', ')}, sort_order = ? WHERE id = ?`);
+        const ins = db.prepare(`INSERT INTO ${table} (${cols.join(', ')}, sort_order) VALUES (${cols.map(() => '?').join(', ')}, ?)`);
+        rows.forEach((r, i) => {
+            const vals = cols.map((c) => r[c]);
+            if (r.id && upd.run(...vals, i, r.id).changes) return;
+            ins.run(...vals, i);
+        });
+    };
+
     admin.get('/motors', (req, res) => res.json(motorsAdmin()));
 
+    /* Sections: name, description, installation extra (added to the wilayah's base fee) */
+    admin.put('/motors/sections', (req, res) => {
+        const rows = (Array.isArray((req.body || {}).sections) ? req.body.sections : []).map((x) => {
+            const row = {
+                id: Number(x.id) || null, name: text(x.name, 200), description: text(x.description, 2000),
+                install_extra: motorMoney(x.install_extra, 'إضافة التركيب') ?? 0, active: isOn(x.active)
+            };
+            if (!row.name) throw httpError(400, 'اسم القسم مطلوب');
+            return row;
+        });
+        if (!rows.length) throw httpError(400, 'يلزم قسم واحد على الأقل');
+        const keep = new Set(rows.filter((r) => r.id).map((r) => r.id));
+        const removed = motors.loadSections(db, { includeInactive: true }).filter((x) => !keep.has(x.id));
+        for (const x of removed) {
+            const n = db.prepare('SELECT COUNT(*) AS n FROM motor_items WHERE section_id = ?').get(x.id).n;
+            if (n) throw httpError(400, `القسم «${x.name}» فيه ${n} بند — احذفها أو انقلها إلى قسم آخر أولاً (أو أوقف القسم بدل حذفه)`);
+        }
+        tx(() => {
+            for (const x of removed) db.prepare('DELETE FROM motor_extra_fees WHERE section_id = ?').run(x.id);
+            replaceRows('motor_sections', ['name', 'description', 'install_extra', 'active'], rows);
+        });
+        res.json(motorsAdmin());
+    });
+
+    /* Items (kits and accessories, each with its profit %), possible extra fees, default profit */
     admin.put('/motors', (req, res) => {
         const b = req.body || {};
-        const money = (v, label) => {
-            if (v === '' || v == null) return null;
-            const n = Number(v);
-            if (!Number.isFinite(n) || n < 0) throw httpError(400, `قيمة غير صالحة: ${label}`);
-            return n;
-        };
+        const sectionIds = new Set(motors.loadSections(db, { includeInactive: true }).map((x) => x.id));
         const items = (Array.isArray(b.items) ? b.items : []).map((m) => {
             const row = {
                 id: Number(m.id) || null,
-                section: motors.SECTIONS[m.section] ? m.section : 'sliding',
+                section_id: Number(m.section_id),
                 kind: motors.KINDS[m.kind] ? m.kind : 'kit',
                 name: text(m.name, 200), description: text(m.description, 1000),
                 unit: motors.UNITS[m.unit] ? m.unit : 'piece',
-                cost: money(m.cost, 'التكلفة'), price: money(m.price, 'سعر البيع'),
-                active: m.active === false || m.active === 0 ? 0 : 1, link: text(m.link, 500)
+                cost: motorMoney(m.cost, 'التكلفة'), price: motorMoney(m.price, 'سعر البيع'),
+                profit_percent: motorMoney(m.profit_percent, 'نسبة الربح'),
+                active: isOn(m.active), link: text(m.link, 500)
             };
             if (!row.name) throw httpError(400, 'اسم المكينة أو القطعة مطلوب');
+            if (!sectionIds.has(row.section_id)) throw httpError(400, `اختر القسم لـ «${row.name}»`);
             if (row.active && row.cost == null && row.price == null) {
                 throw httpError(400, `أدخل التكلفة أو سعر البيع لـ «${row.name}» قبل تفعيلها`);
             }
             return row;
         });
-        if (b.profit_percent !== undefined) saveSettings(db, { motors_profit_percent: money(b.profit_percent, 'نسبة الربح') ?? 0 });
-        tx(() => {
-            const keep = items.filter((r) => r.id).map((r) => r.id);
-            db.prepare(`DELETE FROM motor_items ${keep.length ? `WHERE id NOT IN (${keep.map(() => '?').join(',')})` : ''}`).run(...keep);
-            const cols = ['section', 'kind', 'name', 'description', 'unit', 'cost', 'price', 'active', 'link'];
-            const upd = db.prepare(`UPDATE motor_items SET ${cols.map((c) => `${c} = ?`).join(', ')}, sort_order = ? WHERE id = ?`);
-            const ins = db.prepare(`INSERT INTO motor_items (${cols.join(', ')}, sort_order) VALUES (${cols.map(() => '?').join(', ')}, ?)`);
-            items.forEach((r, i) => {
-                const vals = cols.map((c) => r[c]);
-                if (r.id && upd.run(...vals, i, r.id).changes) return;
-                ins.run(...vals, i);
-            });
+        const fees = b.extra_fees === undefined ? null : (Array.isArray(b.extra_fees) ? b.extra_fees : []).map((f) => {
+            const row = {
+                id: Number(f.id) || null, section_id: f.section_id ? Number(f.section_id) : null,
+                name: text(f.name, 300), amount: motorMoney(f.amount, 'مبلغ الرسوم'), active: isOn(f.active)
+            };
+            if (!row.name) throw httpError(400, 'اكتب وصف الرسوم الإضافية');
+            if (row.section_id != null && !sectionIds.has(row.section_id)) throw httpError(400, 'قسم غير موجود للرسوم الإضافية');
+            return row;
         });
+        const profit = b.profit_percent !== undefined ? motorMoney(b.profit_percent, 'نسبة الربح الافتراضية') ?? 0 : null;
+        tx(() => {
+            replaceRows('motor_items', ['section_id', 'kind', 'name', 'description', 'unit', 'cost', 'price', 'profit_percent', 'active', 'link'], items);
+            if (fees) replaceRows('motor_extra_fees', ['section_id', 'name', 'amount', 'active'], fees);
+        });
+        if (profit != null) saveSettings(db, { motors_profit_percent: profit });
         res.json(motorsAdmin());
     });
 
