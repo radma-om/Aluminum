@@ -14,6 +14,11 @@ const DEFAULT_SETTINGS = {
     vat_percent: 5,
     tax_mode: 'accounting',
     sqm_to_linear: 13,       // 1 م² = 13 متر طولي من الشرائح
+    // Slat thicknesses of the in-house calculators (pricing and weight tabs): details, mm, kg per meter
+    slat_thicknesses: [
+        { details: 'شريحة نابكو 1.1 ملم', thickness: 1.1, weight: 0.63 },
+        { details: 'شريحة نابكو 1.5 ملم', thickness: 1.5, weight: 0.839 }
+    ],
     company_name: 'مصنع شرائح الألمنيوم',
     company_whatsapp: '',
     // Sales numbers that get the MazBot WhatsApp template for every calculator request
@@ -474,17 +479,38 @@ function getSettings(db) {
     return settings;
 }
 
+const badValue = (message) => Object.assign(new Error(message), { status: 400 });
+
+/* Slat thicknesses: details text, thickness (mm, optional) and weight per meter (kg, required) */
+function cleanSlatThicknesses(list) {
+    if (!Array.isArray(list) || !list.length) throw badValue('أضف سماكة واحدة على الأقل');
+    if (list.length > 30) throw badValue('عدد السماكات كبير جداً (30 كحد أقصى)');
+    return list.map((x, i) => {
+        const details = String((x && x.details) ?? '').trim().slice(0, 200);
+        const weight = Number(x && x.weight);
+        const t = x && x.thickness !== '' && x.thickness != null ? Number(x.thickness) : null;
+        if (!details) throw badValue(`اكتب تفاصيل السماكة في السطر ${i + 1}`);
+        if (!Number.isFinite(weight) || weight <= 0 || weight > 100) throw badValue(`وزن المتر غير صالح لـ «${details}»`);
+        if (t != null && (!Number.isFinite(t) || t <= 0 || t > 100)) throw badValue(`السماكة غير صالحة لـ «${details}»`);
+        return { details, thickness: t, weight };
+    });
+}
+
 function saveSettings(db, patch) {
     const upsert = db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
                                ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
         if (patch[key] === undefined) continue;
+        if (key === 'slat_thicknesses') {
+            upsert.run(key, JSON.stringify(cleanSlatThicknesses(patch[key])));
+            continue;
+        }
         const numeric = typeof DEFAULT_SETTINGS[key] === 'number';
         const boolean = typeof DEFAULT_SETTINGS[key] === 'boolean';
         const value = boolean ? patch[key] === true || patch[key] === 'true' || patch[key] === 1
             : numeric ? Number(patch[key]) : String(patch[key]);
         if (numeric && !Number.isFinite(value)) {
-            throw Object.assign(new Error(`قيمة غير صالحة للحقل ${key}`), { status: 400 });
+            throw badValue(`قيمة غير صالحة للحقل ${key}`);
         }
         upsert.run(key, JSON.stringify(value));
     }

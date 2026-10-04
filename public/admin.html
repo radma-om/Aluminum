@@ -691,6 +691,24 @@
                 </div>
             </div>
 
+            <!-- Slat thicknesses (shared by the pricing and weight tabs) -->
+            <div class="card">
+                <div class="card-title">
+                    <span class="icon">T</span>
+                    السماكات ووزن المتر
+                </div>
+                <p class="status-text" style="margin: 0 0 10px;">تظهر هذه السماكات في «حاسبة التسعير» و«حاسبة الوزن». الوزن بالكيلوجرام لكل متر طولي من الشريحة. لا تؤثر على أسعار حاسبة العملاء (لها أسعار المتر المربع في تبويب «بوابات الشتر»).</p>
+                <div class="table-wrapper"><table>
+                    <thead><tr><th>التفاصيل</th><th>السماكة (ملم)</th><th>الوزن (كجم/متر)</th><th></th></tr></thead>
+                    <tbody id="slatRows"></tbody>
+                </table></div>
+                <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addSlatRow()">+ سماكة</button>
+                <div class="form-buttons">
+                    <button class="btn btn-primary" onclick="saveSlats()">حفظ السماكات</button>
+                    <span id="slatStatus" class="status-text"></span>
+                </div>
+            </div>
+
             <!-- Add Item -->
             <div class="card">
                 <div class="card-title">
@@ -699,11 +717,8 @@
                 </div>
                 <div class="add-item-form">
                     <div class="form-group">
-                        <label>السماكة <span class="unit">(ملم)</span></label>
-                        <select id="itemThickness">
-                            <option value="1.1">1.1 ملم</option>
-                            <option value="1.5">1.5 ملم</option>
-                        </select>
+                        <label>السماكة</label>
+                        <select id="itemThickness"></select>
                     </div>
                     <div class="form-group">
                         <label>الحالة</label>
@@ -802,11 +817,9 @@
                         <input type="number" id="wCalcWeight" value="1000" min="0" step="1" oninput="calcWeight()">
                     </div>
                     <div class="form-group">
-                        <label>السماكة <span class="unit">(ملم)</span></label>
-                        <select id="wCalcThickness" oninput="calcWeight()">
-                            <option value="1.1">1.1 ملم</option>
-                            <option value="1.5">1.5 ملم</option>
-                        </select>
+                        <label>السماكة</label>
+                        <select id="wCalcThickness" oninput="calcWeight()"></select>
+                        <span class="unit" id="wCalcWeightInfo"></span>
                     </div>
                     <div class="form-group">
                         <label>الحالة</label>
@@ -1651,10 +1664,24 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     /* =============================================================
        Industrial Constants
        ============================================================= */
-    const WEIGHT_PER_METER = {
-        '1.1': 0.63,
-        '1.5': 0.839
-    };
+    /* Slat thicknesses: details + weight per meter (kg). Edited in the pricing tab and saved
+       in the database (settings.slat_thicknesses); these defaults are used until it loads. */
+    let SLATS = [
+        { details: 'شريحة نابكو 1.1 ملم', thickness: 1.1, weight: 0.63 },
+        { details: 'شريحة نابكو 1.5 ملم', thickness: 1.5, weight: 0.839 }
+    ];
+    const slatLabel = (x) => `${x.details} — ${x.weight} كجم/متر`;
+    const escText = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    /* Fill both thickness lists (pricing and weight tabs), keeping the current choice when possible */
+    function renderSlatSelects() {
+        for (const id of ['itemThickness', 'wCalcThickness']) {
+            const sel = document.getElementById(id);
+            const current = sel.selectedIndex;
+            sel.innerHTML = SLATS.map((x, i) => `<option value="${i}">${escText(slatLabel(x))}</option>`).join('');
+            sel.selectedIndex = current >= 0 && current < SLATS.length ? current : 0;
+        }
+    }
     const SLAT_HEIGHT = 0.076; // 7.6 cm
     const SQM_TO_LINEAR = 13;  // 1 m² = 13 linear meters
 
@@ -1681,8 +1708,8 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     /* =============================================================
        Core Calculation for One Item
        ============================================================= */
-    function calculateItem(thickness, isPainted, length, inputs) {
-        const weight = WEIGHT_PER_METER[thickness] || 0.63;
+    function calculateItem(weightPerMeter, isPainted, length, inputs) {
+        const weight = Number(weightPerMeter) || 0;
 
         // Cost per meter components
         const metalPerMeter = (inputs.lme / 1000) * weight * inputs.exchangeRate;
@@ -1728,7 +1755,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
        Add Item
        ============================================================= */
     function addItem() {
-        const thickness = document.getElementById('itemThickness').value;
+        const slat = SLATS[Number(document.getElementById('itemThickness').value)];
         const painted = document.getElementById('itemPainted').value;
         const length = parseFloat(document.getElementById('itemLength').value);
 
@@ -1737,8 +1764,15 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
             return;
         }
 
+        if (!slat) {
+            alert('يرجى اختيار السماكة.');
+            return;
+        }
+        // The item keeps its own copy of the weight, so editing the list later does not change it
         items.push({
-            thickness,
+            details: slat.details,
+            thickness: slat.thickness,
+            weight: slat.weight,
             painted,
             length
         });
@@ -1793,7 +1827,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
 
         items.forEach((item, index) => {
             const isPainted = item.painted === 'painted';
-            const calc = calculateItem(item.thickness, isPainted, item.length, inputs);
+            const calc = calculateItem(item.weight, isPainted, item.length, inputs);
 
             totalCost += calc.costPiece;
             totalSell += calc.sellPrice;
@@ -1804,7 +1838,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${index + 1}</td>
-                <td>${item.thickness} ملم</td>
+                <td>${escText(item.details)}<br><span class="unit">${item.weight} كجم/متر</span></td>
                 <td>${isPainted ? 'مصبوغ' : 'بدون صبغ'}</td>
                 <td>${item.length.toFixed(3)}</td>
                 <td>${calc.costPiece.toFixed(2)}</td>
@@ -1848,11 +1882,12 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
        ============================================================= */
     function calcWeight() {
         const weightKg = parseFloat(document.getElementById('wCalcWeight').value) || 0;
-        const thickness = document.getElementById('wCalcThickness').value;
+        const slat = SLATS[Number(document.getElementById('wCalcThickness').value)] || SLATS[0];
         const isPainted = document.getElementById('wCalcPainted').value === 'painted';
         const pieceLength = parseFloat(document.getElementById('wCalcPieceLength').value) || 0;
 
-        const wpm = WEIGHT_PER_METER[thickness] || 0.63;
+        const wpm = slat ? Number(slat.weight) || 0 : 0;
+        document.getElementById('wCalcWeightInfo').textContent = slat ? `وزن المتر: ${slat.weight} كجم` : '';
 
         if (wpm === 0 || pieceLength <= 0) {
             setWeightResults(0, 0, 0, 0, 0, 0);
@@ -1999,7 +2034,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
 
         items.forEach((item, idx) => {
             const isPainted = item.painted === 'painted';
-            const calc = calculateItem(item.thickness, isPainted, item.length, inputs);
+            const calc = calculateItem(item.weight, isPainted, item.length, inputs);
 
             // Check if we need a new page
             if (rowY + rowHeight > pageHeight - 40) {
@@ -2018,7 +2053,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
 
             const rowData = [
                 String(idx + 1),
-                item.thickness + ' mm',
+                item.thickness != null ? item.thickness + ' mm' : item.weight + ' kg/m',
                 isPainted ? 'Painted' : 'Unpainted',
                 item.length.toFixed(3),
                 calc.costPiece.toFixed(2),
@@ -2069,27 +2104,27 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
         doc.roundedRect(tableStartX, sumStartY, totalTableWidth, 24, 2, 2, 'F');
 
         const totalCost = items.reduce((s, item) => {
-            const calc = calculateItem(item.thickness, item.painted === 'painted', item.length, inputs);
+            const calc = calculateItem(item.weight, item.painted === 'painted', item.length, inputs);
             return s + calc.costPiece;
         }, 0);
 
         const totalSell = items.reduce((s, item) => {
-            const calc = calculateItem(item.thickness, item.painted === 'painted', item.length, inputs);
+            const calc = calculateItem(item.weight, item.painted === 'painted', item.length, inputs);
             return s + calc.sellPrice;
         }, 0);
 
         const totalProfit = items.reduce((s, item) => {
-            const calc = calculateItem(item.thickness, item.painted === 'painted', item.length, inputs);
+            const calc = calculateItem(item.weight, item.painted === 'painted', item.length, inputs);
             return s + calc.profit;
         }, 0);
 
         const avgMeter = items.reduce((s, item) => {
-            const calc = calculateItem(item.thickness, item.painted === 'painted', item.length, inputs);
+            const calc = calculateItem(item.weight, item.painted === 'painted', item.length, inputs);
             return s + calc.pricePerMeter;
         }, 0) / items.length;
 
         const avgM2 = items.reduce((s, item) => {
-            const calc = calculateItem(item.thickness, item.painted === 'painted', item.length, inputs);
+            const calc = calculateItem(item.weight, item.painted === 'painted', item.length, inputs);
             return s + calc.pricePerM2;
         }, 0) / items.length;
 
@@ -2121,6 +2156,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     /* =============================================================
        Initialize
        ============================================================= */
+    renderSlatSelects();
     calcWeight();
     </script>
     <script src="admin.js"></script>
