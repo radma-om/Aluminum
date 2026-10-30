@@ -90,6 +90,7 @@ npm start
 1. أنشئ تطبيقاً في [Meta for Developers](https://developers.facebook.com) وأضف إليه منتج WhatsApp.
 2. انسخ `WHATSAPP_TOKEN` و `WHATSAPP_PHONE_NUMBER_ID` إلى ملف `.env`.
 3. اختر كلمة سر واكتبها في `WHATSAPP_VERIFY_TOKEN`.
+   واضبط `WHATSAPP_APP_SECRET` على App Secret من تطبيق Meta؛ بدونه تُرفض جميع طلبات POST الواردة برمز 401. رمز التحقق خاص بطلب GET ولا يحل محل توقيع الرسائل.
 4. في لوحة Meta، ضع رابط الـ Webhook `https://موقعك/webhooks/whatsapp` مع نفس كلمة السر، واشترك في حدث `messages`.
 
 بعد ذلك يعمل النظام كالتالي:
@@ -418,7 +419,7 @@ npm start
    |---|---|
    | `ADMIN_TOKEN` | كلمة مرور طويلة للإدارة من اختيارك |
    | `DB_FILE` | `~/radma-data/aluminum.db` |
-   | `TRUST_PROXY` | `1` |
+   | `TRUSTED_PROXIES` | عناوين IP أو شبكات CIDR للوكلاء الفعليين بعد التحقق من الاستضافة؛ اتركه فارغاً حتى تتأكد |
    | `EMBED_ALLOWED_ORIGINS` | `https://radma.co https://www.radma.co` |
 
    قيمة `DB_FILE` تحفظ قاعدة البيانات في مجلد الحساب الرئيسي، خارج مجلد التطبيق، فلا تُستبدل عند إعادة النشر.
@@ -511,3 +512,11 @@ npm start
   - `/api/admin/agent/chat` (تجربة المساعد)
   - `/api/admin/webhooks` و `/api/admin/webhooks/:id/test`
   - `/api/admin/price-list.txt`
+
+## ترقية إعدادات أمان واتساب والوكيل
+
+- `TRUST_PROXY=1` لم يعد يفعّل الثقة بترويسات العميل. استخدم `TRUSTED_PROXIES` بقائمة عناوين IP أو CIDR مفصولة بفواصل، بعد التحقق من عناوين الوكلاء الفعلية. القيم المنطقية وأعداد القفزات ونطاق `/0` مرفوضة.
+- الافتراضي الآمن هو عدم الثقة بأي وكيل. خلف الاستضافة المشتركة قد يؤدي ذلك إلى اشتراك العملاء في حد الطلبات بحسب عنوان الوكيل، حتى تضبط القائمة الصحيحة.
+- مثال لخادم Nginx محلي فقط: `TRUSTED_PROXIES=127.0.0.1/32,::1/128`. لا تفترض أن هذا المثال مناسب لـ Hostinger أو Cloudflare.
+- يجب أن يحذف الوكيل الحدّي ترويسات العميل المزيفة أو يستبدلها بعنوان الاتصال الحقيقي. لا تثق بنطاق يتضمن عناوين العملاء. سكربت تثبيت Nginx يضبط `X-Forwarded-For` على `$remote_addr`.
+- اضبط `WHATSAPP_APP_SECRET` قبل نشر التحديث إذا كنت تستخدم WhatsApp Cloud API مباشرة. لا يتغير مسار MazBot أو أسراره بهذا التحديث.

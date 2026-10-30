@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { trustedProxies } = require('./trusted-proxies');
 // The built-in SQLite database needs Node.js 22.13 or newer — say so clearly instead of crashing
 {
     const [major, minor] = process.versions.node.split('.').map(Number);
@@ -264,7 +265,7 @@ function sendPdf(res, quote, settings) {
 
 function createApp(db, { agentClient } = {}) {
     const app = express();
-    app.set('trust proxy', process.env.TRUST_PROXY === '1');
+    app.set('trust proxy', trustedProxies(process.env.TRUSTED_PROXIES));
     app.use(express.json({ limit: '200kb', verify: (req, res, buf) => { req.rawBody = buf; } }));
     app.disable('x-powered-by');
 

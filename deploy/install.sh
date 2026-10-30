@@ -56,7 +56,7 @@ if [ ! -f "$APP_DIR/.env" ]; then
     cat > "$APP_DIR/.env" <<ENV
 PORT=$PORT
 ADMIN_TOKEN=$ADMIN_TOKEN
-TRUST_PROXY=1
+TRUSTED_PROXIES=127.0.0.1/32,::1/128
 DB_FILE=$DATA_DIR/aluminum.db
 EMBED_ALLOWED_ORIGINS=https://radma.co https://www.radma.co
 ENV
@@ -108,7 +108,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For \$remote_addr;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 120s;
     }
