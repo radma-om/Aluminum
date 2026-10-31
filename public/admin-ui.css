@@ -75,6 +75,16 @@ body.sb-collapsed .sidebar .tab-btn .count { position: absolute; top: 3px; inset
 .app-header h1 { font-size: 1.12rem; flex: 1; color: var(--primary-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-toggle { display: none; border: 0; background: #eef2f7; color: var(--primary); width: 40px; height: 40px; border-radius: 10px; font-size: 1.05rem; cursor: pointer; flex: none; }
 .header-tools { display: flex; align-items: center; gap: 8px; }
+.user-chip { display: flex; align-items: center; gap: 7px; background: #eef2f7; color: var(--ink); border-radius: 999px; padding: 5px 8px 5px 14px; font-size: 0.86rem; font-weight: 600; }
+.user-chip > i { color: var(--primary); font-size: 1.05rem; }
+.user-chip .role { font-weight: 500; font-size: 0.74rem; color: var(--ink-2); background: #fff; border-radius: 999px; padding: 1px 8px; }
+.user-chip button { border: 0; background: #fff; color: var(--ink-2); width: 26px; height: 26px; border-radius: 50%; cursor: pointer; }
+.user-chip button:hover { color: var(--primary); }
+.perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.perm { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 0.88rem; cursor: pointer; background: #fff; }
+.perm:has(input:checked) { border-color: var(--series-1); background: #eef5fd; }
+.perm-badges .pill { margin: 1px 0; }
+tr.muted-row td { opacity: 0.55; }
 .me-picker { display: flex; align-items: center; gap: 6px; background: #eef2f7; color: var(--ink-2); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 0.85rem; }
 .me-picker select { border: 0; border-radius: 999px; padding: 4px 10px; font-family: inherit; font-size: 0.85rem; background: #fff; color: var(--primary); font-weight: 600; }
 .logout-btn { border: 1px solid var(--border); background: #fff; color: var(--ink-2); border-radius: 999px; padding: 6px 14px; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
@@ -96,8 +106,8 @@ body.sb-collapsed .sidebar .tab-btn .count { position: absolute; top: 3px; inset
     body.sb-open .sb-backdrop { opacity: 1; pointer-events: auto; }
     body.sb-open { overflow: hidden; }
     .app-header { padding: 10px 14px; flex-direction: row; text-align: start; gap: 8px; }
-    .me-picker { padding: 4px; }
-    .me-picker i, .t-out { display: none; }
+    .user-chip .role, .t-out { display: none; }
+    .user-chip { padding: 5px 8px; }
 }
 
 .card { border: 1px solid var(--hairline); box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 4px 16px rgba(16,24,40,0.04); border-radius: 14px; }

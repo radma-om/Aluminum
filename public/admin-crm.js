@@ -9,7 +9,6 @@ const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumF
 const compact = (n) => (Math.abs(n) >= 10000 ? new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n) : fmt.format(n));
 const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SVG = 'http://www.w3.org/2000/svg';
-const MANAGER = 'المدير العام';
 
 /* ---------------------------- Side menu ---------------------------- */
 
@@ -29,20 +28,6 @@ function toggleSidebar(open, { mobileOnly = false } = {}) {
 }
 try { if (localStorage.getItem('sbCollapsed')) document.body.classList.add('sb-collapsed'); } catch { /* ignore */ }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') toggleSidebar(false, { mobileOnly: true }); });
-
-/* ----------------------------- "أنا" ----------------------------- */
-
-let staffList = [];
-function renderMePicker() {
-    const me = currentMe();
-    const names = [MANAGER, ...staffList.filter((n) => n !== MANAGER)];
-    if (!names.includes(me)) names.push(me);
-    $id('meSelect').innerHTML = names.map((n) => `<option ${n === me ? 'selected' : ''}>${esc(n)}</option>`).join('');
-}
-function setMe(name) {
-    try { localStorage.setItem('staffName', name); } catch { /* ignore */ }
-    if ($id('tab-leads').classList.contains('active')) loadLeads();
-}
 
 /* ============================ Dashboard ============================ */
 
@@ -385,7 +370,7 @@ function renderLeadFilters() {
         `<button type="button" class="chip ${leadFilter.status === k && !leadFilter.due ? 'on' : ''}" data-status="${esc(k)}">${esc(label)}</button>`).join('') +
         `<button type="button" class="chip ${leadFilter.due ? 'on' : ''}" data-due="1"><i class="fas fa-calendar-day"></i> مستحقة اليوم</button>`;
     const keep = leadFilter.assigned;
-    $id('leadAssigned').innerHTML = `<option value="">كل الموظفين</option><option value="__me">مهامي (${esc(currentMe())})</option>
+    $id('leadAssigned').innerHTML = `<option value="">${ME && ME.leads_scope === 'mine' ? 'عملائي وغير المُسندين' : 'كل الموظفين'}</option><option value="__me">مهامي (${esc(currentMe())})</option>
         <option value="-">غير مُسند</option>${leadMeta.staff.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}`;
     $id('leadAssigned').value = keep;
 }
@@ -401,6 +386,7 @@ $id('leadStatusChips').addEventListener('click', (e) => {
 });
 
 function openLeadsWith(filter) {
+    if (!canSee('leads')) return;
     leadFilter = { status: filter.status ?? 'open', assigned: filter.assigned || '', due: Boolean(filter.due) };
     switchTab('leads');
 }
@@ -423,10 +409,7 @@ async function loadLeads() {
     if ($id('leadSearch').value.trim()) p.set('q', $id('leadSearch').value.trim());
     const r = await api('GET', '/api/admin/leads?' + p);
     leadMeta = { statuses: r.statuses, note_kinds: r.note_kinds, channels: r.channels, staff: r.staff, can_reply_whatsapp: r.can_reply_whatsapp };
-    staffList = r.staff;
-    renderMePicker();
     if (firstLoad) renderLeadFilters();
-    $id('staffInput').value = r.staff.join('، ');
     leadsCache = leadFilter.due ? r.leads.filter((l) => l.next_follow_up && l.next_follow_up <= todayStr()) : r.leads;
     renderLeadItems();
     if (leadFilter.status === 'open' && !assigned) updateLeadsBadge(r.leads.filter((l) => l.status === 'needs_staff').length);
@@ -581,20 +564,6 @@ function renderLeadDetail({ lead, messages, notes, quotes }, keepScroll) {
     }
 }
 
-async function saveStaff() {
-    const names = $id('staffInput').value.split(/[,،\n]/).map((n) => n.trim()).filter(Boolean);
-    try {
-        const s = await api('PUT', '/api/admin/settings', { staff_members: names });
-        staffList = s.staff_members;
-        leadMeta.staff = s.staff_members;
-        renderMePicker();
-        renderLeadFilters();
-        setStatus('staffStatus', 'تم الحفظ ✓', 'ok');
-    } catch (err) {
-        setStatus('staffStatus', err.message, 'err');
-    }
-}
-
 /* ------------------------------ Wiring ------------------------------ */
 
 const switchTabBeforeCrm = window.switchTab;
@@ -619,12 +588,12 @@ setInterval(() => {
     }
 }, 30_000);
 
-renderMePicker();
 document.addEventListener('admin-ready', () => {
-    loadDashboard();
-    api('GET', '/api/admin/leads?open=1').then((r) => {
-        staffList = r.staff;
-        renderMePicker();
-        updateLeadsBadge(r.leads.filter((l) => l.status === 'needs_staff').length);
-    }).catch(() => {});
+    // Load the data of the section that opened first (it depends on the account's permissions)
+    const active = document.querySelector('.sidebar .tab-btn.active');
+    if (active) switchTab(active.dataset.tab);
+    if (canSee('leads')) {
+        api('GET', '/api/admin/leads?open=1')
+            .then((r) => updateLeadsBadge(r.leads.filter((l) => l.status === 'needs_staff').length)).catch(() => {});
+    }
 });

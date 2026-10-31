@@ -637,6 +637,7 @@
             <div class="nav-group">الإعدادات</div>
             <button class="tab-btn" data-tab="agent" onclick="switchTab('agent')" title="المساعد الذكي"><i class="fas fa-robot"></i><span class="t-label">المساعد الذكي</span></button>
             <button class="tab-btn" data-tab="integrations" onclick="switchTab('integrations')" title="الربط"><i class="fas fa-plug"></i><span class="t-label">الربط</span></button>
+            <button class="tab-btn" data-tab="users" onclick="switchTab('users')" title="المستخدمون والصلاحيات" hidden><i class="fas fa-user-shield"></i><span class="t-label">المستخدمون والصلاحيات</span></button>
         </nav>
         <button type="button" class="sb-fold" onclick="toggleSidebar()" title="طي القائمة / فتحها">
             <i class="fas fa-angles-right"></i><span class="t-label">طي القائمة</span>
@@ -649,10 +650,12 @@
         <button type="button" class="sb-toggle" onclick="toggleSidebar()" title="القائمة" aria-label="القائمة"><i class="fas fa-bars"></i></button>
         <h1 id="pageTitle">لوحة المؤشرات</h1>
         <div class="header-tools">
-            <label class="me-picker" title="اسمك يُكتب على التقارير والملاحظات والرسائل">
-                <i class="fas fa-user-tie"></i> أنا:
-                <select id="meSelect" onchange="setMe(this.value)"></select>
-            </label>
+            <div class="user-chip" title="الحساب الحالي">
+                <i class="fas fa-circle-user"></i>
+                <span id="meName">—</span>
+                <span class="role" id="meRole"></span>
+                <button type="button" id="mePwd" onclick="changeMyPassword()" title="تغيير كلمة المرور" hidden><i class="fas fa-key"></i></button>
+            </div>
             <button class="logout-btn" onclick="logout()" title="تسجيل الخروج"><i class="fas fa-right-from-bracket"></i> <span class="t-out">خروج</span></button>
         </div>
     </header>
@@ -742,12 +745,53 @@
                     <div class="empty-state"><i class="fas fa-comments"></i>اختر عميلاً من القائمة لعرض محادثته وتقارير المتابعة</div>
                 </div>
             </div>
-            <div class="card" style="margin-top:16px">
-                <div class="card-title"><span class="icon"><i class="fas fa-users"></i></span> الموظفون</div>
-                <p class="status-text" style="margin:0 0 10px">أسماء الموظفين الذين يتابعون العملاء (افصل بينها بفاصلة). يختار كل موظف اسمه من «أنا» أعلى الصفحة، فيُكتب اسمه على التقارير والرسائل. في الخطوة القادمة يصبح لكل موظف حساب وصلاحيات خاصة.</p>
+        </div>
+
+        <!-- ==================== Staff accounts (managers) ==================== -->
+        <div id="tab-users" class="tab-content">
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-user-shield"></i></span> حسابات الموظفين وصلاحياتهم</div>
+                <p class="status-text" style="margin:0 0 12px">كل موظف يدخل باسم المستخدم وكلمة المرور الخاصة به، ويرى فقط الأقسام المختارة له، ويُكتب اسمه تلقائياً على تقارير المتابعة والرسائل. «المدير» يرى كل شيء ويدير الحسابات. المدير العام يدخل بكلمة مرور الإدارة (ADMIN_TOKEN) كما هو.</p>
+                <div class="table-wrapper"><table>
+                    <thead><tr><th>الموظف</th><th>اسم المستخدم</th><th>الدور</th><th>الأقسام</th><th>متابعة العملاء</th><th>الحالة</th><th>آخر دخول</th><th></th></tr></thead>
+                    <tbody id="usersBody"></tbody>
+                </table></div>
+                <div id="usersEmpty" class="empty-message" hidden>لا توجد حسابات موظفين بعد — أضف أول موظف من النموذج أدناه.</div>
+            </div>
+
+            <div class="card" id="userFormCard">
+                <div class="card-title"><span class="icon"><i class="fas fa-user-plus"></i></span> <span id="userFormTitle">إضافة موظف</span></div>
+                <input type="hidden" id="uId">
+                <div class="form-grid">
+                    <div class="form-group"><label>اسم الموظف (يظهر في التقارير)</label><input type="text" id="uDisplay" placeholder="مثال: سالم البلوشي"></div>
+                    <div class="form-group"><label>اسم المستخدم للدخول</label><input type="text" id="uUsername" dir="ltr" placeholder="salem" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+                    <div class="form-group"><label id="uPasswordLabel">كلمة المرور (8 أحرف على الأقل)</label><input type="text" id="uPassword" dir="ltr" autocomplete="new-password" placeholder="••••••••"></div>
+                    <div class="form-group"><label>الدور</label>
+                        <select id="uRole" onchange="userRoleChanged()"><option value="staff">موظف — أقسام محددة</option><option value="manager">مدير — كل الأقسام وإدارة الحسابات</option></select></div>
+                </div>
+                <div id="uPermsBox">
+                    <p class="sub-heading">الأقسام التي يعمل فيها</p>
+                    <div class="perm-grid" id="uPerms"></div>
+                    <p class="sub-heading">متابعة العملاء</p>
+                    <div class="check-row" id="uScope" style="margin-top:0">
+                        <label><input type="radio" name="uScope" value="all" checked> كل العملاء</label>
+                        <label><input type="radio" name="uScope" value="mine"> عملاؤه فقط (ومن لم يُسند لأحد بعد)</label>
+                    </div>
+                </div>
+                <div class="check-row"><label><input type="checkbox" id="uActive" checked> الحساب مفعّل</label></div>
+                <div class="form-buttons">
+                    <button class="btn btn-primary" id="uSave" onclick="saveUser()">إضافة الموظف</button>
+                    <button class="btn btn-outline" onclick="resetUserForm()">جديد</button>
+                    <span id="userStatus" class="status-text"></span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-users"></i></span> أسماء بدون حساب</div>
+                <p class="status-text" style="margin:0 0 10px">أسماء تظهر في «الموظف المتابع» دون أن يكون لها حساب دخول (افصل بينها بفاصلة). من له حساب يظهر تلقائياً.</p>
                 <div class="staff-editor">
-                    <input type="text" id="staffInput" placeholder="مثال: سالم، مريم، أحمد">
-                    <button class="btn btn-primary btn-sm" onclick="saveStaff()">حفظ الموظفين</button>
+                    <input type="text" id="staffInput" placeholder="مثال: فني المعاينة، قسم الحسابات">
+                    <button class="btn btn-primary btn-sm" onclick="saveStaff()">حفظ الأسماء</button>
                     <span id="staffStatus" class="status-text"></span>
                 </div>
             </div>
@@ -1764,7 +1808,8 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
         <form class="login-card" onsubmit="event.preventDefault(); login();">
             <img src="images/logo.png" alt="">
             <h2>لوحة إدارة الأسعار</h2>
-            <p>أدخل كلمة مرور الإدارة للمتابعة</p>
+            <p>الموظفون: اسم المستخدم وكلمة المرور.<br>المدير العام: كلمة مرور الإدارة فقط.</p>
+            <input type="text" id="loginUser" placeholder="اسم المستخدم (اتركه فارغاً للمدير العام)" autocomplete="username" autocapitalize="none" spellcheck="false" dir="ltr">
             <input type="password" id="adminToken" placeholder="كلمة المرور" autocomplete="current-password" required>
             <button class="btn btn-primary" type="submit">دخول</button>
             <span id="loginStatus" class="status-text"></span>
@@ -2277,5 +2322,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     </script>
     <script src="admin.js"></script>
     <script src="admin-crm.js"></script>
+    <script src="admin-users.js"></script>
 </body>
 </html>

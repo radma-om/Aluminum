@@ -29,17 +29,18 @@ function setStatus(id, text, kind = '') {
     el.className = 'status-text ' + kind;
 }
 
-/* The employee using the panel (chosen in «أنا»); written on follow-up reports and replies */
-function currentMe() {
-    try { return localStorage.getItem('staffName') || 'المدير العام'; } catch { return 'المدير العام'; }
-}
+/* The signed-in account: the general manager (ADMIN_TOKEN) or an employee with chosen sections */
+let ME = null;
+const canSee = (section) => !ME || ME.role === 'manager' || ME.permissions.includes(section);
+const currentMe = () => (ME ? ME.display_name : 'المدير العام');
+const storedToken = () => { try { return localStorage.getItem('adminToken') || ''; } catch { return ''; } };
 
 async function api(method, url, body) {
     let token = '';
     try { token = localStorage.getItem('adminToken') || ''; } catch { /* storage blocked */ }
     const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, 'X-Staff-Name': encodeURIComponent(currentMe()) },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: body === undefined ? undefined : JSON.stringify(body)
     });
     if (res.status === 401 || res.status === 503) {
@@ -56,13 +57,28 @@ async function api(method, url, body) {
     return data;
 }
 
-function logout() {
+async function logout() {
+    // Ends an employee's session on the server too
+    await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + storedToken() } }).catch(() => {});
     try { localStorage.removeItem('adminToken'); } catch { /* ignore */ }
     location.reload();
 }
 
+/* Employee: username + password → session token. General manager: password only (ADMIN_TOKEN). */
 async function login() {
-    try { localStorage.setItem('adminToken', $id('adminToken').value.trim()); } catch { /* ignore */ }
+    const username = $id('loginUser').value.trim();
+    const password = $id('adminToken').value;
+    let token = password.trim();
+    if (username) {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return setStatus('loginStatus', data.error || 'تعذر الدخول');
+        token = data.token;
+    }
+    try { localStorage.setItem('adminToken', token); } catch { /* ignore */ }
+    $id('adminToken').value = '';
     try {
         await initAdmin();
         $id('loginBar').hidden = true;
@@ -1410,11 +1426,55 @@ async function loadSystemStatus() {
 }
 
 async function initAdmin() {
+    ME = (await api('GET', '/api/admin/me')).user;
+    applyPermissions();
     applySettings(await api('GET', '/api/admin/settings'));
     online = true;
-    loadSystemStatus().catch(() => {});
-    await Promise.all([loadProducts(), loadPurchases(), loadHooks(), loadAgentStatus(), loadMazbotStatus()]);
+    if (ME.role === 'manager') loadSystemStatus().catch(() => {});
+    // Load only what this account may see (the server refuses the rest anyway)
+    const jobs = [];
+    if (canSee('products') || canSee('purchases')) jobs.push(loadProducts());
+    if (canSee('purchases')) jobs.push(loadPurchases());
+    if (canSee('integrations')) jobs.push(loadHooks(), loadMazbotStatus());
+    if (canSee('agent')) jobs.push(loadAgentStatus());
+    await Promise.all(jobs);
     document.dispatchEvent(new Event('admin-ready'));
+}
+
+/* Show only the sections of this account; open the first one it may use */
+function applyPermissions() {
+    const manager = ME.role === 'manager';
+    document.querySelectorAll('.sidebar .tab-btn[data-tab]').forEach((b) => {
+        const tab = b.dataset.tab;
+        b.hidden = tab === 'users' ? !manager : !canSee(tab);
+    });
+    document.querySelectorAll('.sidebar .nav-group').forEach((g) => {
+        let el = g.nextElementSibling;
+        let any = false;
+        while (el && !el.classList.contains('nav-group')) { if (!el.hidden) any = true; el = el.nextElementSibling; }
+        g.hidden = !any;
+    });
+    $id('meName').textContent = ME.display_name;
+    $id('meRole').textContent = ME.owner ? 'المدير العام' : ME.role === 'manager' ? 'مدير' : 'موظف';
+    $id('mePwd').hidden = Boolean(ME.owner);
+    const active = document.querySelector('.sidebar .tab-btn.active');
+    if (!active || active.hidden) {
+        const first = document.querySelector('.sidebar .tab-btn[data-tab]:not([hidden])');
+        if (first) switchTab(first.dataset.tab);
+    }
+}
+
+async function changeMyPassword() {
+    const current = prompt('كلمة المرور الحالية:');
+    if (current === null) return;
+    const next = prompt('كلمة المرور الجديدة (8 أحرف على الأقل):');
+    if (next === null) return;
+    try {
+        await api('POST', '/api/admin/me/password', { current, password: next });
+        alert('تم تغيير كلمة المرور ✓');
+    } catch (err) {
+        alert(err.message);
+    }
 }
 
 (async function boot() {
