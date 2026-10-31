@@ -80,8 +80,13 @@ function handleEvent(db, eventId, event, ctx) {
 
 async function reply(db, eventId, event, { phone, contact, saveQuote, notifySales, baseUrl, client }) {
     const text = messageText(event);
+    // MazBot's answer to each send is kept with the request: "accepted by MazBot" is not "delivered on WhatsApp",
+    // and its message id / status is what MazBot support needs to trace a reply that never arrived
+    const sends = [];
     const send = async (msg) => {
         const r = await mazbot.sendText(contact.id, msg);
+        sends.push({ receiver_id: contact.id, ok: r.ok, status: r.status, response: r.body === undefined ? null : r.body, error: r.ok ? null : r.error });
+        db.prepare('UPDATE inbound_events SET reply_json = ? WHERE id = ?').run(JSON.stringify(sends).slice(0, 4000), eventId);
         if (!r.ok) throw new Error('send: ' + r.error);
     };
     try {
