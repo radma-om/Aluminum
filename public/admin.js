@@ -1404,6 +1404,38 @@ async function resetChat() {
     $id('chatLog').innerHTML = '';
 }
 
+/* ------------------- Your address / proxy check ------------------- */
+
+const FORGED_ADDRESS = '203.0.113.99'; // a documentation-only address that no real customer has
+const isLocalAddress = (ip) => /^(127\.|::1$|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|fc|fd)/i.test(ip);
+
+async function checkMyAddress() {
+    setStatus('addrStatus', 'جاري الفحص…');
+    try {
+        const normal = await api('GET', '/api/admin/me/address');
+        const token = storedToken();
+        const res = await fetch('/api/admin/me/address', { headers: { Authorization: 'Bearer ' + token, 'X-Forwarded-For': FORGED_ADDRESS } });
+        const forged = await res.json();
+        const rows = [];
+        const row = (level, title, detail) => rows.push(`<div class="diag-check ${level}"><span class="d-icon">${level === 'ok' ? '✓' : level === 'bad' ? '✕' : '!'}</span>
+            <div><div class="d-title">${esc(title)}</div><div class="d-detail">${esc(detail)}</div></div></div>`);
+        row('ok', 'عنوانك كما يراه النظام: ' + normal.ip, `يمر عبر: ${normal.peer}${normal.peer_trusted ? ' (وكيل موثوق)' : ''} — TRUSTED_PROXIES: ${normal.trusted_proxies.join(', ') || 'فارغ'}`);
+        if (forged.ip === FORGED_ADDRESS) {
+            row('bad', 'خطر: النظام صدّق عنواناً مزيّفاً', 'الوكيل يمرر ما يكتبه الزائر كما هو، فيستطيع أي شخص تجاوز حد محاولات الدخول. احذف TRUSTED_PROXIES من متغيرات البيئة وأعد النشر، وأخبر الدعم الفني.');
+        } else if (!normal.peer_trusted) {
+            row('warn', 'الوكيل غير موثوق بعد', `النظام لا يعرف عنوان العميل الحقيقي، فيظهر كل الزوار بالعنوان ${normal.ip}. أضف ${normal.peer} إلى TRUSTED_PROXIES إذا تأكدت أنه وكيل الاستضافة.`);
+        } else if (isLocalAddress(normal.ip)) {
+            row('warn', 'العنوان الظاهر داخلي', `الوكيل موثوق، لكن العنوان الظاهر (${normal.ip}) عنوان داخلي وليس عنوانك على الإنترنت — ربما يوجد وكيل آخر قبله. أرسل صورة هذه النتيجة للدعم الفني.`);
+        } else {
+            row('ok', 'الإعداد صحيح وآمن ✓', `النظام تجاهل العنوان المزيّف (${FORGED_ADDRESS}) واحتفظ بعنوانك الحقيقي ${forged.ip}. للتأكد النهائي: افتح الصفحة من شبكة أخرى، يجب أن يظهر عنوان مختلف.`);
+        }
+        $id('addrResult').innerHTML = rows.join('');
+        setStatus('addrStatus', '');
+    } catch (err) {
+        setStatus('addrStatus', err.message, 'err');
+    }
+}
+
 /* ------------------- WhatsApp diagnostics (MazBot) ------------------- */
 
 const fmtWhen = (t) => new Date(String(t).replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' });

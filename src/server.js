@@ -603,6 +603,18 @@ function createApp(db, { agentClient } = {}) {
     /* ---- The signed-in user, and staff accounts (managers) ---- */
 
     admin.get('/me', (req, res) => res.json({ user: req.user, sections: staff.SECTIONS }));
+    /* "Your address as the system sees it": checks TRUSTED_PROXIES from the outside. The panel calls it
+       twice — normally and with a forged X-Forwarded-For — to see whether the proxy can be fooled. */
+    admin.get('/me/address', (req, res) => {
+        const peer = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+        res.json({
+            ip: String(req.ip || '').replace(/^::ffff:/, ''),
+            peer,
+            peer_trusted: Boolean(proxyConf.list) && req.app.get('trust proxy fn')(req.socket.remoteAddress, 0),
+            forwarded_for: req.get('x-forwarded-for') || null,
+            trusted_proxies: proxyConf.list || []
+        });
+    });
     admin.post('/me/password', (req, res) => {
         res.json({ ok: true, ...staff.changeOwnPassword(db, req.user, (req.body || {}).current, (req.body || {}).password) });
     });
