@@ -138,3 +138,32 @@ test('public forms: one direct client is limited; customers behind an untrusted 
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `198.51.100.${i}` }, body: '{}'
     })).status), 429);
 });
+
+/* ---------------- "Your address as the system sees it" ---------------- */
+
+const whoami = async (call, xff) => (await call('/api/admin/me/address', {
+    headers: { Authorization: 'Bearer test-admin', ...(xff ? { 'X-Forwarded-For': xff } : {}) }
+})).json();
+
+test('your address: untrusted proxy → everyone shows as the proxy', async (t) => {
+    const call = await start(t);
+    const r = await whoami(call, '198.51.100.7');
+    assert.equal(r.ip, '127.0.0.1');
+    assert.equal(r.peer, '127.0.0.1');
+    assert.equal(r.peer_trusted, false);
+    assert.deepEqual(r.trusted_proxies, []);
+});
+
+test('your address: trusted local proxy → the real address; a forged one sent by the visitor is ignored', async (t) => {
+    const call = await start(t, { TRUSTED_PROXIES: '127.0.0.1/32,::1/128' });
+    // A proxy that appends the visitor's real address (the normal behaviour)
+    let r = await whoami(call, '198.51.100.7');
+    assert.deepEqual([r.ip, r.peer_trusted], ['198.51.100.7', true]);
+    // The visitor forged X-Forwarded-For; the proxy appended the real one → the real one wins
+    r = await whoami(call, '203.0.113.99, 198.51.100.7');
+    assert.equal(r.ip, '198.51.100.7');
+    assert.equal(r.forwarded_for, '203.0.113.99, 198.51.100.7');
+    // A proxy that would pass the visitor's header unchanged: the forged address shows — the panel flags it as danger
+    r = await whoami(call, '203.0.113.99');
+    assert.equal(r.ip, '203.0.113.99');
+});

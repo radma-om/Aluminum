@@ -1649,6 +1649,16 @@
 
         <!-- ==================== TAB 6: Integrations ==================== -->
         <div id="tab-integrations" class="tab-content">
+            <div class="card manager-only">
+                <div class="card-title"><span class="icon"><i class="fas fa-location-crosshairs"></i></span> عنوانك كما يراه النظام (فحص إعداد الوكيل)</div>
+                <p class="status-text" style="margin:0 0 10px">يتأكد أن TRUSTED_PROXIES مضبوط بشكل صحيح وآمن: يعرض عنوانك الحقيقي، ثم يرسل طلباً بعنوان مزيّف ليتأكد أن النظام لا ينخدع به. افتح هذه الصفحة من جهازين على شبكتين مختلفتين (مثلاً الجوال ببيانات الهاتف، والكمبيوتر على شبكة المكتب) وقارن.</p>
+                <div class="db-actions" style="margin-top:0">
+                    <button class="btn btn-primary" onclick="checkMyAddress()"><i class="fas fa-magnifying-glass"></i> افحص عنواني</button>
+                    <span id="addrStatus" class="status-text"></span>
+                </div>
+                <div id="addrResult" class="diag-checks" style="margin-top:10px"></div>
+            </div>
+
             <div class="card diag-card">
                 <div class="card-title"><span class="icon"><i class="fas fa-stethoscope"></i></span> تشخيص الرد على واتساب (MazBot)</div>
                 <p class="status-text" style="margin:0 0 12px">يفحص كل حلقة في الطريق: العميل ← MazBot ← النظام ← الذكاء الاصطناعي ← الرد عبر MazBot، ويخبرك بالسبب وطريقة الإصلاح.</p>
