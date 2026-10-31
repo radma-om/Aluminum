@@ -204,6 +204,14 @@ test('quote PDFs and the quote list follow the customer scope; managers and publ
     assert.deepStrictEqual((await call('GET', '/api/admin/quotes', null, nawal)).body.map((q) => q.id), [otherQ.id]);
     assert.strictEqual((await call('PATCH', `/api/admin/quotes/${mineQ.id}`, { status: 'contacted' }, nawal)).status, 404);
     assert.strictEqual((await call('PATCH', `/api/admin/quotes/${otherQ.id}`, { status: 'contacted' }, nawal)).status, 200);
+    // A duplicate from website chat must not unlock a quote owned by another employee.
+    const duplicate = leads.customerMessage(db, { key: 'web:duplicate', channel: 'website', phone: '96892222222', text: 'hello' });
+    for (const assigned of [null, 'سالم']) {
+        db.prepare('UPDATE leads SET assigned_to = ? WHERE id = ?').run(assigned, duplicate.id);
+        assert.strictEqual((await call('GET', `/api/admin/quotes/${otherQ.id}/pdf`, null, salem)).status, 404);
+    }
+    db.prepare("UPDATE leads SET assigned_to = 'سالم' WHERE phone = '96892222222'").run();
+    assert.strictEqual((await call('GET', `/api/admin/quotes/${otherQ.id}/pdf`, null, salem)).status, 200);
     // Not signed in
     assert.strictEqual((await call('GET', `/api/admin/quotes/${mineQ.id}/pdf`, null, null)).status, 401);
     assert.strictEqual((await call('GET', `/api/admin/quotes/${mineQ.id}/pdf`, null, 'not-a-session-token-xxxxxxxxxx')).status, 401);
