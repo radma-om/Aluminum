@@ -605,7 +605,7 @@
 
         /* ===== Print ===== */
         @media print {
-            .app-header, .tabs, .btn, .add-item-form, .tax-toggle {
+            .app-header, .tabs, .sidebar, .btn, .add-item-form, .tax-toggle {
                 display: none !important;
             }
         }
@@ -614,33 +614,47 @@
 </head>
 <body>
 
+    <!-- Side menu (folds to icons; a drawer on phones) -->
+    <aside class="sidebar" id="sidebar" aria-label="أقسام اللوحة">
+        <div class="sb-brand">
+            <span class="header-icon">AL</span>
+            <span class="t-label">نظام تسعير الألمنيوم</span>
+        </div>
+        <nav class="sb-nav">
+            <div class="nav-group">الرئيسية</div>
+            <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')" title="لوحة المؤشرات"><i class="fas fa-chart-line"></i><span class="t-label">لوحة المؤشرات</span></button>
+            <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')" title="متابعة العملاء"><i class="fas fa-headset"></i><span class="t-label">متابعة العملاء</span><span class="count" id="leadsBadge" hidden></span></button>
+            <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')" title="طلبات العروض"><i class="fas fa-file-invoice-dollar"></i><span class="t-label">طلبات العروض</span></button>
+            <div class="nav-group">الحاسبات</div>
+            <button class="tab-btn" data-tab="pricing" onclick="switchTab('pricing')" title="حاسبة التسعير"><i class="fas fa-calculator"></i><span class="t-label">حاسبة التسعير</span></button>
+            <button class="tab-btn" data-tab="weight" onclick="switchTab('weight')" title="حاسبة الوزن"><i class="fas fa-weight-hanging"></i><span class="t-label">حاسبة الوزن</span></button>
+            <div class="nav-group">المنتجات والأسعار</div>
+            <button class="tab-btn" data-tab="products" onclick="switchTab('products')" title="المنتجات والأسعار"><i class="fas fa-boxes-stacked"></i><span class="t-label">المنتجات والأسعار</span></button>
+            <button class="tab-btn" data-tab="purchases" onclick="switchTab('purchases')" title="أسعار الشراء"><i class="fas fa-cart-shopping"></i><span class="t-label">أسعار الشراء</span></button>
+            <button class="tab-btn" data-tab="doors" onclick="switchTab('doors')" title="بوابات الشتر"><i class="fas fa-warehouse"></i><span class="t-label">بوابات الشتر</span></button>
+            <button class="tab-btn" data-tab="overhead" onclick="switchTab('overhead')" title="بوابات الأوفرهيد"><i class="fas fa-door-closed"></i><span class="t-label">بوابات الأوفرهيد</span></button>
+            <button class="tab-btn" data-tab="motors" onclick="switchTab('motors')" title="مكائن البوابات"><i class="fas fa-gears"></i><span class="t-label">مكائن البوابات</span></button>
+            <div class="nav-group">الإعدادات</div>
+            <button class="tab-btn" data-tab="agent" onclick="switchTab('agent')" title="المساعد الذكي"><i class="fas fa-robot"></i><span class="t-label">المساعد الذكي</span></button>
+            <button class="tab-btn" data-tab="integrations" onclick="switchTab('integrations')" title="الربط"><i class="fas fa-plug"></i><span class="t-label">الربط</span></button>
+        </nav>
+        <button type="button" class="sb-fold" onclick="toggleSidebar()" title="طي القائمة / فتحها">
+            <i class="fas fa-angles-right"></i><span class="t-label">طي القائمة</span>
+        </button>
+    </aside>
+    <div class="sb-backdrop" onclick="toggleSidebar(false)"></div>
+
     <!-- Header -->
     <header class="app-header">
-        <h1>
-            <span class="header-icon">AL</span>
-            نظام تسعير شرائح الألمنيوم
-        </h1>
+        <button type="button" class="sb-toggle" onclick="toggleSidebar()" title="القائمة" aria-label="القائمة"><i class="fas fa-bars"></i></button>
+        <h1 id="pageTitle">لوحة المؤشرات</h1>
         <div class="header-tools">
             <label class="me-picker" title="اسمك يُكتب على التقارير والملاحظات والرسائل">
                 <i class="fas fa-user-tie"></i> أنا:
                 <select id="meSelect" onchange="setMe(this.value)"></select>
             </label>
-            <button class="tab-btn logout-btn" onclick="logout()" title="تسجيل الخروج"><i class="fas fa-right-from-bracket"></i> خروج</button>
+            <button class="logout-btn" onclick="logout()" title="تسجيل الخروج"><i class="fas fa-right-from-bracket"></i> <span class="t-out">خروج</span></button>
         </div>
-        <nav class="tabs" aria-label="أقسام اللوحة">
-            <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')"><i class="fas fa-chart-line"></i> لوحة المؤشرات</button>
-            <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')"><i class="fas fa-headset"></i> متابعة العملاء <span class="count" id="leadsBadge" hidden></span></button>
-            <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')"><i class="fas fa-file-invoice-dollar"></i> طلبات العروض</button>
-            <button class="tab-btn" data-tab="pricing" onclick="switchTab('pricing')"><i class="fas fa-calculator"></i> حاسبة التسعير</button>
-            <button class="tab-btn" data-tab="weight" onclick="switchTab('weight')"><i class="fas fa-weight-hanging"></i> حاسبة الوزن</button>
-            <button class="tab-btn" data-tab="products" onclick="switchTab('products')"><i class="fas fa-boxes-stacked"></i> المنتجات والأسعار</button>
-            <button class="tab-btn" data-tab="purchases" onclick="switchTab('purchases')"><i class="fas fa-cart-shopping"></i> أسعار الشراء</button>
-            <button class="tab-btn" data-tab="doors" onclick="switchTab('doors')"><i class="fas fa-warehouse"></i> بوابات الشتر</button>
-            <button class="tab-btn" data-tab="overhead" onclick="switchTab('overhead')"><i class="fas fa-door-closed"></i> بوابات الأوفرهيد</button>
-            <button class="tab-btn" data-tab="motors" onclick="switchTab('motors')"><i class="fas fa-gears"></i> مكائن البوابات</button>
-            <button class="tab-btn" data-tab="agent" onclick="switchTab('agent')"><i class="fas fa-robot"></i> المساعد الذكي</button>
-            <button class="tab-btn" data-tab="integrations" onclick="switchTab('integrations')"><i class="fas fa-plug"></i> الربط</button>
-        </nav>
     </header>
 
     <div class="main-container">
