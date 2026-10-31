@@ -107,6 +107,7 @@ function resolveChoice(catalog, { shutterTypeId, variantId, colorId, optionIds =
         : type.variants.find((v) => v.id === Number(variantId));
     if (!variant) throw err400('اختر السماكة');
 
+    if (variant.colors.length && !colorId) throw err400('اختر اللون');
     let color = null;
     if (colorId) {
         color = variant.colors.find((c) => c.id === Number(colorId));

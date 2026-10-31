@@ -125,18 +125,13 @@ test('TRUSTED_PROXIES accepts only explicit addresses and reasonable networks', 
     }
 });
 
-test('public forms: one direct client is limited; customers behind an untrusted proxy share a larger allowance', async (t) => {
+test('public form limit cannot be raised or reset by forged forwarding headers', async (t) => {
     const call = await start(t);
     const quote = (xff) => call('/api/public/overhead-quotes', {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...(xff ? { 'X-Forwarded-For': xff } : {}) }, body: '{}'
     });
     for (let i = 0; i < 10; i++) assert.notEqual((await quote()).status, 429);
-    assert.equal((await quote()).status, 429); // a direct client: 10 per 10 minutes
-
-    const viaProxy = await start(t);
-    for (let i = 0; i < 30; i++) assert.notEqual((await (await viaProxy('/api/public/overhead-quotes', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `198.51.100.${i}` }, body: '{}'
-    })).status), 429);
+    for (const header of [null, '198.51.100.1', '198.51.100.2']) assert.equal((await quote(header)).status, 429);
 });
 
 /* ---------------- "Your address as the system sees it" ---------------- */

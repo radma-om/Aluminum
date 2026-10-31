@@ -49,20 +49,14 @@ function withPrices(product, settings) {
     };
 }
 
-/* Requests that came through a proxy we do not trust: every customer behind it shares one address */
-const SHARED_ADDRESS_FACTOR = 20;
-const sharedAddress = (req) => Boolean(req.headers['x-forwarded-for']) && !req.app.get('trust proxy fn')(req.socket.remoteAddress, 0);
-
-/* Small in-memory limiter so the public quote form cannot be spammed. Behind an untrusted proxy all
-   customers share the proxy's address, so the public forms get a larger shared allowance instead of
-   blocking real customers (set TRUSTED_PROXIES to limit each customer separately). */
+/* Limits depend only on the trusted client address, never on caller-supplied headers. */
 function rateLimit({ windowMs, max }) {
     const hits = new Map();
     return (req, res, next) => {
         const now = Date.now();
         const key = req.ip;
         const recent = (hits.get(key) || []).filter((t) => now - t < windowMs);
-        if (recent.length >= max * (sharedAddress(req) ? SHARED_ADDRESS_FACTOR : 1)) {
+        if (recent.length >= max) {
             return res.status(429).json({ error: 'طلبات كثيرة، يرجى المحاولة لاحقاً' });
         }
         recent.push(now);
@@ -661,7 +655,7 @@ function createApp(db, { agentClient } = {}) {
             warnings.push({
                 level: 'warning',
                 text: `الطلبات تصل عبر وكيل غير موثوق (العنوان الذي يراه الخادم: ${untrusted.map((p) => p.address).join('، ')}). ` +
-                    'لذلك يظهر كل العملاء بعنوان واحد: تُشترك محاولات الدخول الخاطئة، وتُخفَّف حدود النماذج العامة. ' +
+                    'لذلك يظهر كل العملاء بعنوان واحد: تُشترك محاولات الدخول الخاطئة، وتُشترك حدود النماذج العامة. ' +
                     'إذا تأكدت من مزوّد الاستضافة أن هذا العنوان (أو شبكته) هو وكيل الاستضافة فأضفه إلى TRUSTED_PROXIES.'
             });
         }

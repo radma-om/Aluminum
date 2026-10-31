@@ -228,11 +228,12 @@ function allowedRegionFields(user, body) {
 const seesLead = (user, lead) => user.leads_scope !== 'mine' || !lead.assigned_to || lead.assigned_to === user.display_name;
 
 /* The same scope covers the customer's quotes, in every section (follow-up, quote requests, PDFs):
-   a quote belongs to the customer(s) with its phone; with no such customer it counts as unassigned */
+   a quote belongs to the customer(s) with its phone; with no such customer it counts as unassigned.
+   Conflicting ownership fails closed: an unassigned duplicate must never unlock another employee’s quote */
 function seesQuote(db, user, quote) {
     if (user.leads_scope !== 'mine') return true;
     const owners = db.prepare('SELECT assigned_to FROM leads WHERE phone = ?').all(String(quote.customer_phone || ''));
-    return !owners.length || owners.some((l) => seesLead(user, l));
+    return !owners.length || owners.every((l) => seesLead(user, l));
 }
 
 module.exports = {
