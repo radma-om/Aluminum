@@ -455,7 +455,7 @@ async function openLead(id, { keepScroll = false } = {}) {
     renderLeadDetail(data, keepScroll);
 }
 
-function renderLeadDetail({ lead, messages, notes, quotes }, keepScroll) {
+function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: pausedUntil }, keepScroll) {
     const el = $id('leadDetail');
     const oldTimeline = el.querySelector('.timeline');
     const atBottom = !oldTimeline || oldTimeline.scrollHeight - oldTimeline.scrollTop - oldTimeline.clientHeight < 40;
@@ -484,6 +484,8 @@ function renderLeadDetail({ lead, messages, notes, quotes }, keepScroll) {
                 </div>
             </div>
         </div>
+        ${pausedUntil ? `<div class="lead-paused"><i class="fas fa-circle-pause"></i> المساعد الذكي لا يرد على هذا العميل حتى ${esc(parseUtc(pausedUntil).toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' }))} (طلب موظفاً أو ردّ عليه موظف).
+            <button class="btn btn-outline btn-sm" id="ldResume">ليرد المساعد عليه الآن</button></div>` : ''}
         <div class="lead-controls">
             <label>الحالة
                 <select id="ldStatus">${Object.entries(leadMeta.statuses).map(([k, v]) => `<option value="${k}" ${k === lead.status ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
@@ -533,6 +535,11 @@ function renderLeadDetail({ lead, messages, notes, quotes }, keepScroll) {
     const patch = async (body) => {
         try { renderLeadDetail(await api('PATCH', '/api/admin/leads/' + lead.id, body), true); loadLeads(); } catch (err) { alert(err.message); }
     };
+    if (pausedUntil) {
+        $id('ldResume').addEventListener('click', async () => {
+            try { renderLeadDetail(await api('DELETE', `/api/admin/leads/${lead.id}/pause`), true); } catch (err) { alert(err.message); }
+        });
+    }
     $id('ldStatus').addEventListener('change', (e) => patch({ status: e.target.value }));
     $id('ldNext').addEventListener('change', (e) => patch({ next_follow_up: e.target.value }));
     $id('ldName').addEventListener('change', (e) => patch({ name: e.target.value }));

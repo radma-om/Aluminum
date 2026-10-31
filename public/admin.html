@@ -1648,6 +1648,29 @@
 
         <!-- ==================== TAB 6: Integrations ==================== -->
         <div id="tab-integrations" class="tab-content">
+            <div class="card diag-card">
+                <div class="card-title"><span class="icon"><i class="fas fa-stethoscope"></i></span> تشخيص الرد على واتساب (MazBot)</div>
+                <p class="status-text" style="margin:0 0 12px">يفحص كل حلقة في الطريق: العميل ← MazBot ← النظام ← الذكاء الاصطناعي ← الرد عبر MazBot، ويخبرك بالسبب وطريقة الإصلاح.</p>
+                <div class="db-actions" style="margin-top:0">
+                    <button class="btn btn-primary" onclick="runDiagnose()"><i class="fas fa-magnifying-glass"></i> افحص الآن</button>
+                    <span id="diagStatus" class="status-text"></span>
+                </div>
+                <div id="diagSummary" class="diag-summary" hidden></div>
+                <div id="diagChecks" class="diag-checks"></div>
+                <div id="diagPauses"></div>
+                <div class="diag-sim">
+                    <p class="sub-heading"><i class="fas fa-vial"></i> تجربة كاملة على رقمك</p>
+                    <p class="status-text" style="margin:0 0 8px">يرسل النظام رسالة كأنها من هذا الرقم، فيكتب المساعد الرد ويُرسله لك على واتساب عبر MazBot. إذا وصلك الرد فكل شيء بعد MazBot يعمل، والمشكلة (إن بقيت) في وصول رسائل MazBot إلى النظام. يجب أن يكون الرقم قد راسل رقم الشركة خلال آخر 24 ساعة.</p>
+                    <div class="filter-row">
+                        <input type="tel" id="diagPhone" placeholder="رقمك: 9XXXXXXX" dir="ltr" style="width:170px; padding:8px 10px; border:2px solid var(--border); border-radius:8px">
+                        <input type="text" id="diagText" value="مرحبا، كم سعر بوابة رول شتر؟" style="flex:1; min-width:220px; padding:8px 10px; border:2px solid var(--border); border-radius:8px">
+                        <button class="btn btn-success btn-sm" onclick="simulateWhatsapp()"><i class="fa-brands fa-whatsapp"></i> جرّب</button>
+                    </div>
+                    <div id="diagSimResult"></div>
+                </div>
+                <div id="diagMessages"></div>
+            </div>
+
             <div class="card">
                 <div class="card-title">
                     <span class="icon">⚙</span>
@@ -1742,8 +1765,9 @@
             <div class="card">
                 <div class="card-title">
                     <span class="icon">W</span>
-                    ربط واتساب (WhatsApp Cloud API)
+                    ربط Meta المباشر (WhatsApp Cloud API) — اختياري وغير مستخدم حالياً
                 </div>
+                <p class="status-text" style="margin:0 0 8px">هذا ربط بديل مباشر مع Meta. ردود المساعد عندكم تتم عبر <strong>MazBot</strong>، لذلك «غير مفعّل» هنا طبيعي ولا يؤثر على الرد. لفحص الرد استخدم «تشخيص الرد على واتساب» أعلى هذه الصفحة.</p>
                 <p style="margin-bottom: 10px;">الحالة: <span id="waStatus" class="badge">—</span></p>
                 <ul class="info-list">
                     <li>رابط الـ Webhook الذي تضعه في لوحة Meta: <code id="waWebhookUrl"></code></li>

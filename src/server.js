@@ -27,6 +27,7 @@ const mazbot = require('./mazbot');
 const backup = require('./backup');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
+const whatsappCheck = require('./whatsapp-check');
 const knowledge = require('./knowledge');
 const { renderQuotePdf } = require('./pdf');
 
@@ -787,18 +788,28 @@ function createApp(db, { agentClient } = {}) {
         });
     });
 
-    admin.get('/leads/:id', (req, res) => res.json(leadFor(req, req.params.id)));
+    const withPause = (data) => {
+        const phone = String(data.lead.phone || '').replace(/\D/g, '');
+        const p = phone ? db.prepare("SELECT until FROM agent_pauses WHERE phone = ? AND until > datetime('now')").get(phone) : null;
+        return { ...data, agent_paused_until: p ? p.until : null };
+    };
+    admin.get('/leads/:id', (req, res) => res.json(withPause(leadFor(req, req.params.id))));
+    admin.delete('/leads/:id/pause', (req, res) => {
+        const { lead } = leadFor(req, req.params.id);
+        if (lead.phone) mazbotInbox.unpause(db, String(lead.phone).replace(/\D/g, ''));
+        res.json(withPause(leads.detail(db, lead.id)));
+    });
 
     admin.patch('/leads/:id', (req, res) => {
         leadFor(req, req.params.id);
-        res.json(leads.update(db, req.params.id, req.body || {}, staffName(req)));
+        res.json(withPause(leads.update(db, req.params.id, req.body || {}, staffName(req))));
     });
 
     admin.post('/leads/:id/notes', (req, res) => {
         leadFor(req, req.params.id);
         const b = req.body || {};
         leads.addNote(db, req.params.id, { kind: b.kind, text: b.text }, staffName(req));
-        res.status(201).json(leads.detail(db, req.params.id));
+        res.status(201).json(withPause(leads.detail(db, req.params.id)));
     });
 
     /* An employee answers a WhatsApp customer through MazBot; the AI agent steps back for a while */
@@ -815,7 +826,7 @@ function createApp(db, { agentClient } = {}) {
         }
         leads.staffMessage(db, lead.id, text, staffName(req));
         if ((req.body || {}).pause_agent !== false) mazbotInbox.pause(db, String(lead.phone).replace(/\D/g, ''));
-        res.status(201).json(leads.detail(db, lead.id));
+        res.status(201).json(withPause(leads.detail(db, lead.id)));
     }));
 
     admin.get('/quotes/:id/pdf', (req, res) => {
@@ -1279,6 +1290,31 @@ function createApp(db, { agentClient } = {}) {
             webhook_path: secret.length >= 16 ? `/webhooks/mazbot/${secret}` : null,
             events: db.prepare('SELECT * FROM inbound_events ORDER BY id DESC LIMIT 20').all()
         });
+    });
+
+    /* ---- "Why no reply on WhatsApp?": every link of the chain, in plain Arabic ---- */
+
+    admin.get('/mazbot/diagnose', asyncRoute(async (req, res) => res.json(await whatsappCheck.run(db))));
+
+    // The whole chain for one number: AI answer, then the reply sent through MazBot
+    admin.post('/mazbot/diagnose/simulate', asyncRoute(async (req, res) => {
+        res.json(await whatsappCheck.simulate(db, req.body || {}, {
+            saveQuote: (q) => saveQuote(db, q),
+            notifySales: (quote) => notifySales(db, quote),
+            baseUrl: systemOrigin(req)
+        }));
+    }));
+
+    // Let the assistant answer again a number it stepped back from (all numbers without a phone)
+    admin.delete('/mazbot/pauses', (req, res) => {
+        const phone = String((req.body || {}).phone || req.query.phone || '').replace(/\D/g, '');
+        const info = phone ? mazbotInbox.unpause(db, phone) : db.prepare('DELETE FROM agent_pauses').run();
+        res.json({ resumed: Number(info.changes) });
+    });
+
+    admin.put('/mazbot/agent', (req, res) => {
+        saveSettings(db, { mazbot_agent_enabled: Boolean((req.body || {}).enabled) });
+        res.json({ enabled: Boolean(getSettings(db).mazbot_agent_enabled) });
     });
 
     /* Test message with sample values: ?calculator=overhead tests the overhead template */

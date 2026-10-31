@@ -147,6 +147,13 @@ async function sendTextToPhone(phone, text) {
     return sendText(receiverId, text);
 }
 
+/* A fresh login (diagnostics): are MAZBOT_API_KEY and the staff email / password accepted? */
+async function checkLogin() {
+    if (!hasLogin()) return { ok: false, error: 'missing' };
+    if (env().dryRun) return { ok: true, dry_run: true };
+    try { await getToken(true); return { ok: true }; } catch (err) { return { ok: false, error: err.message }; }
+}
+
 /* ------------------------- Incoming webhook signature ------------------------- */
 
 /* X-Mazbot-Signature: HMAC-SHA256 of the raw body with the signing secret. Accepted forms:
@@ -187,4 +194,4 @@ async function sendToAll(recipients, values, calculator = 'rolling_shutter') {
     return { sent, total: results.length, results };
 }
 
-module.exports = { isConfigured, hasLogin, templateFor, sendToAll, sendText, sendTextToPhone, verifySignature, parseRecipients, cleanValue, _reset: () => { tokenCache = { token: null, expiresAt: 0 }; } };
+module.exports = { isConfigured, hasLogin, checkLogin, resolveContact, templateFor, sendToAll, sendText, sendTextToPhone, verifySignature, parseRecipients, cleanValue, _reset: () => { tokenCache = { token: null, expiresAt: 0 }; } };
