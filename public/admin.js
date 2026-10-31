@@ -1028,6 +1028,12 @@ function confirmRestore(what) {
 
 async function afterRestore(r) {
     const total = Object.values(r.counts).reduce((a, b) => a + b, 0);
+    // Every staff session ended with the restore: a staff manager signs in again
+    if (r.signed_out && ME && !ME.owner) {
+        alert(`تمت الاستعادة ✓ (${total} سجل)\nانتهت كل جلسات الدخول — سجّل الدخول من جديد.`);
+        try { localStorage.removeItem('adminToken'); } catch { /* ignore */ }
+        return location.reload();
+    }
     applySettings(await api('GET', '/api/admin/settings'));
     await Promise.all([loadProducts(), loadPurchases(), loadHooks()]);
     await Promise.all([loadDoors(), loadBackups()]);
@@ -1422,7 +1428,8 @@ async function runDiagnose() {
             ${r.pauses.length > 1 ? '<button class="btn btn-outline btn-sm" onclick="resumeWhatsappAgent()">استئناف الرد على كل الأرقام</button>' : ''}` : '';
         $id('diagMessages').innerHTML = r.messages.length ? `<p class="sub-heading">آخر رسائل العملاء التي وصلت من MazBot وما حدث لكل منها</p>
             ${r.messages.map((m) => `<div class="diag-msg"><span class="m-when">${esc(fmtWhen(m.at))}</span>
-                <span><strong>${esc(m.name || '')}</strong> <span dir="ltr">${m.phone ? '+' + esc(m.phone) : ''}</span>: ${esc(m.text || '')}</span>
+                <span>${m.test ? '<span class="pill">تجربة من اللوحة</span> ' : ''}<strong>${esc(m.name || '')}</strong> <span dir="ltr">${m.phone ? '+' + esc(m.phone) : ''}</span>: ${esc(m.text || '')}
+                    ${m.signature === 'verified' ? '<span class="pill st-won">توقيع سليم</span>' : m.signature === 'unchecked' ? '<span class="pill">بلا تحقق</span>' : ''}</span>
                 <span></span><span class="m-note ${esc(m.level)}">${esc(m.note)}</span></div>`).join('')}` : '';
         setStatus('diagStatus', 'آخر فحص: ' + new Date().toLocaleTimeString('ar-OM', { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
@@ -1467,7 +1474,7 @@ window.switchTab = function (tabId) {
     if (!online) return;
     if (tabId === 'quotes') loadQuotes();
     if (tabId === 'products') renderProducts();
-    if (tabId === 'doors') { loadDoors(); loadBackups().catch(() => {}); }
+    if (tabId === 'doors') { loadDoors(); if (ME && ME.role === 'manager') loadBackups().catch(() => {}); }
     if (tabId === 'overhead') loadOverhead();
     if (tabId === 'motors') loadMotors();
     if (tabId === 'integrations') { loadInbound().catch(() => {}); runDiagnose(); }
@@ -1509,6 +1516,7 @@ function applyPermissions() {
         const tab = b.dataset.tab;
         b.hidden = tab === 'users' ? !manager : !canSee(tab);
     });
+    document.querySelectorAll('.manager-only').forEach((el) => { el.hidden = !manager; });
     document.querySelectorAll('.sidebar .nav-group').forEach((g) => {
         let el = g.nextElementSibling;
         let any = false;
@@ -1532,7 +1540,10 @@ async function changeMyPassword() {
     if (next === null) return;
     try {
         await api('POST', '/api/admin/me/password', { current, password: next });
-        alert('تم تغيير كلمة المرور ✓');
+        // The server ended every session of this account (here and on other devices)
+        alert('تم تغيير كلمة المرور ✓\nخرجت من كل الأجهزة — سجّل الدخول من جديد بكلمة المرور الجديدة.');
+        try { localStorage.removeItem('adminToken'); } catch { /* ignore */ }
+        location.reload();
     } catch (err) {
         alert(err.message);
     }

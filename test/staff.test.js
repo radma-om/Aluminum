@@ -176,3 +176,86 @@ test('sessions: logout, deactivation and a new password end them; own password c
     // The general manager has no password to change here
     assert.strictEqual((await call('POST', '/api/admin/me/password', { current: 'x', password: 'yyyyyyyy' })).status, 400);
 });
+
+test('quote PDFs and the quote list follow the customer scope; managers and public links keep working', async (t) => {
+    const { db, server, call, login } = await start();
+    t.after(() => server.close());
+    await call('POST', '/api/admin/users', { username: 'salem', display_name: 'سالم', password: 'salem-pass-1', permissions: ['leads'], leads_scope: 'mine' });
+    await call('POST', '/api/admin/users', { username: 'qstaff', display_name: 'نوال', password: 'nawal-pass-1', permissions: ['quotes'], leads_scope: 'mine' });
+    const salem = await login('salem', 'salem-pass-1');
+    const nawal = await login('qstaff', 'nawal-pass-1');
+    const priced = { items: [], subtotal: 10, vat_percent: 5, vat: 0.5, total: 10.5 };
+    const mineQ = saveQuote(db, { customer_name: 'أ', customer_phone: '91111111', source: 'web', priced });
+    const otherQ = saveQuote(db, { customer_name: 'ب', customer_phone: '92222222', source: 'web', priced });
+    db.prepare("UPDATE leads SET assigned_to = 'سالم' WHERE phone = '96891111111'").run();
+    db.prepare("UPDATE leads SET assigned_to = 'مريم' WHERE phone = '96892222222'").run();
+
+    // Allowed: the employee's own customer
+    const ok = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/quotes/${mineQ.id}/pdf`, { headers: { Authorization: 'Bearer ' + salem } });
+    assert.strictEqual(ok.status, 200);
+    assert.strictEqual(ok.headers.get('content-type'), 'application/pdf');
+    // Refused: another employee's customer (same answer as a quote that does not exist)
+    assert.strictEqual((await call('GET', `/api/admin/quotes/${otherQ.id}/pdf`, null, salem)).status, 404);
+    assert.strictEqual((await call('GET', '/api/admin/quotes/999999/pdf', null, salem)).status, 404);
+    // Another section does not bypass the scope: quote-requests staff limited to their own customers
+    assert.strictEqual((await call('GET', `/api/admin/quotes/${otherQ.id}/pdf`, null, nawal)).status, 404);
+    assert.deepStrictEqual((await call('GET', '/api/admin/quotes', null, nawal)).body.map((q) => q.id), []);
+    db.prepare("UPDATE leads SET assigned_to = 'نوال' WHERE phone = '96892222222'").run();
+    assert.deepStrictEqual((await call('GET', '/api/admin/quotes', null, nawal)).body.map((q) => q.id), [otherQ.id]);
+    assert.strictEqual((await call('PATCH', `/api/admin/quotes/${mineQ.id}`, { status: 'contacted' }, nawal)).status, 404);
+    assert.strictEqual((await call('PATCH', `/api/admin/quotes/${otherQ.id}`, { status: 'contacted' }, nawal)).status, 200);
+    // Not signed in
+    assert.strictEqual((await call('GET', `/api/admin/quotes/${mineQ.id}/pdf`, null, null)).status, 401);
+    assert.strictEqual((await call('GET', `/api/admin/quotes/${mineQ.id}/pdf`, null, 'not-a-session-token-xxxxxxxxxx')).status, 401);
+    // The general manager sees everything; the customer's public link (with its key) still works
+    assert.strictEqual((await call('GET', `/api/admin/quotes/${otherQ.id}/pdf`)).status, 200);
+    const pub = await fetch(`http://127.0.0.1:${server.address().port}${otherQ.pdf_url}`);
+    assert.strictEqual(pub.status, 200);
+    assert.strictEqual((await fetch(`http://127.0.0.1:${server.address().port}/quotes/${otherQ.ref}.pdf?k=wrong`)).status, 404);
+});
+
+test('a new own password ends every earlier session at once; the old password stops working', async (t) => {
+    const { db, server, call, login } = await start();
+    t.after(() => server.close());
+    await call('POST', '/api/admin/users', { username: 'salem', display_name: 'سالم', password: 'salem-pass-1', permissions: ['leads'] });
+    const phone = await login('salem', 'salem-pass-1');   // two devices
+    const laptop = await login('salem', 'salem-pass-1');
+    for (const s of [phone, laptop]) assert.strictEqual((await call('GET', '/api/admin/me', null, s)).status, 200);
+
+    // A refused change ends nothing
+    assert.strictEqual((await call('POST', '/api/admin/me/password', { current: 'salem-pass-1', password: 'short' }, phone)).status, 400);
+    assert.strictEqual((await call('POST', '/api/admin/me/password', { current: 'salem-pass-1', password: 'salem-pass-1' }, phone)).status, 400);
+    assert.strictEqual((await call('GET', '/api/admin/me', null, laptop)).status, 200);
+
+    const r = await call('POST', '/api/admin/me/password', { current: 'salem-pass-1', password: 'brand-new-22' }, phone);
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual([r.body.signed_out, r.body.sessions_ended], [true, 2]);
+    for (const s of [phone, laptop]) {
+        const me = await call('GET', '/api/admin/me', null, s);
+        assert.strictEqual(me.status, 401);
+        assert.strictEqual(me.body.session_ended, true);
+        assert.match(me.body.error, /انتهت جلسة الدخول/);
+    }
+    assert.strictEqual(db.prepare('SELECT COUNT(*) AS n FROM staff_sessions').get().n, 0);
+    assert.strictEqual((await call('POST', '/api/auth/login', { username: 'salem', password: 'salem-pass-1' }, null)).status, 401);
+    assert.ok(await login('salem', 'brand-new-22'));
+});
+
+test('a manager edit with an invalid new password changes nothing (no half-updated account)', async (t) => {
+    const { server, call, login } = await start();
+    t.after(() => server.close());
+    const { body: u } = await call('POST', '/api/admin/users', { username: 'salem', display_name: 'سالم', password: 'salem-pass-1', permissions: ['leads'] });
+    const session = await login('salem', 'salem-pass-1');
+
+    const bad = await call('PUT', `/api/admin/users/${u.id}`, { display_name: 'اسم جديد', permissions: ['quotes'], role: 'manager', password: 'short' });
+    assert.strictEqual(bad.status, 400);
+    const after = (await call('GET', '/api/admin/users')).body.users[0];
+    assert.deepStrictEqual([after.display_name, after.role, after.permissions], ['سالم', 'staff', ['leads']]);
+    assert.strictEqual((await call('GET', '/api/admin/me', null, session)).status, 200); // still signed in
+    assert.ok(await login('salem', 'salem-pass-1'));
+
+    // A valid new password from the manager signs the employee out everywhere
+    assert.strictEqual((await call('PUT', `/api/admin/users/${u.id}`, { password: 'from-manager-1' })).status, 200);
+    assert.strictEqual((await call('GET', '/api/admin/me', null, session)).status, 401);
+    assert.ok(await login('salem', 'from-manager-1'));
+});

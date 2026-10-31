@@ -33,47 +33,61 @@ const ago = (sqlTime) => (Date.now() - Date.parse(String(sqlTime).replace(' ', '
 async function run(db, { live = true } = {}) {
     const settings = getSettings(db);
     const secret = process.env.MAZBOT_WEBHOOK_SECRET || '';
-    const events = db.prepare('SELECT id, status, body, received_at FROM inbound_events ORDER BY id DESC LIMIT 30').all();
+    // Only requests that really came from outside count as evidence; the panel's own test is marked 'diagnostic'
+    const events = db.prepare('SELECT id, source, status, signature, body, received_at FROM inbound_events ORDER BY id DESC LIMIT 30').all();
+    const external = events.filter((e) => e.source === 'mazbot');
     const messages = events.map((e) => {
         const ev = parse(e.body) || {};
         const d = ev.data || {};
         return {
-            id: e.id, at: e.received_at, type: ev.type || null,
+            id: e.id, at: e.received_at, type: ev.type || null, test: e.source !== 'mazbot',
             phone: d.contact && d.contact.phone ? String(d.contact.phone) : null,
             name: d.contact ? d.contact.name || null : null,
             text: d.message ? String(d.message.value || '').slice(0, 200) : null,
-            status: e.status, ...explainStatus(e.status)
+            status: e.status, signature: e.signature || null, ...explainStatus(e.status)
         };
     });
     const customerMsgs = messages.filter((m) => ['message.received', 'interactive.selected'].includes(m.type));
-    const last = events[0];
+    const last = external[0];
     const checks = [];
     const add = (key, level, title, detail, fix = null) => checks.push({ key, level, title, detail, fix });
+    const since = (t) => {
+        const mins = ago(t);
+        return mins < 1 ? 'الآن' : mins < 60 ? `قبل ${Math.round(mins)} دقيقة` : mins < 1440 ? `قبل ${Math.round(mins / 60)} ساعة` : `قبل ${Math.round(mins / 1440)} يوم`;
+    };
 
-    // 1) MazBot → this system
+    // 1) MazBot → this system (an external request; the panel's test does not prove it)
     if (secret.length < 16) {
         add('webhook', 'bad', 'رابط الـ Webhook غير مفعّل', 'متغير البيئة MAZBOT_WEBHOOK_SECRET غير موجود (أو أقل من 16 حرفاً)، فلا يستقبل النظام رسائل MazBot.',
             'أضف MAZBOT_WEBHOOK_SECRET في متغيرات البيئة في هوستنجر ثم أعد النشر، وضع الرابط الظاهر هنا في «Whatsapp External Webhook Url» في MazBot.');
     } else if (!last) {
-        add('webhook', 'bad', 'لم تصل أي رسالة من MazBot', 'الرابط مفعّل، لكن MazBot لم يرسل إلى النظام أي طلب حتى الآن.',
+        add('webhook', 'bad', 'لم تصل أي رسالة من MazBot', 'الرابط مفعّل، لكن لا يوجد أي طلب وصل من MazBot (التجارب من هذه اللوحة لا تُحسب).',
             'في MazBot افتح صفحة الـ Webhook وتأكد أن «Whatsapp External Webhook Url» هو الرابط الظاهر هنا بالضبط ومفعّل، ثم أرسل رسالة من واتساب.');
     } else {
         const mins = ago(last.received_at);
-        add('webhook', mins > 60 * 24 * 3 ? 'warn' : 'ok', 'MazBot يرسل الرسائل إلى النظام',
-            `آخر طلب وصل ${mins < 1 ? 'الآن' : mins < 60 ? `قبل ${Math.round(mins)} دقيقة` : mins < 1440 ? `قبل ${Math.round(mins / 60)} ساعة` : `قبل ${Math.round(mins / 1440)} يوم`}.`,
+        add('webhook', mins > 60 * 24 * 3 ? 'warn' : 'ok', 'MazBot يرسل الرسائل إلى النظام', `آخر طلب من MazBot وصل ${since(last.received_at)}.`,
             mins > 60 * 24 * 3 ? 'إذا أرسلت رسالة الآن ولم تظهر هنا خلال دقيقة، فالرابط في MazBot تغيّر أو توقف — أعد لصقه.' : null);
     }
 
-    // 2) Signature
-    const recentBad = events.slice(0, 10).filter((e) => e.status === 'bad_signature').length;
-    if (recentBad) {
-        add('signature', 'bad', 'التوقيع مرفوض', `${recentBad} من آخر الطلبات رُفضت لأن التوقيع لا يطابق.`,
-            'انسخ «Webhook signing secret» من MazBot وضعه في MAZBOT_SIGNING_SECRET في هوستنجر (أو احذف المتغير مؤقتاً للتجربة)، ثم أعد النشر.');
-    } else if (!process.env.MAZBOT_SIGNING_SECRET) {
-        add('signature', 'warn', 'التحقق من التوقيع غير مفعّل', 'الرسائل تُقبل بدون التحقق من أنها من MazBot (يعمل، لكنه أقل أماناً).',
-            'اختياري: ضع «Webhook signing secret» من MazBot في MAZBOT_SIGNING_SECRET.');
+    // 2) Signature: judged from the latest external request, never from the secret alone
+    const signingSet = Boolean(process.env.MAZBOT_SIGNING_SECRET);
+    const latestSigned = external.find((e) => e.signature === 'verified' || e.signature === 'bad' || e.status === 'bad_signature');
+    const latestIsBad = latestSigned && (latestSigned.signature === 'bad' || latestSigned.status === 'bad_signature');
+    const olderBad = external.filter((e) => e !== latestSigned && (e.signature === 'bad' || e.status === 'bad_signature'));
+    if (!signingSet) {
+        add('signature', 'warn', 'التحقق من التوقيع غير مفعّل',
+            'MAZBOT_SIGNING_SECRET غير موجود، فالنظام يقبل أي طلب يصل إلى رابط الـ Webhook دون التأكد أنه من MazBot. الرد يعمل، والحماية الوحيدة سرية الرابط.',
+            'لتفعيل التحقق: انسخ «Webhook signing secret» من صفحة الـ Webhook في MazBot وضعه في MAZBOT_SIGNING_SECRET في هوستنجر، ثم أعد النشر وأرسل رسالة تجربة من واتساب وافحص هنا.');
+    } else if (!latestSigned) {
+        add('signature', 'warn', 'لا يوجد دليل بعد على صحة التوقيع',
+            'MAZBOT_SIGNING_SECRET مضبوط، لكن لم يصل منذ ضبطه أي طلب من MazBot اجتاز التحقق أو فشل فيه (وجود السر وحده لا يثبت أنه يطابق MazBot).',
+            'أرسل رسالة من واتساب إلى رقم الشركة ثم اضغط «افحص الآن».');
+    } else if (latestIsBad) {
+        add('signature', 'bad', 'آخر طلب من MazBot رُفض: التوقيع لا يطابق', `آخر طلب موقّع وصل ${since(latestSigned.received_at)} ورُفض، فلا يرد المساعد على الرسائل.`,
+            'انسخ «Webhook signing secret» من صفحة الـ Webhook في MazBot من جديد (بدون مسافات زائدة) وضعه في MAZBOT_SIGNING_SECRET في هوستنجر، ثم أعد النشر. إذا ولّد MazBot سراً جديداً فاستخدم الجديد.');
     } else {
-        add('signature', 'ok', 'التوقيع سليم', 'MAZBOT_SIGNING_SECRET مضبوط والطلبات الأخيرة مقبولة.');
+        add('signature', 'ok', 'التوقيع سليم', `آخر طلب من MazBot (${since(latestSigned.received_at)}) اجتاز التحقق من التوقيع.` +
+            (olderBad.length ? ` (رُفضت ${olderBad.length} طلبات أقدم — قبل إصلاح السر غالباً؛ لا تحتاج إجراء)` : ''));
     }
 
     // 3) The switch
@@ -82,18 +96,21 @@ async function run(db, { live = true } = {}) {
         settings.mazbot_agent_enabled ? 'خيار «المساعد الذكي يرد على رسائل العملاء في واتساب» مفعّل.' : 'خيار «المساعد الذكي يرد على رسائل العملاء في واتساب (عبر MazBot)» غير مفعّل.',
         settings.mazbot_agent_enabled ? null : 'فعّل الخيار من بطاقة «واتساب المبيعات عبر MazBot» أدناه ثم اضغط «حفظ» (أو زر «تفعيل» هنا).');
 
-    // 4) The AI
+    // 4) The AI — an error older than the latest successful reply is history, not the current state
     const aiErr = agent.getLastError();
+    const lastReplied = customerMsgs.find((m) => m.status === 'replied');
+    const aiErrIsOld = aiErr && lastReplied && Date.parse(String(lastReplied.at).replace(' ', 'T') + 'Z') > Date.parse(aiErr.at);
+    const aiHint = (m) => (/quota|billing|credit|insufficient/i.test(m) ? 'رصيد حساب OpenAI انتهى — اشحن الرصيد من platform.openai.com.'
+        : /model/i.test(m) ? 'اسم النموذج في OPENAI_MODEL غير صحيح — جرّب gpt-4.1-mini.'
+            : /key|auth|401/i.test(m) ? 'المفتاح OPENAI_API_KEY غير صحيح أو أُلغي — أنشئ مفتاحاً جديداً.' : null);
     if (!agent.isConfigured()) {
         add('ai', 'bad', 'مفتاح الذكاء الاصطناعي غير موجود', 'OPENAI_API_KEY (أو ANTHROPIC_API_KEY) غير موجود في متغيرات البيئة — ربما ضاع عند إعادة ربط الاستضافة.',
             'أضف OPENAI_API_KEY و OPENAI_MODEL في متغيرات البيئة في هوستنجر ثم أعد النشر.');
-    } else if (aiErr && Date.now() - Date.parse(aiErr.at) < 6 * 3600_000) {
-        add('ai', 'bad', 'الذكاء الاصطناعي أعاد خطأ مؤخراً', `${aiErr.provider} / ${aiErr.model}: ${aiErr.message}`,
-            /quota|billing|credit|insufficient/i.test(aiErr.message) ? 'رصيد حساب OpenAI انتهى — اشحن الرصيد من platform.openai.com.'
-                : /model/i.test(aiErr.message) ? 'اسم النموذج في OPENAI_MODEL غير صحيح — جرّب gpt-4.1-mini.'
-                    : /key|auth|401/i.test(aiErr.message) ? 'المفتاح OPENAI_API_KEY غير صحيح أو أُلغي — أنشئ مفتاحاً جديداً.' : null);
+    } else if (aiErr && !aiErrIsOld && Date.now() - Date.parse(aiErr.at) < 6 * 3600_000) {
+        add('ai', 'bad', 'الذكاء الاصطناعي أعاد خطأ مؤخراً', `${aiErr.provider} / ${aiErr.model}: ${aiErr.message}`, aiHint(aiErr.message));
     } else {
-        add('ai', 'ok', 'الذكاء الاصطناعي جاهز', `${agent.provider() === 'openai' ? 'OpenAI' : 'Claude'} — ${agent.modelName()}`);
+        add('ai', 'ok', 'الذكاء الاصطناعي جاهز', `${agent.provider() === 'openai' ? 'OpenAI' : 'Claude'} — ${agent.modelName()}` +
+            (aiErr && aiErrIsOld ? ` (خطأ سابق في ${aiErr.at.slice(0, 16).replace('T', ' ')} UTC، وتم الرد بنجاح بعده)` : ''));
     }
 
     // 5) MazBot sending (a real login)
@@ -109,7 +126,7 @@ async function run(db, { live = true } = {}) {
     }
 
     // 6) The last customer messages and what happened to each
-    const lastCustomer = customerMsgs[0];
+    const lastCustomer = customerMsgs.find((m) => !m.test) || customerMsgs[0];
     if (lastCustomer && lastCustomer.level === 'bad') {
         const who = [lastCustomer.name, lastCustomer.phone ? '+' + lastCustomer.phone : null].filter(Boolean).join(' ');
         add('last', 'bad', 'آخر رسالة من عميل لم يُرد عليها', `${who}: «${lastCustomer.text || ''}» ← ${lastCustomer.note}`);

@@ -158,6 +158,8 @@ async function checkLogin() {
 
 /* X-Mazbot-Signature: HMAC-SHA256 of the raw body with the signing secret. Accepted forms:
    hex or base64, optionally prefixed "sha256=", or "t=<timestamp>,v1=<hmac of t.body>". */
+/* rawBody must be the exact bytes received. Without a secret there is nothing to check (true): the caller
+   decides what an unchecked request means and records it. */
 function verifySignature(rawBody, header, secret) {
     if (!secret) return true;
     const h = String(header || '').trim();
