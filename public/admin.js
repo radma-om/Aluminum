@@ -1398,6 +1398,67 @@ async function resetChat() {
     $id('chatLog').innerHTML = '';
 }
 
+/* ------------------- WhatsApp diagnostics (MazBot) ------------------- */
+
+const fmtWhen = (t) => new Date(String(t).replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' });
+
+async function runDiagnose() {
+    setStatus('diagStatus', 'جاري الفحص…');
+    try {
+        const r = await api('GET', '/api/admin/mazbot/diagnose');
+        $id('diagSummary').hidden = false;
+        $id('diagSummary').className = 'diag-summary ' + (r.ok ? 'ok' : 'bad');
+        $id('diagSummary').textContent = r.summary;
+        const icon = { ok: '✓', warn: '!', bad: '✕' };
+        $id('diagChecks').innerHTML = r.checks.map((c) => `<div class="diag-check ${esc(c.level)}">
+            <span class="d-icon">${icon[c.level] || '•'}</span>
+            <div><div class="d-title">${esc(c.title)}</div><div class="d-detail">${esc(c.detail)}</div>
+            ${c.fix ? `<div class="d-fix">${esc(c.fix)}</div>` : ''}
+            ${c.key === 'switch' && c.level === 'bad' ? '<button class="btn btn-success btn-sm" style="margin-top:6px" onclick="enableWhatsappAgent()">تفعيل الرد الآن</button>' : ''}
+            ${c.key === 'webhook' && r.webhook_path ? `<div class="d-detail" dir="ltr" style="margin-top:4px"><code>${esc(location.origin + r.webhook_path)}</code></div>` : ''}</div></div>`).join('');
+        $id('diagPauses').innerHTML = r.pauses.length ? `<p class="sub-heading">أرقام متوقف عنها المساعد (طلبت موظفاً أو ردّ عليها موظف)</p>
+            ${r.pauses.map((p) => `<div class="pause-row"><span dir="ltr">+${esc(p.phone)}</span><span class="status-text">حتى ${esc(fmtWhen(p.until))}</span>
+                <button class="btn btn-outline btn-sm" onclick="resumeWhatsappAgent('${esc(p.phone)}')">ليرد المساعد عليه الآن</button></div>`).join('')}
+            ${r.pauses.length > 1 ? '<button class="btn btn-outline btn-sm" onclick="resumeWhatsappAgent()">استئناف الرد على كل الأرقام</button>' : ''}` : '';
+        $id('diagMessages').innerHTML = r.messages.length ? `<p class="sub-heading">آخر رسائل العملاء التي وصلت من MazBot وما حدث لكل منها</p>
+            ${r.messages.map((m) => `<div class="diag-msg"><span class="m-when">${esc(fmtWhen(m.at))}</span>
+                <span><strong>${esc(m.name || '')}</strong> <span dir="ltr">${m.phone ? '+' + esc(m.phone) : ''}</span>: ${esc(m.text || '')}</span>
+                <span></span><span class="m-note ${esc(m.level)}">${esc(m.note)}</span></div>`).join('')}` : '';
+        setStatus('diagStatus', 'آخر فحص: ' + new Date().toLocaleTimeString('ar-OM', { hour: '2-digit', minute: '2-digit' }));
+    } catch (err) {
+        setStatus('diagStatus', err.message, 'err');
+    }
+}
+
+async function simulateWhatsapp() {
+    $id('diagSimResult').innerHTML = '<p class="status-text">جاري التجربة… (قد تستغرق حتى 30 ثانية)</p>';
+    try {
+        const r = await api('POST', '/api/admin/mazbot/diagnose/simulate', { phone: $id('diagPhone').value, text: $id('diagText').value });
+        $id('diagSimResult').innerHTML = `<div class="diag-check ${r.level === 'ok' ? 'ok' : 'bad'}" style="margin-top:8px">
+            <span class="d-icon">${r.level === 'ok' ? '✓' : '✕'}</span>
+            <div><div class="d-title">${r.level === 'ok' ? 'أُرسل الرد إلى +' + esc(r.phone) + ' — تأكد من وصوله على واتساب' : 'لم يكتمل الرد'}</div>
+            <div class="d-detail">${esc(r.note)}</div></div></div>`;
+        runDiagnose();
+    } catch (err) {
+        $id('diagSimResult').innerHTML = `<div class="diag-check bad" style="margin-top:8px"><span class="d-icon">✕</span><div><div class="d-detail">${esc(err.message)}</div></div></div>`;
+    }
+}
+
+async function resumeWhatsappAgent(phone) {
+    try {
+        await api('DELETE', '/api/admin/mazbot/pauses' + (phone ? '?phone=' + encodeURIComponent(phone) : ''));
+        runDiagnose();
+    } catch (err) { alert(err.message); }
+}
+
+async function enableWhatsappAgent() {
+    try {
+        await api('PUT', '/api/admin/mazbot/agent', { enabled: true });
+        $id('mazbotAgentEnabled').checked = true;
+        runDiagnose();
+    } catch (err) { alert(err.message); }
+}
+
 /* ------------------------------ Boot ------------------------------ */
 
 const baseSwitchTab = switchTab;
@@ -1409,7 +1470,7 @@ window.switchTab = function (tabId) {
     if (tabId === 'doors') { loadDoors(); loadBackups().catch(() => {}); }
     if (tabId === 'overhead') loadOverhead();
     if (tabId === 'motors') loadMotors();
-    if (tabId === 'integrations') loadInbound().catch(() => {});
+    if (tabId === 'integrations') { loadInbound().catch(() => {}); runDiagnose(); }
     if (tabId === 'agent') loadKnowledge().catch(() => {});
 };
 
