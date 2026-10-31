@@ -4,7 +4,13 @@
    - Restore replaces all the data in one transaction; a copy of the
      current data is saved first, so a restore can always be undone.
    - Automatic daily backups are kept next to the database file.
-   Logs (webhook deliveries, agent conversations) are not included.
+   - Staff accounts are saved with their password HASHES only (never a
+     password, never an environment secret); login sessions are not saved,
+     and every session ends after a successful restore.
+   Logs (webhook deliveries, incoming webhook requests, AI conversation
+   history, temporary agent pauses) are not included; the webhook delivery
+   log is emptied when the webhooks are replaced, so it never points at a
+   webhook of another backup.
    ============================================================= */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -31,10 +37,18 @@ const TABLES = [
     ['knowledge_items', 'قاعدة المعرفة'],
     ['motor_sections', 'أقسام المكائن'],
     ['motor_items', 'مكائن البوابات'],
-    ['motor_extra_fees', 'رسوم المكائن الإضافية']
+    ['motor_extra_fees', 'رسوم المكائن الإضافية'],
+    ['staff_users', 'حسابات الموظفين'],
+    ['leads', 'متابعة العملاء'],
+    ['lead_messages', 'رسائل العملاء'],
+    ['lead_notes', 'تقارير المتابعة']
 ];
 /* Sheets added after the first backups: an older file without them keeps the current data */
-const OPTIONAL = new Set(['overhead_sizes', 'overhead_motors', 'knowledge_items', 'motor_sections', 'motor_items', 'motor_extra_fees']);
+const OPTIONAL = new Set(['overhead_sizes', 'overhead_motors', 'knowledge_items', 'motor_sections', 'motor_items', 'motor_extra_fees',
+    'staff_users', 'leads', 'lead_messages', 'lead_notes']);
+/* Restored together or not at all (a customer without its messages, or messages of another
+   backup's customers, would be inconsistent) */
+const GROUPS = [['leads', 'lead_messages', 'lead_notes']];
 const INFO_SHEET = 'معلومات';
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
 
@@ -105,12 +119,22 @@ async function readWorkbook(buffer) {
 async function restoreWorkbook(db, buffer) {
     const data = await readWorkbook(buffer);
     if (!data.settings.rows.length) throw err400('ورقة الإعدادات فارغة — الملف غير صالح للاستعادة');
+    for (const group of GROUPS) {
+        const have = group.filter((t) => data[t]);
+        if (have.length && have.length !== group.length) {
+            const label = (t) => TABLES.find(([x]) => x === t)[1];
+            throw err400('الملف غير متسق: أوراق متابعة العملاء يجب أن تكون معاً — ناقص: ' + group.filter((t) => !data[t]).map(label).join('، '));
+        }
+    }
     const counts = {};
     db.exec('PRAGMA foreign_keys = OFF');
     try {
         db.exec('BEGIN');
         try {
             const present = TABLES.filter(([table]) => data[table]);
+            // Logs and sessions that point at rows being replaced
+            if (data.webhooks) db.prepare('DELETE FROM webhook_deliveries').run();
+            db.prepare('DELETE FROM staff_sessions').run(); // everyone signs in again after a restore
             for (const [table] of [...present].reverse()) db.prepare(`DELETE FROM ${table}`).run();
             for (const [table, label] of present) {
                 const cols = columnsOf(db, table).filter((c) => data[table].header.includes(c));
@@ -123,6 +147,8 @@ async function restoreWorkbook(db, buffer) {
             require('./motors').linkItems(db);
             const broken = db.prepare('PRAGMA foreign_key_check').all();
             if (broken.length) throw err400(`بيانات غير مترابطة في الملف (مثلاً ${broken[0].table} يشير إلى سجل غير موجود في ${broken[0].parent})`);
+            const badRole = data.staff_users && db.prepare("SELECT username FROM staff_users WHERE role NOT IN ('staff', 'manager') OR password_hash NOT LIKE 'scrypt$%'").get();
+            if (badRole) throw err400(`حساب «${badRole.username}» في الملف غير صالح (الدور أو تجزئة كلمة المرور)`);
             db.exec('COMMIT');
         } catch (err) {
             db.exec('ROLLBACK');

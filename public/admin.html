@@ -1253,13 +1253,14 @@
 
         <!-- ==================== TAB: Roller shutter door configurator ==================== -->
         <div id="tab-doors" class="tab-content">
-            <!-- Backup & restore -->
-            <div class="card">
+            <!-- Backup & restore (managers only; the server refuses it to staff) -->
+            <div class="card manager-only">
                 <div class="card-title">
                     <span class="icon">⤓</span>
                     النسخ الاحتياطي لقاعدة البيانات
                 </div>
-                <p class="status-text" style="margin-top:0">ملف Excel يحتوي كل البيانات: الأنواع والسماكات والألوان، والإكسسوارات، والمحافظات والولايات وأسعار التركيب، والمنتجات والمشتريات، وعروض الأسعار، والإعدادات. احتفظ بنسخة قبل أي تعديل كبير.</p>
+                <p class="status-text" style="margin-top:0">ملف Excel يحتوي كل البيانات: الأنواع والسماكات والألوان، والإكسسوارات، والمحافظات والولايات وأسعار التركيب، والمنتجات والمشتريات، وعروض الأسعار، والإعدادات، وحسابات الموظفين وصلاحياتهم، ومتابعة العملاء (الرسائل والتقارير). احتفظ بنسخة قبل أي تعديل كبير.<br>
+                    <strong>الملف حساس:</strong> فيه تجزئات كلمات مرور الموظفين (وليس كلمات المرور نفسها) وبيانات العملاء — لا ترسله لأحد. بعد الاستعادة يُطلب من كل الموظفين تسجيل الدخول من جديد.</p>
                 <div class="form-buttons" style="margin-top:0">
                     <button class="btn btn-primary" onclick="downloadBackup()">تنزيل نسخة Excel</button>
                     <label class="btn btn-outline" style="cursor:pointer">استعادة من ملف…

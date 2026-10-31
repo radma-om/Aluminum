@@ -487,6 +487,8 @@ function migrate(db) {
     addColumns('inbound_events', { status: 'TEXT', event_key: 'TEXT' });
     // Gate motors have their own installation fee per wilayah (NULL = set after a site visit)
     addColumns('regions', { motor_installation_fee: 'REAL' });
+    // MazBot webhook requests: the signature check result (verified / bad / unchecked = no signing secret)
+    addColumns('inbound_events', { signature: 'TEXT' });
     // Gate motors: sections added in the admin, and a profit % per item
     addColumns('motor_items', { section_id: 'INTEGER', profit_percent: 'REAL' });
 }

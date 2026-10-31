@@ -190,13 +190,16 @@ function enqueue(phone, job) {
     next.finally(() => { if (queues.get(phone) === next) queues.delete(phone); });
 }
 
+/* Meta signs every POST with the App Secret (X-Hub-Signature-256 = HMAC-SHA256 of the raw body).
+   Without WHATSAPP_APP_SECRET nothing can be verified, so every POST is refused (the GET verification
+   handshake is separate). This is only the direct Meta route; MazBot has its own webhook and never needs it. */
 function verifySignature(req) {
     const { appSecret } = env();
-    if (!appSecret) return true;
+    if (!appSecret || !Buffer.isBuffer(req.rawBody)) return false;
     const header = req.get('X-Hub-Signature-256') || '';
-    const expected = 'sha256=' + crypto.createHmac('sha256', appSecret).update(req.rawBody || '').digest('hex');
-    return header.length === expected.length &&
-        crypto.timingSafeEqual(Buffer.from(header), Buffer.from(expected));
+    if (!/^sha256=[a-f0-9]{64}$/i.test(header)) return false;
+    const expected = crypto.createHmac('sha256', appSecret).update(req.rawBody).digest();
+    return crypto.timingSafeEqual(Buffer.from(header.slice(7), 'hex'), expected);
 }
 
 function registerRoutes(app, db, { saveQuote }) {

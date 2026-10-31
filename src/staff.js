@@ -91,18 +91,33 @@ function create(db, input) {
     return toUser(db.prepare('SELECT * FROM staff_users WHERE id = ?').get(Number(info.lastInsertRowid)));
 }
 
+/* All-or-nothing: an account change and the end of its sessions happen together, or not at all */
+function tx(db, fn) {
+    db.exec('BEGIN');
+    try {
+        const r = fn();
+        db.exec('COMMIT');
+        return r;
+    } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+    }
+}
+
 function update(db, id, input) {
     const existing = db.prepare('SELECT * FROM staff_users WHERE id = ?').get(Number(id));
     if (!existing) throw err(404, 'المستخدم غير موجود');
+    // Everything is checked before anything is written (no half-updated account)
     const u = clean(db, input, { existing });
-    db.prepare(`UPDATE staff_users SET username = ?, display_name = ?, role = ?, permissions_json = ?, leads_scope = ?, active = ? WHERE id = ?`)
-        .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, existing.id);
-    if (input.password) {
-        validatePassword(input.password);
-        db.prepare('UPDATE staff_users SET password_hash = ? WHERE id = ?').run(hashPassword(input.password), existing.id);
-    }
-    // New permissions apply at once; a deactivated account or a new password signs out everywhere
-    if (!u.active || input.password) db.prepare('DELETE FROM staff_sessions WHERE user_id = ?').run(existing.id);
+    if (input.password) validatePassword(input.password);
+    const hash = input.password ? hashPassword(input.password) : null;
+    tx(db, () => {
+        db.prepare(`UPDATE staff_users SET username = ?, display_name = ?, role = ?, permissions_json = ?, leads_scope = ?, active = ? WHERE id = ?`)
+            .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, existing.id);
+        if (hash) db.prepare('UPDATE staff_users SET password_hash = ? WHERE id = ?').run(hash, existing.id);
+        // New permissions apply at once; a deactivated account or a new password signs out everywhere
+        if (!u.active || hash) db.prepare('DELETE FROM staff_sessions WHERE user_id = ?').run(existing.id);
+    });
     return toUser(db.prepare('SELECT * FROM staff_users WHERE id = ?').get(existing.id));
 }
 
@@ -111,12 +126,19 @@ function remove(db, id) {
     if (!db.prepare('DELETE FROM staff_users WHERE id = ?').run(Number(id)).changes) throw err(404, 'المستخدم غير موجود');
 }
 
+/* The employee's own new password ends ALL their sessions (this one too): they sign in again */
 function changeOwnPassword(db, user, current, next) {
     if (!user.id) throw err(400, 'كلمة مرور المدير العام تُغيَّر من متغير البيئة ADMIN_TOKEN في الاستضافة');
     const row = db.prepare('SELECT * FROM staff_users WHERE id = ?').get(user.id);
     if (!row || !checkPassword(current, row.password_hash)) throw err(400, 'كلمة المرور الحالية غير صحيحة');
     validatePassword(next);
-    db.prepare('UPDATE staff_users SET password_hash = ? WHERE id = ?').run(hashPassword(next), row.id);
+    if (String(next) === String(current)) throw err(400, 'كلمة المرور الجديدة مطابقة للحالية — اختر كلمة مختلفة');
+    const hash = hashPassword(next);
+    const ended = tx(db, () => {
+        db.prepare('UPDATE staff_users SET password_hash = ? WHERE id = ?').run(hash, row.id);
+        return Number(db.prepare('DELETE FROM staff_sessions WHERE user_id = ?').run(row.id).changes);
+    });
+    return { signed_out: true, sessions_ended: ended };
 }
 
 /* ------------------------------ Sessions ------------------------------ */
@@ -205,7 +227,15 @@ function allowedRegionFields(user, body) {
 /* Follow-up limited to one's own customers: assigned to them, or not assigned yet */
 const seesLead = (user, lead) => user.leads_scope !== 'mine' || !lead.assigned_to || lead.assigned_to === user.display_name;
 
+/* The same scope covers the customer's quotes, in every section (follow-up, quote requests, PDFs):
+   a quote belongs to the customer(s) with its phone; with no such customer it counts as unassigned */
+function seesQuote(db, user, quote) {
+    if (user.leads_scope !== 'mine') return true;
+    const owners = db.prepare('SELECT assigned_to FROM leads WHERE phone = ?').all(String(quote.customer_phone || ''));
+    return !owners.length || owners.some((l) => seesLead(user, l));
+}
+
 module.exports = {
     SECTIONS, ROLES, SCOPES, OWNER, hashPassword, checkPassword, list, create, update, remove, changeOwnPassword,
-    login, fromToken, logout, can, sectionsFor, allowedSettings, allowedRegionFields, seesLead
+    login, fromToken, logout, can, sectionsFor, allowedSettings, allowedRegionFields, seesLead, seesQuote
 };

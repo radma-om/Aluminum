@@ -28,6 +28,7 @@ const backup = require('./backup');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const whatsappCheck = require('./whatsapp-check');
+const trustedProxies = require('./trusted-proxies');
 const knowledge = require('./knowledge');
 const { renderQuotePdf } = require('./pdf');
 
@@ -48,14 +49,20 @@ function withPrices(product, settings) {
     };
 }
 
-/* Small in-memory limiter so the public quote form cannot be spammed */
+/* Requests that came through a proxy we do not trust: every customer behind it shares one address */
+const SHARED_ADDRESS_FACTOR = 20;
+const sharedAddress = (req) => Boolean(req.headers['x-forwarded-for']) && !req.app.get('trust proxy fn')(req.socket.remoteAddress, 0);
+
+/* Small in-memory limiter so the public quote form cannot be spammed. Behind an untrusted proxy all
+   customers share the proxy's address, so the public forms get a larger shared allowance instead of
+   blocking real customers (set TRUSTED_PROXIES to limit each customer separately). */
 function rateLimit({ windowMs, max }) {
     const hits = new Map();
     return (req, res, next) => {
         const now = Date.now();
         const key = req.ip;
         const recent = (hits.get(key) || []).filter((t) => now - t < windowMs);
-        if (recent.length >= max) {
+        if (recent.length >= max * (sharedAddress(req) ? SHARED_ADDRESS_FACTOR : 1)) {
             return res.status(429).json({ error: 'طلبات كثيرة، يرجى المحاولة لاحقاً' });
         }
         recent.push(now);
@@ -95,7 +102,11 @@ function makeRequireAdmin(db, guard) {
         if (!user) user = staff.fromToken(db, given);
         if (!user) {
             guard.fail(req.ip);
-            return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+            // A long token is an ended session (logout, new password, restore, 14 days unused), not a typo
+            return res.status(401).json({
+                error: given.length > 40 ? 'انتهت جلسة الدخول — سجّل الدخول من جديد' : 'اسم المستخدم أو كلمة المرور غير صحيحة',
+                session_ended: given.length > 40
+            });
         }
         guard.ok(req.ip);
         req.user = user;
@@ -293,7 +304,15 @@ function sendPdf(res, quote, settings) {
 
 function createApp(db, { agentClient } = {}) {
     const app = express();
-    app.set('trust proxy', process.env.TRUST_PROXY === '1');
+    // Customer address: only from the proxies listed in TRUSTED_PROXIES (default: none). An invalid
+    // value is reported and ignored — the app keeps running (and answering WhatsApp) without trust.
+    const proxyConf = trustedProxies.parse(process.env.TRUSTED_PROXIES);
+    if (proxyConf.error) console.error('[proxy] TRUSTED_PROXIES ignored:', proxyConf.error);
+    app.set('trust proxy', proxyConf.list || false);
+    app.use((req, res, next) => {
+        trustedProxies.notePeer(req, Boolean(proxyConf.list) && req.app.get('trust proxy fn')(req.socket.remoteAddress, 0));
+        next();
+    });
     app.use(express.json({ limit: '200kb', verify: (req, res, buf) => { req.rawBody = buf; } }));
     app.disable('x-powered-by');
 
@@ -585,8 +604,7 @@ function createApp(db, { agentClient } = {}) {
 
     admin.get('/me', (req, res) => res.json({ user: req.user, sections: staff.SECTIONS }));
     admin.post('/me/password', (req, res) => {
-        staff.changeOwnPassword(db, req.user, (req.body || {}).current, (req.body || {}).password);
-        res.json({ ok: true });
+        res.json({ ok: true, ...staff.changeOwnPassword(db, req.user, (req.body || {}).current, (req.body || {}).password) });
     });
     admin.get('/users', (req, res) => res.json({
         users: staff.list(db), sections: staff.SECTIONS, roles: staff.ROLES, scopes: staff.SCOPES,
@@ -622,7 +640,23 @@ function createApp(db, { agentClient } = {}) {
                 text: `آخر خطأ من الذكاء الاصطناعي (${failure.provider} — ${failure.model}) في ${failure.at.slice(0, 16).replace('T', ' ')} UTC: ${failure.message}`
             });
         }
-        res.json({ version: APP_VERSION, warnings });
+        // Proxy setup (the customer's address decides the login / form limits)
+        if (proxyConf.error) {
+            warnings.push({ level: 'danger', text: `قيمة TRUSTED_PROXIES مرفوضة ولم تُطبَّق: ${proxyConf.error}. النظام يعمل دون الثقة بأي وكيل.` });
+        }
+        const untrusted = trustedProxies.peers().filter((p) => !p.trusted);
+        if (untrusted.length) {
+            warnings.push({
+                level: 'warning',
+                text: `الطلبات تصل عبر وكيل غير موثوق (العنوان الذي يراه الخادم: ${untrusted.map((p) => p.address).join('، ')}). ` +
+                    'لذلك يظهر كل العملاء بعنوان واحد: تُشترك محاولات الدخول الخاطئة، وتُخفَّف حدود النماذج العامة. ' +
+                    'إذا تأكدت من مزوّد الاستضافة أن هذا العنوان (أو شبكته) هو وكيل الاستضافة فأضفه إلى TRUSTED_PROXIES.'
+            });
+        }
+        if (process.env.TRUST_PROXY !== undefined) {
+            warnings.push({ level: 'warning', text: 'المتغير TRUST_PROXY لم يعد يُستخدم (كان يثق بأي وكيل). احذفه، واستخدم TRUSTED_PROXIES بعناوين صريحة.' });
+        }
+        res.json({ version: APP_VERSION, warnings, proxies: { trusted: proxyConf.list || [], seen: trustedProxies.peers() } });
     });
 
     admin.put('/settings', (req, res) => {
@@ -735,11 +769,21 @@ function createApp(db, { agentClient } = {}) {
     admin.get('/quotes', (req, res) => {
         const where = req.query.status ? 'WHERE status = ?' : '';
         const args = req.query.status ? [req.query.status] : [];
-        const rows = db.prepare(`SELECT * FROM quotes ${where} ORDER BY id DESC LIMIT 500`).all(...args);
+        const rows = db.prepare(`SELECT * FROM quotes ${where} ORDER BY id DESC LIMIT 500`).all(...args)
+            .filter((r) => staff.seesQuote(db, req.user, r));
         res.json(rows.map((r) => { const { access_key, ...q } = parseQuote(r); return q; }));
     });
 
+    /* A quote the signed-in user may see (the customer scope applies to quotes too); 404 otherwise,
+       so the answer is the same whether the quote exists or belongs to someone else */
+    const quoteFor = (req, id) => {
+        const row = db.prepare('SELECT * FROM quotes WHERE id = ?').get(Number(id));
+        if (!row || !staff.seesQuote(db, req.user, row)) throw httpError(404, 'العرض غير موجود');
+        return row;
+    };
+
     admin.patch('/quotes/:id', (req, res) => {
+        quoteFor(req, req.params.id);
         if (!QUOTE_STATUSES.includes(req.body.status)) throw httpError(400, 'الحالة غير صالحة');
         const info = db.prepare('UPDATE quotes SET status = ? WHERE id = ?').run(req.body.status, Number(req.params.id));
         if (!info.changes) throw httpError(404, 'العرض غير موجود');
@@ -830,8 +874,7 @@ function createApp(db, { agentClient } = {}) {
     }));
 
     admin.get('/quotes/:id/pdf', (req, res) => {
-        const row = db.prepare('SELECT * FROM quotes WHERE id = ?').get(Number(req.params.id));
-        if (!row) throw httpError(404, 'العرض غير موجود');
+        const row = quoteFor(req, req.params.id);
         sendPdf(res, parseQuote(row), getSettings(db));
     });
 
@@ -1225,7 +1268,8 @@ function createApp(db, { agentClient } = {}) {
         const saved = await backup.saveBackup(db, 'before-restore');
         const counts = await backup.restoreWorkbook(db, buffer);
         webhooks.emit(db, 'database.restored', { counts });
-        return { ok: true, counts, saved_before_restore: saved };
+        // Every staff session ended with the restore (the ADMIN_TOKEN is not a session)
+        return { ok: true, counts, saved_before_restore: saved, signed_out: true };
     };
 
     admin.post('/restore', express.raw({ type: () => true, limit: '25mb' }), asyncRoute(async (req, res) => {
@@ -1448,8 +1492,13 @@ function createApp(db, { agentClient } = {}) {
         const eventId = Number(info.lastInsertRowid);
         db.prepare(`DELETE FROM inbound_events WHERE id NOT IN (SELECT id FROM inbound_events ORDER BY id DESC LIMIT 100)`).run();
 
-        // X-Mazbot-Signature proves the request comes from MazBot (MAZBOT_SIGNING_SECRET from the MazBot webhook page)
-        if (!mazbot.verifySignature(raw || body, req.get('x-mazbot-signature'), process.env.MAZBOT_SIGNING_SECRET || '')) {
+        // X-Mazbot-Signature proves the request comes from MazBot (MAZBOT_SIGNING_SECRET from the MazBot webhook page).
+        // Checked over the exact bytes received — never over a re-encoded copy. Without the secret nothing can be
+        // checked: the request is accepted (as before) and recorded as 'unchecked', so the panel says so plainly.
+        const signingSecret = process.env.MAZBOT_SIGNING_SECRET || '';
+        const signed = signingSecret ? mazbot.verifySignature(raw || Buffer.alloc(0), req.get('x-mazbot-signature'), signingSecret) : null;
+        db.prepare('UPDATE inbound_events SET signature = ? WHERE id = ?').run(signed === null ? 'unchecked' : signed ? 'verified' : 'bad', eventId);
+        if (signed === false) {
             db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?').run('bad_signature', eventId);
             return res.status(401).json({ error: 'invalid signature' });
         }
