@@ -8,6 +8,7 @@
 const { getSettings } = require('./db');
 const agent = require('./agent');
 const mazbot = require('./mazbot');
+const leads = require('./leads');
 
 const PAUSE_HOURS = 12; // after "talk to a person", the agent stays quiet for this customer
 
@@ -63,6 +64,12 @@ function handleEvent(db, eventId, event, ctx) {
     db.prepare('UPDATE inbound_events SET event_key = ? WHERE id = ?').run(key, eventId);
     if (dup) { setStatus(db, eventId, 'duplicate'); return null; }
 
+    // Every customer message is kept for the follow-up, even when the agent does not answer
+    const text = messageText(event);
+    try {
+        leads.customerMessage(db, { key: leads.phoneKey(phone), channel: 'whatsapp', name: contact.name, phone, text: text || '[رسالة غير نصية]' });
+    } catch (err) { console.error('[leads]', err.message); }
+
     const settings = getSettings(db);
     if (!settings.mazbot_agent_enabled) { setStatus(db, eventId, 'agent_off'); return null; }
     if (!agent.isConfigured()) { setStatus(db, eventId, 'agent_not_configured (OPENAI_API_KEY / ANTHROPIC_API_KEY)'); return null; }
@@ -92,6 +99,7 @@ async function reply(db, eventId, event, { phone, contact, saveQuote, notifySale
             ...(client ? { client } : {}),
             notifyHuman: async (summary) => {
                 pause(db, phone);
+                leads.humanRequested(db, leads.phoneKey(phone), summary);
                 const alert = `🙋 عميل يطلب التواصل مع فريق المبيعات\n${contact.name || ''} — +${phone}\n\n${summary}`;
                 for (const to of mazbot.parseRecipients(settings.mazbot_recipients)) {
                     const r = await mazbot.sendTextToPhone(to, alert);
@@ -100,6 +108,7 @@ async function reply(db, eventId, event, { phone, contact, saveQuote, notifySale
             }
         });
         await send(result.reply);
+        leads.assistantMessage(db, leads.phoneKey(phone), result.reply);
         // PDF links always point at this system (where the quotes live), not at the company website
         const base = String(baseUrl || settings.public_base_url || '').replace(/\/$/, '');
         for (const e of result.events) {
@@ -114,4 +123,4 @@ async function reply(db, eventId, event, { phone, contact, saveQuote, notifySale
     }
 }
 
-module.exports = { handleEvent, messageText };
+module.exports = { handleEvent, messageText, pause, unpause, isPaused, PAUSE_HOURS };

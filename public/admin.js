@@ -29,12 +29,17 @@ function setStatus(id, text, kind = '') {
     el.className = 'status-text ' + kind;
 }
 
+/* The employee using the panel (chosen in «أنا»); written on follow-up reports and replies */
+function currentMe() {
+    try { return localStorage.getItem('staffName') || 'المدير العام'; } catch { return 'المدير العام'; }
+}
+
 async function api(method, url, body) {
     let token = '';
     try { token = localStorage.getItem('adminToken') || ''; } catch { /* storage blocked */ }
     const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, 'X-Staff-Name': encodeURIComponent(currentMe()) },
         body: body === undefined ? undefined : JSON.stringify(body)
     });
     if (res.status === 401 || res.status === 503) {
@@ -1409,6 +1414,7 @@ async function initAdmin() {
     online = true;
     loadSystemStatus().catch(() => {});
     await Promise.all([loadProducts(), loadPurchases(), loadHooks(), loadAgentStatus(), loadMazbotStatus()]);
+    document.dispatchEvent(new Event('admin-ready'));
 }
 
 (async function boot() {

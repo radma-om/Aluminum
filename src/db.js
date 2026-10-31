@@ -14,6 +14,8 @@ const DEFAULT_SETTINGS = {
     vat_percent: 5,
     tax_mode: 'accounting',
     sqm_to_linear: 13,       // 1 م² = 13 متر طولي من الشرائح
+    // Employees who follow customers (names); they become accounts with permissions later
+    staff_members: [],
     // Slat thicknesses of the in-house calculators (pricing and weight tabs): details, mm, kg per meter
     slat_thicknesses: [
         { details: 'شريحة نابكو 1.1 ملم', thickness: 1.1, weight: 0.63 },
@@ -308,6 +310,44 @@ CREATE TABLE IF NOT EXISTS agent_pauses (
     until  TEXT NOT NULL
 );
 
+-- Customer follow-up: one lead per customer (tel:<phone> or web:<session>), its readable
+-- conversation log, and the employees' reports, recommendations and handovers
+CREATE TABLE IF NOT EXISTS leads (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_key       TEXT NOT NULL UNIQUE,
+    channel           TEXT NOT NULL DEFAULT 'calculator',
+    name              TEXT,
+    phone             TEXT,
+    status            TEXT NOT NULL DEFAULT 'new',
+    assigned_to       TEXT,
+    next_follow_up    TEXT,
+    last_message      TEXT,
+    last_role         TEXT,
+    message_count     INTEGER NOT NULL DEFAULT 0,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    last_activity_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS leads_activity ON leads (last_activity_at);
+
+CREATE TABLE IF NOT EXISTS lead_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id     INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    role        TEXT NOT NULL,
+    author      TEXT,
+    text        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS lead_messages_lead ON lead_messages (lead_id, id);
+
+CREATE TABLE IF NOT EXISTS lead_notes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id     INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL DEFAULT 'note',
+    author      TEXT,
+    text        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS agent_conversations (
     conversation_key  TEXT PRIMARY KEY,
     channel           TEXT NOT NULL,
@@ -468,6 +508,7 @@ function openDatabase(file = process.env.DB_FILE || path.join(__dirname, '..', '
     seedRegions(db);        // wilayat first: the catalog import sets their installation fees
     seedConfigurator(db);
     require('./motors').ensureSections(db);
+    require('./leads').backfill(db);
     return db;
 }
 
@@ -501,6 +542,12 @@ function saveSettings(db, patch) {
                                ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
         if (patch[key] === undefined) continue;
+        if (key === 'staff_members') {
+            if (!Array.isArray(patch[key])) throw badValue('قائمة الموظفين غير صالحة');
+            const names = [...new Set(patch[key].map((n) => String(n ?? '').trim().slice(0, 80)).filter(Boolean))].slice(0, 50);
+            upsert.run(key, JSON.stringify(names));
+            continue;
+        }
         if (key === 'slat_thicknesses') {
             upsert.run(key, JSON.stringify(cleanSlatThicknesses(patch[key])));
             continue;
