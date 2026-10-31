@@ -11,6 +11,25 @@ const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-mo
 const SVG = 'http://www.w3.org/2000/svg';
 const MANAGER = 'المدير العام';
 
+/* ---------------------------- Side menu ---------------------------- */
+
+const isPhone = () => window.matchMedia('(max-width: 900px)').matches;
+
+/* Desktop: fold to icons (remembered); phone: slide the menu in and out */
+function toggleSidebar(open, { mobileOnly = false } = {}) {
+    if (isPhone()) {
+        document.body.classList.toggle('sb-open', open ?? !document.body.classList.contains('sb-open'));
+        return;
+    }
+    if (mobileOnly) return;
+    const folded = open === undefined ? !document.body.classList.contains('sb-collapsed') : !open;
+    document.body.classList.toggle('sb-collapsed', folded);
+    try { localStorage.setItem('sbCollapsed', folded ? '1' : ''); } catch { /* ignore */ }
+    if (dash && $id('tab-dashboard').classList.contains('active')) setTimeout(renderTrend, 280); // chart width changed
+}
+try { if (localStorage.getItem('sbCollapsed')) document.body.classList.add('sb-collapsed'); } catch { /* ignore */ }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') toggleSidebar(false, { mobileOnly: true }); });
+
 /* ----------------------------- "أنا" ----------------------------- */
 
 let staffList = [];
@@ -582,7 +601,8 @@ const switchTabBeforeCrm = window.switchTab;
 window.switchTab = function (tabId) {
     switchTabBeforeCrm(tabId);
     const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
-    if (btn && btn.scrollIntoView) btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (btn) $id('pageTitle').textContent = btn.querySelector('.t-label').textContent;
+    toggleSidebar(false, { mobileOnly: true });
     if (!online) return;
     if (tabId === 'dashboard') loadDashboard();
     if (tabId === 'leads') { renderLeadFilters(); loadLeads().then(() => { if (currentLeadId) openLead(currentLeadId, { keepScroll: true }); }).catch(() => {}); }
