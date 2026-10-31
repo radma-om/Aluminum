@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>نظام تسعير شرائح الألمنيوم</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         /* ===== CSS Variables & Reset ===== */
         :root {
@@ -609,6 +610,7 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="admin-ui.css">
 </head>
 <body>
 
@@ -618,26 +620,126 @@
             <span class="header-icon">AL</span>
             نظام تسعير شرائح الألمنيوم
         </h1>
-        <button class="tab-btn" onclick="logout()" title="تسجيل الخروج" style="background: rgba(255,255,255,0.12); color: #fff;">خروج</button>
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="pricing" onclick="switchTab('pricing')">حاسبة التسعير</button>
-            <button class="tab-btn" data-tab="weight" onclick="switchTab('weight')">حاسبة الوزن</button>
-            <button class="tab-btn" data-tab="products" onclick="switchTab('products')">المنتجات والأسعار</button>
-            <button class="tab-btn" data-tab="purchases" onclick="switchTab('purchases')">أسعار الشراء</button>
-            <button class="tab-btn" data-tab="doors" onclick="switchTab('doors')">بوابات الشتر</button>
-            <button class="tab-btn" data-tab="overhead" onclick="switchTab('overhead')">بوابات الأوفرهيد</button>
-            <button class="tab-btn" data-tab="motors" onclick="switchTab('motors')">مكائن البوابات</button>
-            <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')">طلبات العروض</button>
-            <button class="tab-btn" data-tab="agent" onclick="switchTab('agent')">المساعد الذكي</button>
-            <button class="tab-btn" data-tab="integrations" onclick="switchTab('integrations')">الربط</button>
+        <div class="header-tools">
+            <label class="me-picker" title="اسمك يُكتب على التقارير والملاحظات والرسائل">
+                <i class="fas fa-user-tie"></i> أنا:
+                <select id="meSelect" onchange="setMe(this.value)"></select>
+            </label>
+            <button class="tab-btn logout-btn" onclick="logout()" title="تسجيل الخروج"><i class="fas fa-right-from-bracket"></i> خروج</button>
         </div>
+        <nav class="tabs" aria-label="أقسام اللوحة">
+            <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')"><i class="fas fa-chart-line"></i> لوحة المؤشرات</button>
+            <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')"><i class="fas fa-headset"></i> متابعة العملاء <span class="count" id="leadsBadge" hidden></span></button>
+            <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')"><i class="fas fa-file-invoice-dollar"></i> طلبات العروض</button>
+            <button class="tab-btn" data-tab="pricing" onclick="switchTab('pricing')"><i class="fas fa-calculator"></i> حاسبة التسعير</button>
+            <button class="tab-btn" data-tab="weight" onclick="switchTab('weight')"><i class="fas fa-weight-hanging"></i> حاسبة الوزن</button>
+            <button class="tab-btn" data-tab="products" onclick="switchTab('products')"><i class="fas fa-boxes-stacked"></i> المنتجات والأسعار</button>
+            <button class="tab-btn" data-tab="purchases" onclick="switchTab('purchases')"><i class="fas fa-cart-shopping"></i> أسعار الشراء</button>
+            <button class="tab-btn" data-tab="doors" onclick="switchTab('doors')"><i class="fas fa-warehouse"></i> بوابات الشتر</button>
+            <button class="tab-btn" data-tab="overhead" onclick="switchTab('overhead')"><i class="fas fa-door-closed"></i> بوابات الأوفرهيد</button>
+            <button class="tab-btn" data-tab="motors" onclick="switchTab('motors')"><i class="fas fa-gears"></i> مكائن البوابات</button>
+            <button class="tab-btn" data-tab="agent" onclick="switchTab('agent')"><i class="fas fa-robot"></i> المساعد الذكي</button>
+            <button class="tab-btn" data-tab="integrations" onclick="switchTab('integrations')"><i class="fas fa-plug"></i> الربط</button>
+        </nav>
     </header>
 
     <div class="main-container">
         <div id="systemWarnings" hidden></div>
 
         <!-- ==================== TAB 1: Pricing Calculator ==================== -->
-        <div id="tab-pricing" class="tab-content active">
+        <!-- ==================== Dashboard ==================== -->
+        <div id="tab-dashboard" class="tab-content active">
+            <div class="dash-toolbar">
+                <h2>لوحة المؤشرات</h2>
+                <div class="seg" id="dashRange" role="group" aria-label="الفترة">
+                    <button type="button" data-days="7">7 أيام</button>
+                    <button type="button" data-days="30" class="on">30 يوماً</button>
+                    <button type="button" data-days="90">90 يوماً</button>
+                    <button type="button" data-days="365">سنة</button>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="loadDashboard()"><i class="fas fa-rotate"></i> تحديث</button>
+                <span class="muted" id="dashUpdated"></span>
+            </div>
+            <div id="dashBody">
+                <div class="kpi-grid" id="kpiGrid"></div>
+                <div class="attention" id="attention"></div>
+                <div class="dash-grid">
+                    <div class="card span-8">
+                        <div class="chart-head">
+                            <h3 id="trendTitle">طلبات عروض الأسعار يومياً</h3>
+                            <div class="seg" id="trendMetric" role="group" aria-label="المقياس">
+                                <button type="button" data-metric="count" class="on">العدد</button>
+                                <button type="button" data-metric="value">القيمة (ر.ع)</button>
+                            </div>
+                            <button class="link-btn" data-table="trend">عرض كجدول</button>
+                        </div>
+                        <div class="chart-wrap" id="trendChart"></div>
+                        <div id="trendTable" hidden></div>
+                    </div>
+                    <div class="card span-4">
+                        <div class="chart-head"><h3>حالة العروض</h3><button class="link-btn" data-table="status">عرض كجدول</button></div>
+                        <div id="statusChart"></div>
+                        <div id="statusTable" hidden></div>
+                    </div>
+                    <div class="card span-4">
+                        <div class="chart-head"><h3>حسب الحاسبة</h3></div>
+                        <div class="hbars" id="calcChart"></div>
+                    </div>
+                    <div class="card span-4">
+                        <div class="chart-head"><h3>حسب القناة</h3></div>
+                        <div class="hbars" id="sourceChart"></div>
+                    </div>
+                    <div class="card span-4">
+                        <div class="chart-head"><h3>أكثر الولايات طلباً</h3></div>
+                        <div class="hbars" id="placeChart"></div>
+                    </div>
+                    <div class="card span-6">
+                        <div class="chart-head"><h3>العملاء حسب حالة المتابعة</h3><span class="sub">كل العملاء في قائمة المتابعة</span></div>
+                        <div class="hbars" id="leadStatusChart"></div>
+                    </div>
+                    <div class="card span-6">
+                        <div class="chart-head"><h3>المتابعات المفتوحة لكل موظف</h3><span class="sub">العملاء الذين لم تُغلق متابعتهم بعد</span></div>
+                        <div class="hbars" id="staffChart"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== Customer follow-up ==================== -->
+        <div id="tab-leads" class="tab-content">
+            <div class="crm">
+                <div class="card crm-list">
+                    <div class="crm-filters">
+                        <input type="search" id="leadSearch" placeholder="بحث بالاسم أو الرقم أو نص الرسالة…" oninput="debouncedLoadLeads()">
+                        <div class="chips" id="leadStatusChips"></div>
+                        <div class="row">
+                            <select id="leadAssigned" onchange="leadFilter.assigned = this.value; loadLeads()"></select>
+                            <select id="leadChannel" onchange="loadLeads()">
+                                <option value="">كل القنوات</option>
+                                <option value="whatsapp">واتساب</option>
+                                <option value="website">الموقع</option>
+                                <option value="calculator">الحاسبات</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="lead-items" id="leadItems"></div>
+                </div>
+                <div class="card crm-detail" id="leadDetail">
+                    <div class="empty-state"><i class="fas fa-comments"></i>اختر عميلاً من القائمة لعرض محادثته وتقارير المتابعة</div>
+                </div>
+            </div>
+            <div class="card" style="margin-top:16px">
+                <div class="card-title"><span class="icon"><i class="fas fa-users"></i></span> الموظفون</div>
+                <p class="status-text" style="margin:0 0 10px">أسماء الموظفين الذين يتابعون العملاء (افصل بينها بفاصلة). يختار كل موظف اسمه من «أنا» أعلى الصفحة، فيُكتب اسمه على التقارير والرسائل. في الخطوة القادمة يصبح لكل موظف حساب وصلاحيات خاصة.</p>
+                <div class="staff-editor">
+                    <input type="text" id="staffInput" placeholder="مثال: سالم، مريم، أحمد">
+                    <button class="btn btn-primary btn-sm" onclick="saveStaff()">حفظ الموظفين</button>
+                    <span id="staffStatus" class="status-text"></span>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-pricing" class="tab-content">
 
             <!-- General Inputs -->
             <div class="card">
@@ -2160,5 +2262,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     calcWeight();
     </script>
     <script src="admin.js"></script>
+    <script src="admin-crm.js"></script>
 </body>
 </html>

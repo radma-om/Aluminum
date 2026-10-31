@@ -129,6 +129,9 @@ async function keywordReply(db, message) {
 }
 
 async function agentReply(db, message, saveQuote) {
+    const leads = require('./leads');
+    const leadKey = leads.phoneKey(message.from);
+    leads.customerMessage(db, { key: leadKey, channel: 'whatsapp', phone: message.from, text: message.text.body });
     const result = await agent.chat({
         db,
         key: 'wa:' + message.from,
@@ -137,10 +140,12 @@ async function agentReply(db, message, saveQuote) {
         text: message.text.body,
         createQuote: saveQuote,
         notifyHuman: async (summary) => {
+            leads.humanRequested(db, leadKey, summary);
             if (env().notifyTo) await sendText(env().notifyTo, `🙋 عميل يطلب التواصل: +${message.from}\n\n${summary}`);
         }
     });
     await sendText(message.from, result.reply);
+    leads.assistantMessage(db, leadKey, result.reply);
     for (const e of result.events) {
         if (e.type !== 'quote_created') continue;
         await sendQuotePdf(db, message.from, e.quote);

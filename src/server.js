@@ -20,6 +20,8 @@ const whatsapp = require('./whatsapp');
 const doors = require('./doors');
 const overhead = require('./overhead');
 const motors = require('./motors');
+const leads = require('./leads');
+const dashboard = require('./dashboard');
 const agent = require('./agent');
 const mazbot = require('./mazbot');
 const backup = require('./backup');
@@ -145,7 +147,7 @@ const parseQuote = ({ items_json, details_json, ...q }) => ({
 const pdfPath = (quote) => `/quotes/${quote.ref}.pdf?k=${quote.access_key}`;
 
 /* Persist a priced quote (from the web calculator or the AI agent) and notify integrations */
-function saveQuote(db, { customer_name, customer_phone, customer_city, notes, source, priced, details = null }) {
+function saveQuote(db, { customer_name, customer_phone, customer_city, notes, source, priced, details = null, lead_key = null }) {
     const quote = {
         ref: makeRef(),
         access_key: crypto.randomBytes(16).toString('hex'),
@@ -171,6 +173,12 @@ function saveQuote(db, { customer_name, customer_phone, customer_city, notes, so
     quote.id = Number(info.lastInsertRowid);
     quote.created_at = new Date().toISOString().replace('T', ' ').slice(0, 19);
     quote.pdf_url = pdfPath(quote);
+
+    // The quote joins its customer's follow-up (not the admin's test chats)
+    if (source !== 'agent-test') {
+        const channel = source === 'mazbot' || source === 'whatsapp' ? 'whatsapp' : source === 'website' ? 'website' : 'calculator';
+        try { leads.quoteCreated(db, quote, { key: lead_key, channel }); } catch (err) { console.error('[leads]', err.message); }
+    }
 
     const { access_key, ...publicQuote } = quote;
     webhooks.emit(db, 'quote.created', publicQuote);
@@ -485,12 +493,15 @@ function createApp(db, { agentClient } = {}) {
         const text = String(req.body.message || '').trim().slice(0, 1000);
         if (!text) throw httpError(400, 'اكتب رسالتك');
 
+        const leadKey = 'web:' + session;
+        leads.customerMessage(db, { key: leadKey, channel: 'website', text });
         let result;
         try {
             result = await inSessionOrder(session, () => agent.chat({
                 db, key: 'web:' + session, channel: 'website', phone: null, text, client: agentClient,
-                createQuote: (q) => saveQuote(db, q),
+                createQuote: (q) => saveQuote(db, { ...q, lead_key: leadKey }),
                 notifyHuman: async (summary) => {
+                    leads.humanRequested(db, leadKey, summary);
                     const alert = `🙋 زائر الموقع يطلب التواصل مع فريق المبيعات\n\n${summary}`;
                     for (const to of mazbot.parseRecipients(settings.mazbot_recipients)) {
                         const r = await mazbot.sendTextToPhone(to, alert);
@@ -499,9 +510,11 @@ function createApp(db, { agentClient } = {}) {
                 }
             }));
         } catch (err) {
+            leads.assistantMessage(db, leadKey, '⚠️ تعذر رد المساعد على هذه الرسالة');
             // The visitor gets a polite message; the reason is shown in the admin panel
             throw httpError(502, 'عذراً، المساعد غير متاح مؤقتاً. حاول بعد قليل، أو تواصل معنا عبر واتساب.');
         }
+        leads.assistantMessage(db, leadKey, result.reply);
         const quotes = result.events.filter((e) => e.type === 'quote_created').map(({ quote }) => {
             notifySales(db, quote).catch((err) => console.error('[mazbot]', err.message));
             return {
@@ -677,6 +690,59 @@ function createApp(db, { agentClient } = {}) {
         webhooks.emit(db, 'quote.status_changed', quote);
         res.json(quote);
     });
+
+    /* ---- Dashboard figures ---- */
+
+    admin.get('/dashboard', (req, res) => res.json(dashboard.build(db, { days: req.query.days })));
+
+    /* ---- Customer follow-up (WhatsApp, website chat, calculators) ---- */
+
+    // The employee writing (chosen in the panel); becomes the logged-in account with staff permissions
+    const staffName = (req) => {
+        let name = '';
+        try { name = decodeURIComponent(String(req.get('X-Staff-Name') || '')); } catch { /* ignore */ }
+        return name.trim().slice(0, 80) || 'المدير العام';
+    };
+
+    admin.get('/leads', (req, res) => {
+        const q = req.query;
+        res.json({
+            leads: leads.list(db, {
+                status: String(q.status || ''), assigned: String(q.assigned || ''), channel: String(q.channel || ''),
+                q: String(q.q || '').trim().slice(0, 60), open: q.open === '1'
+            }),
+            statuses: leads.STATUSES, note_kinds: leads.NOTE_KINDS, channels: leads.CHANNELS,
+            staff: getSettings(db).staff_members || [],
+            can_reply_whatsapp: mazbot.hasLogin()
+        });
+    });
+
+    admin.get('/leads/:id', (req, res) => res.json(leads.detail(db, req.params.id)));
+
+    admin.patch('/leads/:id', (req, res) => res.json(leads.update(db, req.params.id, req.body || {}, staffName(req))));
+
+    admin.post('/leads/:id/notes', (req, res) => {
+        const b = req.body || {};
+        leads.addNote(db, req.params.id, { kind: b.kind, text: b.text }, staffName(req));
+        res.status(201).json(leads.detail(db, req.params.id));
+    });
+
+    /* An employee answers a WhatsApp customer through MazBot; the AI agent steps back for a while */
+    admin.post('/leads/:id/reply', asyncRoute(async (req, res) => {
+        const { lead } = leads.detail(db, req.params.id);
+        const text = String((req.body || {}).text || '').trim().slice(0, 2000);
+        if (!text) throw httpError(400, 'اكتب الرسالة');
+        if (!lead.phone) throw httpError(400, 'لا يوجد رقم واتساب لهذا العميل');
+        if (!mazbot.hasLogin()) throw httpError(503, 'ربط MazBot غير مكتمل (MAZBOT_API_KEY / MAZBOT_STAFF_EMAIL / MAZBOT_STAFF_PASSWORD)');
+        const r = await mazbot.sendTextToPhone(String(lead.phone).replace(/\D/g, ''), text);
+        if (!r.ok) {
+            throw httpError(502, 'تعذر الإرسال عبر MazBot: ' + r.error +
+                ' — إذا مرّ أكثر من 24 ساعة على آخر رسالة من العميل فواتساب لا يسمح إلا بالقوالب.');
+        }
+        leads.staffMessage(db, lead.id, text, staffName(req));
+        if ((req.body || {}).pause_agent !== false) mazbotInbox.pause(db, String(lead.phone).replace(/\D/g, ''));
+        res.status(201).json(leads.detail(db, lead.id));
+    }));
 
     admin.get('/quotes/:id/pdf', (req, res) => {
         const row = db.prepare('SELECT * FROM quotes WHERE id = ?').get(Number(req.params.id));
