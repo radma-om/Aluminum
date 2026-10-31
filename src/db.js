@@ -489,6 +489,8 @@ function migrate(db) {
     addColumns('regions', { motor_installation_fee: 'REAL' });
     // MazBot webhook requests: the signature check result (verified / bad / unchecked = no signing secret)
     addColumns('inbound_events', { signature: 'TEXT' });
+    // What MazBot answered when the reply was sent (its message id / status), to follow up a reply that never arrived
+    addColumns('inbound_events', { reply_json: 'TEXT' });
     // Gate motors: sections added in the admin, and a profit % per item
     addColumns('motor_items', { section_id: 'INTEGER', profit_percent: 'REAL' });
 }

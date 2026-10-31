@@ -246,3 +246,41 @@ test('an AI error older than the latest successful reply is reported as history,
     assert.strictEqual(byKey(r, 'ai').level, 'ok');
     assert.match(byKey(r, 'ai').detail, /خطأ سابق/);
 });
+
+/* ---------------- "Replied" is "accepted by MazBot", not "delivered" ---------------- */
+
+test('a reply MazBot accepted shows its message id, and a later failure event from MazBot is the cause', async (t) => {
+    const sent = [];
+    const server = http.createServer(async (req, res) => {
+        for await (const c of req) void c; // drain
+        res.setHeader('Content-Type', 'application/json');
+        if (req.url === '/api/login') return res.end(JSON.stringify({ data: { token: 'jwt' } }));
+        sent.push(req.url);
+        res.end(JSON.stringify({ success: true, data: { message_id: 'wamid.HBgM123', status: 'queued' } }));
+    });
+    await new Promise((r) => server.listen(0, r));
+    t.after(() => server.close());
+    Object.assign(process.env, { MAZBOT_BASE_URL: `http://127.0.0.1:${server.address().port}/api`, MAZBOT_API_KEY: 'k', MAZBOT_STAFF_EMAIL: 'e', MAZBOT_STAFF_PASSWORD: 'p', ANTHROPIC_API_KEY: 'test', MAZBOT_WEBHOOK_SECRET: 'abcdefghijklmnop1234' });
+    t.after(() => { delete process.env.MAZBOT_WEBHOOK_SECRET; });
+    mazbot._reset();
+    const db = openDatabase(':memory:');
+    saveSettings(db, { mazbot_agent_enabled: true });
+
+    const e = incoming('كم سعر الأوفرهيد؟');
+    await inbox.handleEvent(db, store(db, e), e, { saveQuote: (q) => saveQuote(db, q), notifySales: async () => null, client: fakeClient([() => say('السعر من 609 ر.ع')]) });
+    let r = await check.run(db, { live: false });
+    const msg = r.messages.find((m) => !m.test);
+    assert.match(msg.note, /قبله MazBot/);
+    assert.deepStrictEqual([msg.mazbot_reply[0].receiver_id, msg.mazbot_reply[0].message_id, msg.mazbot_reply[0].mazbot_status], [1376829, 'wamid.HBgM123', 'queued']);
+    assert.strictEqual(byKey(r, 'delivery').level, 'warn');
+    assert.match(byKey(r, 'delivery').detail, /1376829[^]*wamid\.HBgM123/);
+
+    // MazBot then reports that WhatsApp did not deliver it
+    db.prepare("INSERT INTO inbound_events (source, method, body, status, signature) VALUES ('mazbot', 'POST', ?, 'ignored: message.failed', 'unchecked')")
+        .run(JSON.stringify({ type: 'message.failed', data: { message: { id: 'wamid.HBgM123', status: 'failed' }, error: 'Re-engagement message: more than 24 hours' } }));
+    r = await check.run(db, { live: false });
+    assert.strictEqual(byKey(r, 'delivery').level, 'bad');
+    assert.match(byKey(r, 'delivery').detail, /message\.failed[^]*24 hours/);
+    assert.match(r.summary, /فشل تسليم/);
+    assert.strictEqual(r.other_events[0].raw_summary.failure, true);
+});

@@ -1504,7 +1504,12 @@ async function runDiagnose() {
             ${r.messages.map((m) => `<div class="diag-msg"><span class="m-when">${esc(fmtWhen(m.at))}</span>
                 <span>${m.test ? '<span class="pill">تجربة من اللوحة</span> ' : ''}<strong>${esc(m.name || '')}</strong> <span dir="ltr">${m.phone ? '+' + esc(m.phone) : ''}</span>: ${esc(m.text || '')}
                     ${m.signature === 'verified' ? '<span class="pill st-won">توقيع سليم</span>' : m.signature === 'unchecked' ? '<span class="pill">بلا تحقق</span>' : ''}</span>
-                <span></span><span class="m-note ${esc(m.level)}">${esc(m.note)}</span></div>`).join('')}` : '';
+                <span></span><span class="m-note ${esc(m.level)}">${esc(m.note)}</span>
+                ${(m.mazbot_reply || []).map((x) => `<span></span><span class="status-text" dir="auto">↩︎ رد MazBot على الإرسال: ${x.ok ? 'قُبل' : 'رُفض'} (HTTP ${esc(x.http)}) — الجهة ${esc(x.receiver_id)}${x.message_id ? ' — رقم الرسالة ' + esc(x.message_id) : ''}${x.mazbot_status ? ' — «' + esc(x.mazbot_status) + '»' : ''}${x.error ? ' — ' + esc(x.error) : ''}</span>`).join('')}</div>`).join('')}` : '';
+        $id('diagMessages').innerHTML += r.other_events && r.other_events.length ? `<p class="sub-heading">أحداث أخرى من MazBot (حالة التسليم، الأخطاء…)</p>
+            ${r.other_events.map((e) => `<div class="diag-msg"><span class="m-when">${esc(fmtWhen(e.at))}</span>
+                <span><strong dir="ltr">${esc(e.raw_summary.type)}</strong>${e.raw_summary.status ? ' — ' + esc(e.raw_summary.status) : ''}${e.raw_summary.error ? ' — <span class="m-note bad">' + esc(e.raw_summary.error) + '</span>' : ''}</span>
+                <span></span><span class="status-text" dir="ltr" style="word-break:break-all">${esc(e.raw_summary.text)}</span></div>`).join('')}` : '';
         setStatus('diagStatus', 'آخر فحص: ' + new Date().toLocaleTimeString('ar-OM', { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
         setStatus('diagStatus', err.message, 'err');

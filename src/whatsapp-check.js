@@ -12,7 +12,7 @@ const inbox = require('./mazbot-inbox');
 function explainStatus(status) {
     const s = String(status || '');
     if (!s) return { level: 'warn', note: 'لم يُعالَج بعد' };
-    if (s === 'replied') return { level: 'ok', note: 'تم الرد ✓' };
+    if (s === 'replied') return { level: 'ok', note: 'كتب المساعد الرد وقبله MazBot ✓ (التسليم إلى واتساب يتم عند MazBot)' };
     if (s === 'replied: non-text') return { level: 'ok', note: 'رسالة غير نصية (صورة / صوت) — أُرسل للعميل أن المساعد يقرأ النصوص فقط' };
     if (s === 'queued') return { level: 'warn', note: 'قيد الرد…' };
     if (s === 'duplicate') return { level: 'info', note: 'نفس الرسالة وصلت مرة أخرى من MazBot — تم تجاهل التكرار' };
@@ -28,13 +28,40 @@ function explainStatus(status) {
 }
 
 const parse = (body) => { try { return JSON.parse(body); } catch { return null; } };
+
+/* MazBot's answer to our send-message calls (receiver, HTTP status, its message id / status if it gave one) */
+function summarizeReply(json) {
+    const sends = parse(json);
+    if (!Array.isArray(sends) || !sends.length) return null;
+    return sends.map((x) => {
+        const r = x.response && typeof x.response === 'object' ? x.response : {};
+        const d = r.data && typeof r.data === 'object' ? r.data : {};
+        const id = d.message_id || d.id || d.wamid || r.message_id || r.id || null;
+        const st = d.status || r.status || r.message || null;
+        return { receiver_id: x.receiver_id, ok: x.ok, http: x.status, message_id: id, mazbot_status: typeof st === 'string' ? st.slice(0, 120) : null,
+            error: x.error ? String(x.error).slice(0, 300) : null, raw: JSON.stringify(x.response).slice(0, 300) };
+    });
+}
+
+/* A short, readable line for any other MazBot event, and whether it reports a failure */
+const FAILURE = /fail|error|reject|undeliver|invalid|blocked|expired/i;
+function summarizeEvent(ev) {
+    const d = ev.data || {};
+    const pick = (o) => (o && typeof o === 'object' ? o : {});
+    const m = pick(d.message);
+    const status = d.status || m.status || d.state || null;
+    const error = d.error || m.error || d.reason || m.reason || (d.errors && JSON.stringify(d.errors)) || null;
+    const text = JSON.stringify(d).slice(0, 300);
+    return { type: ev.type, status: status ? String(status).slice(0, 80) : null, error: error ? String(typeof error === 'object' ? JSON.stringify(error) : error).slice(0, 300) : null,
+        failure: FAILURE.test(`${ev.type} ${status || ''} ${error || ''}`), text };
+}
 const ago = (sqlTime) => (Date.now() - Date.parse(String(sqlTime).replace(' ', 'T') + 'Z')) / 60000; // minutes
 
 async function run(db, { live = true } = {}) {
     const settings = getSettings(db);
     const secret = process.env.MAZBOT_WEBHOOK_SECRET || '';
     // Only requests that really came from outside count as evidence; the panel's own test is marked 'diagnostic'
-    const events = db.prepare('SELECT id, source, status, signature, body, received_at FROM inbound_events ORDER BY id DESC LIMIT 30').all();
+    const events = db.prepare('SELECT id, source, status, signature, body, reply_json, received_at FROM inbound_events ORDER BY id DESC LIMIT 40').all();
     const external = events.filter((e) => e.source === 'mazbot');
     const messages = events.map((e) => {
         const ev = parse(e.body) || {};
@@ -44,9 +71,13 @@ async function run(db, { live = true } = {}) {
             phone: d.contact && d.contact.phone ? String(d.contact.phone) : null,
             name: d.contact ? d.contact.name || null : null,
             text: d.message ? String(d.message.value || '').slice(0, 200) : null,
-            status: e.status, signature: e.signature || null, ...explainStatus(e.status)
+            status: e.status, signature: e.signature || null, ...explainStatus(e.status),
+            mazbot_reply: summarizeReply(e.reply_json),
+            raw_summary: ev.type && !['message.received', 'interactive.selected'].includes(ev.type) ? summarizeEvent(ev) : null
         };
     });
+    // Everything else MazBot sent (delivery status, failures…): ignored for replies, but it is the only news after "accepted"
+    const otherEvents = messages.filter((m) => !m.test && m.raw_summary).slice(0, 10);
     const customerMsgs = messages.filter((m) => ['message.received', 'interactive.selected'].includes(m.type));
     const last = external[0];
     const checks = [];
@@ -99,7 +130,8 @@ async function run(db, { live = true } = {}) {
     // 4) The AI — an error older than the latest successful reply is history, not the current state
     const aiErr = agent.getLastError();
     const lastReplied = customerMsgs.find((m) => m.status === 'replied');
-    const aiErrIsOld = aiErr && lastReplied && Date.parse(String(lastReplied.at).replace(' ', 'T') + 'Z') > Date.parse(aiErr.at);
+    // Request times are stored to the second: a reply in the same second as the error counts as after it
+    const aiErrIsOld = aiErr && lastReplied && Date.parse(String(lastReplied.at).replace(' ', 'T') + 'Z') + 999 >= Date.parse(aiErr.at);
     const aiHint = (m) => (/quota|billing|credit|insufficient/i.test(m) ? 'رصيد حساب OpenAI انتهى — اشحن الرصيد من platform.openai.com.'
         : /model/i.test(m) ? 'اسم النموذج في OPENAI_MODEL غير صحيح — جرّب gpt-4.1-mini.'
             : /key|auth|401/i.test(m) ? 'المفتاح OPENAI_API_KEY غير صحيح أو أُلغي — أنشئ مفتاحاً جديداً.' : null);
@@ -125,6 +157,23 @@ async function run(db, { live = true } = {}) {
                 : 'تأكد من MAZBOT_API_KEY ومن بريد وكلمة مرور حساب الموظف (client-staff) في MazBot — ربما تغيّرت كلمة المرور.');
     }
 
+    // 5b) After MazBot accepted a reply: did MazBot report a delivery failure?
+    const lastReplied2 = customerMsgs.find((m) => !m.test && m.status === 'replied');
+    if (lastReplied2) {
+        const after = otherEvents.filter((e) => e.id > lastReplied2.id);
+        const failed = after.find((e) => e.raw_summary.failure);
+        const reply = (lastReplied2.mazbot_reply || [])[0];
+        const ids = reply ? `أُرسل إلى جهة MazBot رقم ${reply.receiver_id}${reply.message_id ? `، رقم الرسالة عند MazBot: ${reply.message_id}` : ''}${reply.mazbot_status ? `، ردّ MazBot: «${reply.mazbot_status}»` : ''}.` : '';
+        if (failed) {
+            add('delivery', 'bad', 'MazBot أبلغ عن فشل تسليم رسالة', `${failed.raw_summary.type}${failed.raw_summary.status ? ` (${failed.raw_summary.status})` : ''}: ${failed.raw_summary.error || failed.raw_summary.text}`,
+                'افتح المحادثة في MazBot (Live chat) لرقم العميل وانظر سبب الفشل بجانب الرسالة. أرسل لدعم MazBot رقم الرسالة الظاهر هنا.');
+        } else {
+            add('delivery', 'warn', 'آخر رد قبله MazBot — تأكد من وصوله على واتساب',
+                `${ids} النظام لا يعرف إن وصلت الرسالة إلى واتساب العميل: MazBot لا يرسل حالة التسليم إلى النظام.`,
+                'إذا لم تصل: افتح في MazBot المحادثة مع رقم العميل. إن ظهر الرد هناك بعلامة خطأ فسبب الفشل مكتوب بجانبه؛ وإن لم يظهر أصلاً فأرسل لدعم MazBot رقم الجهة ورقم الرسالة الظاهرين هنا.');
+        }
+    }
+
     // 6) The last customer messages and what happened to each
     const lastCustomer = customerMsgs.find((m) => !m.test) || customerMsgs[0];
     if (lastCustomer && lastCustomer.level === 'bad') {
@@ -144,6 +193,7 @@ async function run(db, { live = true } = {}) {
         checks,
         pauses,
         messages: customerMsgs.slice(0, 15),
+        other_events: otherEvents,
         webhook_path: secret.length >= 16 ? `/webhooks/mazbot/${secret}` : null
     };
 }
