@@ -26,6 +26,7 @@ const agent = require('./agent');
 const mazbot = require('./mazbot');
 const backup = require('./backup');
 const mazbotInbox = require('./mazbot-inbox');
+const staff = require('./staff');
 const knowledge = require('./knowledge');
 const { renderQuotePdf } = require('./pdf');
 
@@ -64,27 +65,46 @@ function rateLimit({ windowMs, max }) {
 
 /* Admin password check. After 10 wrong passwords from one IP in 15 minutes,
    that IP is locked out for 15 minutes (brute-force protection on a public server). */
-function makeRequireAdmin() {
+/* Too many wrong passwords from one address: wait 15 minutes (admin API and staff login) */
+function makeLoginGuard() {
     const WINDOW = 15 * 60_000;
     const MAX_FAILURES = 10;
     const failures = new Map();
+    const recent = (ip) => (failures.get(ip) || []).filter((t) => Date.now() - t < WINDOW);
+    return {
+        blocked: (ip) => recent(ip).length >= MAX_FAILURES,
+        fail: (ip) => failures.set(ip, [...recent(ip), Date.now()]),
+        ok: (ip) => failures.delete(ip)
+    };
+}
+
+const tooMany = 'محاولات دخول كثيرة خاطئة. حاول مرة أخرى بعد 15 دقيقة.';
+
+/* Who is calling the admin API: the general manager (ADMIN_TOKEN) or a staff account (session token),
+   and may they use this route? */
+function makeRequireAdmin(db, guard) {
     return (req, res, next) => {
         const expected = process.env.ADMIN_TOKEN;
         if (!expected) return res.status(503).json({ error: 'ADMIN_TOKEN غير مضبوط على الخادم' });
-        const now = Date.now();
-        const recent = (failures.get(req.ip) || []).filter((t) => now - t < WINDOW);
-        if (recent.length >= MAX_FAILURES) {
-            return res.status(429).json({ error: 'محاولات دخول كثيرة خاطئة. حاول مرة أخرى بعد 15 دقيقة.' });
-        }
+        if (guard.blocked(req.ip)) return res.status(429).json({ error: tooMany });
         const given = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '');
         const a = Buffer.from(given);
         const b = Buffer.from(expected);
-        if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-            recent.push(now);
-            failures.set(req.ip, recent);
-            return res.status(401).json({ error: 'كلمة مرور الإدارة غير صحيحة' });
+        let user = a.length === b.length && crypto.timingSafeEqual(a, b) ? staff.OWNER : null;
+        if (!user) user = staff.fromToken(db, given);
+        if (!user) {
+            guard.fail(req.ip);
+            return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
         }
-        failures.delete(req.ip);
+        guard.ok(req.ip);
+        req.user = user;
+
+        const rule = staff.sectionsFor(req.method, req.path);
+        const allowed = rule === 'any' || user.role === 'manager'
+            || (Array.isArray(rule) && rule.some((x) => staff.can(user, x)))
+            || (rule === 'settings')                                       // filtered per key in the route
+            || (rule === 'regions' && staff.allowedRegionFields(user, req.body));
+        if (!allowed) return res.status(403).json({ error: 'ليست لديك صلاحية لهذا القسم — راجع المدير العام' });
         next();
     };
 }
@@ -538,8 +558,42 @@ function createApp(db, { agentClient } = {}) {
 
     /* ------------------------- Admin API -------------------------- */
 
+    /* ---- Staff login (the general manager keeps using ADMIN_TOKEN) ---- */
+
+    const loginGuard = makeLoginGuard();
+    app.post('/api/auth/login', (req, res) => {
+        if (loginGuard.blocked(req.ip)) return res.status(429).json({ error: tooMany });
+        const b = req.body || {};
+        const r = staff.login(db, b.username, b.password);
+        if (!r) {
+            loginGuard.fail(req.ip);
+            return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+        }
+        loginGuard.ok(req.ip);
+        res.json(r);
+    });
+    app.post('/api/auth/logout', (req, res) => {
+        staff.logout(db, (req.get('Authorization') || '').replace(/^Bearer\s+/i, ''));
+        res.status(204).end();
+    });
+
     const admin = express.Router();
-    admin.use(makeRequireAdmin());
+    admin.use(makeRequireAdmin(db, loginGuard));
+
+    /* ---- The signed-in user, and staff accounts (managers) ---- */
+
+    admin.get('/me', (req, res) => res.json({ user: req.user, sections: staff.SECTIONS }));
+    admin.post('/me/password', (req, res) => {
+        staff.changeOwnPassword(db, req.user, (req.body || {}).current, (req.body || {}).password);
+        res.json({ ok: true });
+    });
+    admin.get('/users', (req, res) => res.json({
+        users: staff.list(db), sections: staff.SECTIONS, roles: staff.ROLES, scopes: staff.SCOPES,
+        names: getSettings(db).staff_members || []
+    }));
+    admin.post('/users', (req, res) => res.status(201).json(staff.create(db, req.body || {})));
+    admin.put('/users/:id', (req, res) => res.json(staff.update(db, req.params.id, req.body || {})));
+    admin.delete('/users/:id', (req, res) => { staff.remove(db, req.params.id); res.status(204).end(); });
 
     admin.get('/settings', (req, res) => res.json(getSettings(db)));
 
@@ -574,7 +628,9 @@ function createApp(db, { agentClient } = {}) {
         if (req.body.tax_mode !== undefined && !['accounting', 'industrial'].includes(req.body.tax_mode)) {
             throw httpError(400, 'وضع الضريبة غير صالح');
         }
-        const settings = saveSettings(db, req.body || {});
+        const patch = staff.allowedSettings(req.user, req.body || {});
+        if (!Object.keys(patch).length) throw httpError(403, 'ليست لديك صلاحية لتعديل هذه الإعدادات');
+        const settings = saveSettings(db, patch);
         webhooks.emit(db, 'settings.updated', settings);
         res.json(settings);
     });
@@ -697,31 +753,49 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Customer follow-up (WhatsApp, website chat, calculators) ---- */
 
-    // The employee writing (chosen in the panel); becomes the logged-in account with staff permissions
+    // The employee writing: the signed-in account. Only the general manager's ADMIN_TOKEN may name
+    // someone else (X-Staff-Name), e.g. for an integration writing on an employee's behalf.
     const staffName = (req) => {
+        if (!req.user.owner) return req.user.display_name;
         let name = '';
         try { name = decodeURIComponent(String(req.get('X-Staff-Name') || '')); } catch { /* ignore */ }
         return name.trim().slice(0, 80) || 'المدير العام';
     };
+    // Employees limited to their own customers never see (or change) the others'
+    const leadFor = (req, id) => {
+        const data = leads.detail(db, id);
+        if (!staff.seesLead(req.user, data.lead)) throw httpError(404, 'العميل غير موجود');
+        return data;
+    };
+    const assignableStaff = () => [...new Set([
+        ...staff.list(db).filter((u) => u.active && (u.role === 'manager' || u.permissions.includes('leads'))).map((u) => u.display_name),
+        ...(getSettings(db).staff_members || [])
+    ])];
 
     admin.get('/leads', (req, res) => {
         const q = req.query;
         res.json({
             leads: leads.list(db, {
                 status: String(q.status || ''), assigned: String(q.assigned || ''), channel: String(q.channel || ''),
-                q: String(q.q || '').trim().slice(0, 60), open: q.open === '1'
+                q: String(q.q || '').trim().slice(0, 60), open: q.open === '1',
+                mineOf: req.user.leads_scope === 'mine' ? req.user.display_name : null
             }),
             statuses: leads.STATUSES, note_kinds: leads.NOTE_KINDS, channels: leads.CHANNELS,
-            staff: getSettings(db).staff_members || [],
+            staff: assignableStaff(),
+            me: { name: staffName(req), scope: req.user.leads_scope },
             can_reply_whatsapp: mazbot.hasLogin()
         });
     });
 
-    admin.get('/leads/:id', (req, res) => res.json(leads.detail(db, req.params.id)));
+    admin.get('/leads/:id', (req, res) => res.json(leadFor(req, req.params.id)));
 
-    admin.patch('/leads/:id', (req, res) => res.json(leads.update(db, req.params.id, req.body || {}, staffName(req))));
+    admin.patch('/leads/:id', (req, res) => {
+        leadFor(req, req.params.id);
+        res.json(leads.update(db, req.params.id, req.body || {}, staffName(req)));
+    });
 
     admin.post('/leads/:id/notes', (req, res) => {
+        leadFor(req, req.params.id);
         const b = req.body || {};
         leads.addNote(db, req.params.id, { kind: b.kind, text: b.text }, staffName(req));
         res.status(201).json(leads.detail(db, req.params.id));
@@ -729,7 +803,7 @@ function createApp(db, { agentClient } = {}) {
 
     /* An employee answers a WhatsApp customer through MazBot; the AI agent steps back for a while */
     admin.post('/leads/:id/reply', asyncRoute(async (req, res) => {
-        const { lead } = leads.detail(db, req.params.id);
+        const { lead } = leadFor(req, req.params.id);
         const text = String((req.body || {}).text || '').trim().slice(0, 2000);
         if (!text) throw httpError(400, 'اكتب الرسالة');
         if (!lead.phone) throw httpError(400, 'لا يوجد رقم واتساب لهذا العميل');

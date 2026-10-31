@@ -98,9 +98,10 @@ function quoteCreated(db, quote, { key = null, channel = 'calculator' } = {}) {
 
 /* ---- Admin ---- */
 
-function list(db, { status = '', assigned = '', channel = '', q = '', open = false } = {}) {
+function list(db, { status = '', assigned = '', channel = '', q = '', open = false, mineOf = null } = {}) {
     const where = [];
     const args = [];
+    if (mineOf) { where.push("(assigned_to = ? OR IFNULL(assigned_to, '') = '')"); args.push(mineOf); }
     if (status) { where.push('status = ?'); args.push(status); }
     if (open) {
         where.push(`status IN (${OPEN_STATUSES.map(() => '?').join(',')})`);

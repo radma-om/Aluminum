@@ -348,6 +348,27 @@ CREATE TABLE IF NOT EXISTS lead_notes (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Staff accounts (the general manager logs in with ADMIN_TOKEN) and their login sessions
+CREATE TABLE IF NOT EXISTS staff_users (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    username         TEXT NOT NULL UNIQUE,
+    display_name     TEXT NOT NULL,
+    role             TEXT NOT NULL DEFAULT 'staff',
+    permissions_json TEXT NOT NULL DEFAULT '[]',
+    leads_scope      TEXT NOT NULL DEFAULT 'all',
+    password_hash    TEXT NOT NULL,
+    active           INTEGER NOT NULL DEFAULT 1,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    last_login_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS staff_sessions (
+    token_hash  TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES staff_users(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS agent_conversations (
     conversation_key  TEXT PRIMARY KEY,
     channel           TEXT NOT NULL,
