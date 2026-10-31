@@ -99,3 +99,24 @@ test('admin shows a warning when DB_FILE or important keys are missing', async (
     assert.ok(!s.warnings.some((w) => w.level === 'danger'));
     assert.strictEqual((await fetch(base + '/api/admin/system-status')).status, 401);
 });
+
+test('pages link their scripts and styles with the app version, so no browser keeps an old copy after a deploy', async (t) => {
+    const version = require('../package.json').version;
+    const { server, base } = await start();
+    t.after(() => server.close());
+
+    const admin = await (await fetch(base + '/admin')).text();
+    for (const f of ['admin.js', 'admin-crm.js', 'admin-users.js', 'admin-ui.css']) {
+        assert.ok(admin.includes(`"${f}?v=${version}"`), f);
+    }
+    assert.ok(admin.includes('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"'), 'external links untouched');
+    for (const [page, f] of [['/', 'calc-common.js'], ['/overhead', 'calc.css'], ['/motors', 'location.js']]) {
+        assert.ok((await (await fetch(base + page)).text()).includes(`"${f}?v=${version}"`), page);
+    }
+    const js = await fetch(`${base}/admin.js?v=${version}`);
+    assert.strictEqual(js.status, 200);
+    assert.match(js.headers.get('content-type'), /javascript/);
+    assert.match(await js.text(), /async function checkMyAddress/);
+    const page = await fetch(base + '/admin');
+    assert.strictEqual(page.headers.get('x-frame-options'), 'DENY'); // security headers still applied
+});

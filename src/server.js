@@ -1527,11 +1527,22 @@ function createApp(db, { agentClient } = {}) {
     // Pages: the customer calculator is the site's home page (shareable link, no password);
     // the admin panel lives at /admin and asks for the admin password.
     const publicDir = path.join(__dirname, '..', 'public');
-    app.get('/', (req, res) => res.sendFile(path.join(publicDir, 'calculator.html')));
-    app.get(['/overhead', '/overhead/'], (req, res) => res.sendFile(path.join(publicDir, 'overhead.html')));
-    app.get(['/motors', '/motors/'], (req, res) => res.sendFile(path.join(publicDir, 'motors.html')));
-    app.get(['/chat', '/chat/'], (req, res) => res.sendFile(path.join(publicDir, 'chat.html')));
-    app.get(['/admin', '/admin/'], (req, res) => res.sendFile(path.join(publicDir, 'admin.html')));
+    // Pages link their own scripts and styles with the app version (admin.js?v=3.7.2), so after every
+    // deploy each browser — Safari on iPhone included — loads the new files instead of a cached copy
+    const stamped = new Map();
+    const sendPage = (file) => (req, res) => {
+        if (!stamped.has(file)) {
+            const html = fs.readFileSync(path.join(publicDir, file), 'utf8')
+                .replace(/(src|href)="([A-Za-z0-9._-]+\.(?:js|css))"/g, `$1="$2?v=${APP_VERSION}"`);
+            stamped.set(file, html);
+        }
+        res.type('html').send(stamped.get(file));
+    };
+    app.get('/', sendPage('calculator.html'));
+    app.get(['/overhead', '/overhead/'], sendPage('overhead.html'));
+    app.get(['/motors', '/motors/'], sendPage('motors.html'));
+    app.get(['/chat', '/chat/'], sendPage('chat.html'));
+    app.get(['/admin', '/admin/'], sendPage('admin.html'));
     app.get(['/index.html', '/admin.html'], (req, res) => res.redirect(301, '/admin'));
     app.use(express.static(publicDir, { index: false }));
 
