@@ -29,6 +29,7 @@ const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const whatsappCheck = require('./whatsapp-check');
 const trustedProxies = require('./trusted-proxies');
+const { assertPublicUrl, allowPrivate } = require('./safe-url');
 const knowledge = require('./knowledge');
 const { renderQuotePdf } = require('./pdf');
 
@@ -49,10 +50,46 @@ function withPrices(product, settings) {
     };
 }
 
+/* Forget addresses whose last hit is older than the window, so memory does not grow with every
+   address ever seen (checked every minute; the timer never keeps the process alive) */
+function sweepEvery(map, windowMs, lastOf) {
+    const timer = setInterval(() => {
+        const now = Date.now();
+        for (const [key, value] of map) if (now - lastOf(value) >= windowMs) map.delete(key);
+    }, Math.min(windowMs, 60_000));
+    timer.unref();
+}
+
+/* "Talk to a person" from the website chat sends a WhatsApp alert to the sales team.
+   Anyone on the internet can open the chat, so the alerts are capped: one per chat
+   session every 6 hours, and at most 3 per visitor address per day. The request is
+   always recorded on the lead either way, so nothing is lost — only the extra pings. */
+const HUMAN_ALERT_SESSION_MS = 6 * 3600_000;
+const HUMAN_ALERT_IP_DAY = 3;
+function makeHumanAlertGuard() {
+    const bySession = new Map(); // session -> time of last alert
+    const byIp = new Map();      // ip -> [alert times in the last day]
+    sweepEvery(bySession, HUMAN_ALERT_SESSION_MS, (t) => t);
+    sweepEvery(byIp, 24 * 3600_000, (list) => list[list.length - 1] || 0);
+    return {
+        allow(session, ip) {
+            const now = Date.now();
+            const last = bySession.get(session);
+            if (last !== undefined && now - last < HUMAN_ALERT_SESSION_MS) return false;
+            const recent = (byIp.get(ip) || []).filter((t) => now - t < 24 * 3600_000);
+            if (recent.length >= HUMAN_ALERT_IP_DAY) { byIp.set(ip, recent); return false; }
+            recent.push(now); byIp.set(ip, recent); bySession.set(session, now);
+            return true;
+        },
+        size: () => bySession.size + byIp.size
+    };
+}
+
 /* Limits depend only on the trusted client address, never on caller-supplied headers. */
 function rateLimit({ windowMs, max }) {
     const hits = new Map();
-    return (req, res, next) => {
+    sweepEvery(hits, windowMs, (list) => list[list.length - 1] || 0);
+    const limiter = (req, res, next) => {
         const now = Date.now();
         const key = req.ip;
         const recent = (hits.get(key) || []).filter((t) => now - t < windowMs);
@@ -63,6 +100,8 @@ function rateLimit({ windowMs, max }) {
         hits.set(key, recent);
         next();
     };
+    limiter.size = () => hits.size;
+    return limiter;
 }
 
 /* Admin password check. After 10 wrong passwords from one IP in 15 minutes,
@@ -72,8 +111,10 @@ function makeLoginGuard() {
     const WINDOW = 15 * 60_000;
     const MAX_FAILURES = 10;
     const failures = new Map();
+    sweepEvery(failures, WINDOW, (list) => list[list.length - 1] || 0);
     const recent = (ip) => (failures.get(ip) || []).filter((t) => Date.now() - t < WINDOW);
     return {
+        size: () => failures.size,
         blocked: (ip) => recent(ip).length >= MAX_FAILURES,
         fail: (ip) => failures.set(ip, [...recent(ip), Date.now()]),
         ok: (ip) => failures.delete(ip)
@@ -296,8 +337,34 @@ function sendPdf(res, quote, settings) {
     renderQuotePdf(quote, settings, res);
 }
 
+const PAGE_CSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+    "font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'"
+].join('; ');
+
+/* Logs that only matter for a while: webhook delivery log, AI conversation history (a conversation
+   older than its TTL starts afresh anyway) and ended sessions. Business data is never touched. */
+const LOG_RETENTION_DAYS = 90;
+function pruneOldLogs(db) {
+    const days = `-${LOG_RETENTION_DAYS} days`;
+    return {
+        webhook_deliveries: Number(db.prepare("DELETE FROM webhook_deliveries WHERE created_at < datetime('now', ?)").run(days).changes),
+        agent_conversations: Number(db.prepare("DELETE FROM agent_conversations WHERE updated_at < datetime('now', ?)").run(days).changes),
+        staff_sessions: Number(db.prepare("DELETE FROM staff_sessions WHERE expires_at < datetime('now')").run().changes)
+    };
+}
+
 function createApp(db, { agentClient } = {}) {
     const app = express();
+    pruneOldLogs(db);
+    setInterval(() => { try { pruneOldLogs(db); } catch (err) { console.error('[prune]', err.message); } }, 24 * 3600_000).unref();
     // Customer address: only from the proxies listed in TRUSTED_PROXIES (default: none). An invalid
     // value is reported and ignored — the app keeps running (and answering WhatsApp) without trust.
     const proxyConf = trustedProxies.parse(process.env.TRUSTED_PROXIES);
@@ -323,12 +390,16 @@ function createApp(db, { agentClient } = {}) {
         } else if (!/\.(png|jpe?g|webp|gif|svg|ico|woff2?)$/i.test(req.path)) {
             res.setHeader('Cache-Control', 'no-cache');
         }
-        if (customerPages.has(req.path)) {
-            res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${embedOrigins()}`.trim());
-        } else {
-            res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
-            res.setHeader('X-Frame-Options', 'DENY');
-        }
+        // Pages may load scripts / styles / fonts only from here and the two CDNs they use, and talk only to
+        // this server: an injected script could neither load more code nor send data elsewhere.
+        // (Inline scripts stay allowed: the pages are written with them.)
+        const isPage = customerPages.has(req.path) || req.path === '/admin' || req.path === '/admin/' || req.path.endsWith('.html');
+        const framing = customerPages.has(req.path) ? `frame-ancestors 'self' ${embedOrigins()}`.trim() : "frame-ancestors 'none'";
+        res.setHeader('Content-Security-Policy', isPage ? `${PAGE_CSP}; ${framing}` : framing);
+        if (!customerPages.has(req.path)) res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+        // HTTPS only from now on (the browser remembers it for 180 days); only sent over HTTPS
+        if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=15552000');
         next();
     });
 
@@ -511,6 +582,7 @@ function createApp(db, { agentClient } = {}) {
     });
 
     const chatLimit = rateLimit({ windowMs: 10 * 60_000, max: 30 });
+    const humanAlerts = makeHumanAlertGuard();
     const chatQueues = new Map();
     const inSessionOrder = (key, job) => {
         const next = (chatQueues.get(key) || Promise.resolve()).catch(() => {}).then(job);
@@ -536,6 +608,10 @@ function createApp(db, { agentClient } = {}) {
                 createQuote: (q) => saveQuote(db, { ...q, lead_key: leadKey }),
                 notifyHuman: async (summary) => {
                     leads.humanRequested(db, leadKey, summary);
+                    if (!humanAlerts.allow(session, req.ip)) {
+                        console.warn('[chat] human-request alert skipped (limit reached) for', leadKey);
+                        return;
+                    }
                     const alert = `🙋 زائر الموقع يطلب التواصل مع فريق المبيعات\n\n${summary}`;
                     for (const to of mazbot.parseRecipients(settings.mazbot_recipients)) {
                         const r = await mazbot.sendTextToPhone(to, alert);
@@ -658,6 +734,12 @@ function createApp(db, { agentClient } = {}) {
                     'لذلك يظهر كل العملاء بعنوان واحد: تُشترك محاولات الدخول الخاطئة، وتُشترك حدود النماذج العامة. ' +
                     'إذا تأكدت من مزوّد الاستضافة أن هذا العنوان (أو شبكته) هو وكيل الاستضافة فأضفه إلى TRUSTED_PROXIES.'
             });
+        }
+        if (String(process.env.ADMIN_TOKEN || '').length < 20) {
+            warnings.push({ level: 'warning', text: 'كلمة مرور المدير العام (ADMIN_TOKEN) قصيرة — اجعلها 20 حرفاً على الأقل (حروف وأرقام عشوائية) ثم أعد النشر.' });
+        }
+        if (allowPrivate()) {
+            warnings.push({ level: 'danger', text: 'WEBHOOK_ALLOW_PRIVATE_TARGETS=1 مفعّل: الـ Webhooks تستطيع الوصول إلى عناوين الخادم الداخلية. هذا للتجربة فقط — احذفه من متغيرات البيئة.' });
         }
         if (process.env.TRUST_PROXY !== undefined) {
             warnings.push({ level: 'warning', text: 'المتغير TRUST_PROXY لم يعد يُستخدم (كان يثق بأي وكيل). احذفه، واستخدم TRUSTED_PROXIES بعناوين صريحة.' });
@@ -1430,30 +1512,30 @@ function createApp(db, { agentClient } = {}) {
         });
     });
 
-    const parseHook = (b) => {
-        let url;
-        try { url = new URL(b.url); } catch { throw httpError(400, 'الرابط غير صالح'); }
-        if (!['http:', 'https:'].includes(url.protocol)) throw httpError(400, 'يجب أن يبدأ الرابط بـ http أو https');
+    // Webhooks receive every quote with the customer's details: managers only (see staff.sectionsFor),
+    // and only to public internet addresses (src/safe-url.js)
+    const parseHook = async (b) => {
+        const url = await assertPublicUrl(b.url);
         const events = Array.isArray(b.events) ? b.events.join(',') : String(b.events || '*');
         const unknown = events.split(',').map((e) => e.trim()).filter((e) => e !== '*' && !webhooks.EVENTS.includes(e));
         if (unknown.length) throw httpError(400, `أحداث غير معروفة: ${unknown.join(', ')}`);
         return { name: String(b.name || url.host), url: url.toString(), secret: b.secret || null, events, active: b.active === false ? 0 : 1 };
     };
 
-    admin.post('/webhooks', (req, res) => {
-        const h = parseHook(req.body || {});
+    admin.post('/webhooks', asyncRoute(async (req, res) => {
+        const h = await parseHook(req.body || {});
         const info = db.prepare('INSERT INTO webhooks (name, url, secret, events, active) VALUES (?, ?, ?, ?, ?)')
             .run(h.name, h.url, h.secret, h.events, h.active);
         res.status(201).json(db.prepare('SELECT * FROM webhooks WHERE id = ?').get(info.lastInsertRowid));
-    });
+    }));
 
-    admin.put('/webhooks/:id', (req, res) => {
-        const h = parseHook(req.body || {});
+    admin.put('/webhooks/:id', asyncRoute(async (req, res) => {
+        const h = await parseHook(req.body || {});
         const info = db.prepare('UPDATE webhooks SET name = ?, url = ?, secret = ?, events = ?, active = ? WHERE id = ?')
             .run(h.name, h.url, h.secret, h.events, h.active, Number(req.params.id));
         if (!info.changes) throw httpError(404, 'الـ Webhook غير موجود');
         res.json(db.prepare('SELECT * FROM webhooks WHERE id = ?').get(Number(req.params.id)));
-    });
+    }));
 
     admin.delete('/webhooks/:id', (req, res) => {
         db.prepare('DELETE FROM webhooks WHERE id = ?').run(Number(req.params.id));
@@ -1578,4 +1660,4 @@ const projectRoot = path.join(__dirname, '..');
 const loadedByOutsideRunner = !require.main || !require.main.filename.startsWith(projectRoot + path.sep);
 if (require.main === module || loadedByOutsideRunner) start();
 
-module.exports = { createApp, saveQuote, start };
+module.exports = { createApp, saveQuote, start, rateLimit, makeLoginGuard, makeHumanAlertGuard, pruneOldLogs, LOG_RETENTION_DAYS };

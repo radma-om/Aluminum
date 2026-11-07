@@ -193,7 +193,8 @@ function sectionsFor(method, path) {
         [/^\/overhead(\/|$)/, ['overhead']],
         [/^\/motors(\/|$)/, ['motors']],
         [/^\/(agent|knowledge)(\/|$)/, ['agent']],
-        [/^\/(mazbot|webhooks|whatsapp)(\/|$)/, ['integrations']]
+        [/^\/(mazbot|whatsapp)(\/|$)/, ['integrations']]
+        // /webhooks: managers only (falls through) — every quote with the customer's details goes to them
     ];
     for (const [re, rule] of rules) if (re.test(p)) return rule;
     return 'manager'; // users, backups, restore and anything new
@@ -205,7 +206,9 @@ const SETTING_SECTIONS = {
     vat_percent: 'pricing', tax_mode: 'pricing', slat_thicknesses: 'pricing',
     agent_knowledge: 'agent', agent_instructions: 'agent',
     motors_profit_percent: 'motors',
-    staff_members: 'manager'
+    staff_members: 'manager',
+    // Where customers and sales alerts are sent: an employee changing these could divert both to their own number
+    company_whatsapp: 'manager', mazbot_recipients: 'manager', public_base_url: 'manager'
 };
 function allowedSettings(user, body) {
     const out = {};

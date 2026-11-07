@@ -46,7 +46,7 @@ test('only the customer pages can be framed, and only by the allowed sites', asy
 
     for (const path of ['/admin', '/api/admin/settings', '/api/public/configurator']) {
         const res = await fetch(base + path);
-        assert.strictEqual(res.headers.get('content-security-policy'), "frame-ancestors 'none'", path);
+        assert.match(res.headers.get('content-security-policy'), /(^|; )frame-ancestors 'none'$/, path);
         assert.strictEqual(res.headers.get('x-frame-options'), 'DENY', path);
     }
 });
