@@ -566,6 +566,17 @@
         .ts-secret { direction: ltr; text-align: center; font-family: monospace; font-size: 0.95rem; letter-spacing: 1px;
             background: var(--bg); border-radius: 8px; padding: 8px; margin-bottom: 12px; user-select: all; word-break: break-all; }
         .two-step-card .btn + .btn { margin-top: 8px; }
+        /* Phones: each row becomes a card, every value with its column name (no hidden columns off-screen) */
+        @media (max-width: 700px) {
+            .stack-table thead { display: none; }
+            .stack-table, .stack-table tbody, .stack-table tr, .stack-table td { display: block; width: 100%; }
+            .stack-table tr { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; padding: 6px 4px; background: #fff; }
+            .stack-table td { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border: none; padding: 6px 10px; text-align: left; direction: rtl; }
+            .stack-table td::before { content: attr(data-label); font-weight: 600; color: var(--text-light); text-align: right; flex-shrink: 0; }
+            .stack-table td[data-label=""]::before { content: none; }
+            .stack-table td[data-label=""] { justify-content: flex-start; flex-wrap: wrap; }
+            .stack-table .audit-details { max-width: none; }
+        }
         .audit-details { font-size: 0.82rem; line-height: 1.7; max-width: 520px; }
         .audit-details .chg { display: block; }
         .audit-details .old { color: var(--danger); text-decoration: line-through; }
@@ -773,7 +784,7 @@
                     <label class="status-text">إلى <input type="date" id="auditTo"></label>
                     <button class="btn btn-primary btn-sm" onclick="loadAudit()">بحث</button>
                 </div>
-                <div class="table-wrapper"><table>
+                <div class="table-wrapper"><table class="stack-table">
                     <thead><tr><th>الوقت</th><th>الحساب</th><th>الإجراء</th><th>التفاصيل</th><th>العنوان</th></tr></thead>
                     <tbody id="auditBody"></tbody>
                 </table></div>
@@ -786,7 +797,7 @@
             <div class="card">
                 <div class="card-title"><span class="icon"><i class="fas fa-user-shield"></i></span> حسابات الموظفين وصلاحياتهم</div>
                 <p class="status-text" style="margin:0 0 12px">كل موظف يدخل باسم المستخدم وكلمة المرور الخاصة به، ويرى فقط الأقسام المختارة له، ويُكتب اسمه تلقائياً على تقارير المتابعة والرسائل. «المدير» يرى كل شيء ويدير الحسابات، والتحقق بخطوتين إلزامي له. المدير العام يدخل بكلمة مرور الإدارة (ADMIN_TOKEN)، ويُنصح أن ينشئ لنفسه حساب «مدير» ويجعل ADMIN_TOKEN للطوارئ فقط.</p>
-                <div class="table-wrapper"><table>
+                <div class="table-wrapper"><table class="stack-table">
                     <thead><tr><th>الموظف</th><th>اسم المستخدم</th><th>الدور</th><th>الأقسام</th><th>متابعة العملاء</th><th>التحقق بخطوتين</th><th>الحالة</th><th>آخر دخول</th><th></th></tr></thead>
                     <tbody id="usersBody"></tbody>
                 </table></div>
