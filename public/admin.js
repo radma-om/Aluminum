@@ -1056,7 +1056,7 @@ async function afterRestore(r) {
         return location.reload();
     }
     applySettings(await api('GET', '/api/admin/settings'));
-    await Promise.all([loadProducts(), loadPurchases(), loadHooks()]);
+    await Promise.all([loadProducts(), loadPurchases(), loadHooks()]); // afterRestore: managers only
     await Promise.all([loadDoors(), loadBackups()]);
     setStatus('backupStatus', `تمت الاستعادة ✓ (${total} سجل)`, 'ok');
 }
@@ -1582,7 +1582,8 @@ async function initAdmin() {
     const jobs = [];
     if (canSee('products') || canSee('purchases')) jobs.push(loadProducts());
     if (canSee('purchases')) jobs.push(loadPurchases());
-    if (canSee('integrations')) jobs.push(loadHooks(), loadMazbotStatus());
+    if (canSee('integrations')) jobs.push(loadMazbotStatus());
+    if (ME.role === 'manager') jobs.push(loadHooks());
     if (canSee('agent')) jobs.push(loadAgentStatus());
     await Promise.all(jobs);
     document.dispatchEvent(new Event('admin-ready'));
@@ -1596,6 +1597,12 @@ function applyPermissions() {
         b.hidden = tab === 'users' ? !manager : !canSee(tab);
     });
     document.querySelectorAll('.manager-only').forEach((el) => { el.hidden = !manager; });
+    // Where customers and sales alerts go: only managers change them (the server ignores them from staff)
+    for (const id of ['companyWhatsapp', 'publicBaseUrl', 'mazbotRecipients']) {
+        const el = $id(id);
+        el.disabled = !manager;
+        el.title = manager ? '' : 'يغيّره المدير فقط';
+    }
     document.querySelectorAll('.sidebar .nav-group').forEach((g) => {
         let el = g.nextElementSibling;
         let any = false;

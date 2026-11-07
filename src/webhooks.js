@@ -2,6 +2,7 @@
    Outgoing webhooks — notify n8n / Make / Zapier / any HTTP endpoint
    ============================================================= */
 const crypto = require('node:crypto');
+const { assertPublicUrl } = require('./safe-url');
 
 const EVENTS = [
     'quote.created',
@@ -33,14 +34,18 @@ async function deliver(db, hook, event, body) {
     let statusCode = null;
     let error = null;
     try {
+        // Re-checked at every delivery (a domain can be re-pointed to an internal address after it was saved)
+        await assertPublicUrl(hook.url);
         const res = await fetch(hook.url, {
             method: 'POST',
             headers,
             body,
+            redirect: 'manual', // a redirect could lead to an internal address: never followed
             signal: AbortSignal.timeout(10_000)
         });
         statusCode = res.status;
-        if (!res.ok) error = `HTTP ${res.status}`;
+        if (res.status >= 300 && res.status < 400) error = `HTTP ${res.status}: إعادة توجيه — لا تُتبع لأسباب أمنية، استخدم الرابط النهائي`;
+        else if (!res.ok) error = `HTTP ${res.status}`;
     } catch (err) {
         error = err.message;
     }

@@ -93,6 +93,8 @@ test('public catalog hides costs and private products; quote is priced on the se
 });
 
 test('webhook receives signed quote.created event', async (t) => {
+    process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS = '1'; // the test receiver runs on 127.0.0.1
+    t.after(() => { delete process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS; });
     const { server, call } = await start();
     const received = [];
     const sink = http.createServer((req, res) => {
