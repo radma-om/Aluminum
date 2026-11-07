@@ -27,6 +27,7 @@ const mazbot = require('./mazbot');
 const backup = require('./backup');
 const offsite = require('./offsite');
 const mailer = require('./mailer');
+const alerts = require('./alerts');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const audit = require('./audit');
@@ -340,6 +341,8 @@ async function notifySales(db, quote) {
     const { sent, total, results } = await mazbot.sendToAll(recipients, values, calculator);
     const status = sent === total ? `تم الإرسال ${sent}/${total}` : `فشل ${total - sent}/${total}: ${results.find((r) => !r.ok).error}`.slice(0, 300);
     db.prepare('UPDATE quotes SET notify_status = ? WHERE id = ?').run(status, quote.id);
+    if (sent === total) alerts.ok(db, 'mazbot_sales');
+    else alerts.fail(db, 'mazbot_sales', `عرض ${quote.ref}: ${status}`);
     return status;
 }
 
@@ -378,6 +381,7 @@ function pruneOldLogs(db) {
         agent_conversations: Number(db.prepare("DELETE FROM agent_conversations WHERE updated_at < datetime('now', ?)").run(days).changes),
         staff_sessions: Number(db.prepare("DELETE FROM staff_sessions WHERE expires_at < datetime('now')").run().changes),
         audit_log: audit.prune(db), // 365 days
+        system_alerts: alerts.prune(db),
         password_resets: Number(db.prepare("DELETE FROM password_resets WHERE expires_at < datetime('now', '-1 day')").run().changes),
         offsite_backups: Number(db.prepare("DELETE FROM offsite_backups WHERE at < datetime('now', ?)").run(days).changes)
     };
@@ -738,7 +742,7 @@ function createApp(db, { agentClient } = {}) {
                 'إذا كان التحقق بخطوتين مفعّلاً لحسابك فسيبقى مطلوباً عند الدخول.',
                 'إذا لم تطلب ذلك فتجاهل هذه الرسالة — كلمة مرورك الحالية لا تتغير، وأبلغ المدير.'
             ].join('\n')
-        }).catch((err) => console.error('[password-reset] email', err.message));
+        }).then(() => alerts.ok(db, 'mail')).catch((err) => { console.error('[password-reset] email', err.message); alerts.fail(db, 'mail', err); });
     });
 
     app.post('/api/auth/reset', resetLimit, (req, res) => {
@@ -846,6 +850,9 @@ function createApp(db, { agentClient } = {}) {
         }
         if (mailer.isConfigured() && !String(getSettings(db).public_base_url || '').trim()) {
             warnings.push({ level: 'warning', text: 'البريد مضبوط، لكن «الرابط العام للنظام» فارغ في تبويب الربط، فروابط استعادة كلمة المرور لا تُرسل. اكتب فيه رابط النظام (مثل https://calcshutter.radma.co) ثم احفظ.' });
+        }
+        for (const a of alerts.list(db).filter((x) => x.alerting)) {
+            warnings.push({ level: 'danger', text: `عطل قائم: ${a.label} — فشل ${a.fail_count} مرات، آخرها ${a.last_failed_at} UTC: ${a.last_error}` });
         }
         const offsiteWarning = offsite.warning(db);
         if (offsiteWarning) warnings.push(offsiteWarning);
@@ -1462,6 +1469,16 @@ function createApp(db, { agentClient } = {}) {
     }));
 
     admin.get('/backups', (req, res) => res.json(backup.listBackups()));
+
+    /* Failure alerts (managers): what is failing now, and a test email */
+    admin.get('/alerts', (req, res) => res.json(alerts.status(db)));
+    admin.post('/alerts/test', asyncRoute(async (req, res) => {
+        try {
+            res.json(await alerts.sendTest(db));
+        } catch (err) {
+            throw httpError(err.status || 502, err.status ? err.message : 'لم تُرسل رسالة التجربة: ' + err.message);
+        }
+    }));
 
     /* A copy outside the server, by email (status, and "send now" to test the settings) */
     admin.get('/offsite-backup', (req, res) => res.json(offsite.status(db)));

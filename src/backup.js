@@ -218,7 +218,9 @@ function scheduleDailyBackups(db) {
     const run = () => {
         const last = listBackups().find((b) => b.kind === 'auto');
         if (last && Date.now() - Date.parse(last.created_at) < 23 * 3600_000) return;
-        saveBackup(db, 'auto').catch((err) => console.error('[backup]', err.message));
+        saveBackup(db, 'auto')
+            .then(() => require('./alerts').ok(db, 'backup_local'))
+            .catch((err) => { console.error('[backup]', err.message); require('./alerts').fail(db, 'backup_local', err); });
     };
     run();
     setInterval(run, 3600_000).unref();

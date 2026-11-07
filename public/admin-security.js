@@ -236,3 +236,44 @@ async function submitReset() {
         setStatus('resetStatus', err.message, 'err');
     }
 }
+
+/* ---------------------------- Failure alerts ---------------------------- */
+
+async function loadAlerts() {
+    if (!ME || ME.role !== 'manager') return;
+    const s = await api('GET', '/api/admin/alerts');
+    $id('alertsTest').hidden = !s.email_ready;
+    $id('alertsBox').innerHTML = s.email_ready
+        ? `✓ <strong>مفعّل:</strong> التنبيهات تصل إلى <span dir="ltr">${esc(s.recipients.join(', '))}</span>`
+        : s.mail_configured
+            ? '⚠️ البريد مضبوط لكن لا يوجد من يستقبل التنبيهات: أضف <code dir="ltr">ALERT_EMAIL_TO</code> (أو <code dir="ltr">BACKUP_EMAIL_TO</code>) في متغيرات البيئة.'
+            : '⚠️ <strong>غير مفعّل:</strong> اضبط البريد (متغيرات <code dir="ltr">SMTP_…</code>) لتصلك التنبيهات. الأعطال تظهر هنا وفي أعلى اللوحة في كل الأحوال.';
+    const rows = s.alerts;
+    $id('alertsTableWrap').hidden = !rows.length;
+    $id('alertsBody').innerHTML = rows.map((a) => `
+        <tr>
+            <td data-label="الجزء"><strong>${esc(a.label)}</strong></td>
+            <td data-label="الحالة">${a.state === 'ok'
+                ? '<span class="badge on">يعمل</span>'
+                : a.alerting ? `<span class="badge" style="background:#fdecea;color:#a93226">عطل — ${esc(a.fail_count)} مرات</span>`
+                    : `<span class="badge lme">فشل ${esc(a.fail_count)} (يُنبَّه عند ${esc(a.threshold)})</span>`}</td>
+            <td data-label="آخر خطأ" style="white-space:normal; word-break:break-word; max-width:460px"><small>${esc(a.last_error || '—')}</small>${a.alerting && a.hint ? `<br><small class="status-text">${esc(a.hint)}</small>` : ''}</td>
+            <td data-label="الوقت"><small>${esc(a.state === 'ok' ? (a.resolved_at ? 'عاد ' + auditTime(a.resolved_at) : '') : auditTime(a.last_failed_at))}</small></td>
+        </tr>`).join('');
+}
+
+async function sendAlertTest() {
+    setStatus('alertsStatus', 'جاري الإرسال...');
+    try {
+        const r = await api('POST', '/api/admin/alerts/test');
+        setStatus('alertsStatus', `أُرسلت ✓ إلى ${r.to.join(', ')} — افحص البريد (ومجلد الرسائل غير المرغوبة)`, 'ok');
+    } catch (err) {
+        setStatus('alertsStatus', err.message, 'err');
+    }
+}
+
+const switchTabBeforeAlerts = window.switchTab;
+window.switchTab = function (tabId) {
+    switchTabBeforeAlerts(tabId);
+    if (online && tabId === 'integrations' && ME && ME.role === 'manager') loadAlerts().catch((err) => setStatus('alertsStatus', err.message, 'err'));
+};

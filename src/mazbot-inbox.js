@@ -9,6 +9,7 @@ const { getSettings } = require('./db');
 const agent = require('./agent');
 const mazbot = require('./mazbot');
 const leads = require('./leads');
+const alerts = require('./alerts');
 
 const PAUSE_HOURS = 12; // after "talk to a person", the agent stays quiet for this customer
 
@@ -87,7 +88,11 @@ async function reply(db, eventId, event, { phone, contact, saveQuote, notifySale
         const r = await mazbot.sendText(contact.id, msg);
         sends.push({ receiver_id: contact.id, ok: r.ok, status: r.status, response: r.body === undefined ? null : r.body, error: r.ok ? null : r.error });
         db.prepare('UPDATE inbound_events SET reply_json = ? WHERE id = ?').run(JSON.stringify(sends).slice(0, 4000), eventId);
-        if (!r.ok) throw new Error('send: ' + r.error);
+        if (!r.ok) {
+            alerts.fail(db, 'mazbot_reply', r.error);
+            throw new Error('send: ' + r.error);
+        }
+        alerts.ok(db, 'mazbot_reply');
     };
     try {
         if (!text) {

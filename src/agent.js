@@ -9,6 +9,7 @@ const doors = require('./doors');
 const overhead = require('./overhead');
 const motors = require('./motors');
 const knowledge = require('./knowledge');
+const alerts = require('./alerts');
 
 /* Which AI runs the agent: AI_PROVIDER=openai|anthropic, or whichever API key is set */
 const hasAnthropicKey = () => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
@@ -520,10 +521,13 @@ const maskSecrets = (msg) => String(msg || '').replace(/(sk|key|token)[-_A-Za-z0
 
 async function chat(opts) {
     try {
-        return await runChat(opts);
+        const result = await runChat(opts);
+        if (opts.db) alerts.ok(opts.db, 'ai');
+        return result;
     } catch (err) {
         lastError = { at: new Date().toISOString(), channel: opts.channel, provider: provider(), model: modelName(), message: maskSecrets(err.message) };
         console.error('[agent]', opts.channel, lastError.message);
+        if (opts.db) alerts.fail(opts.db, 'ai', `${lastError.provider} — ${lastError.model}: ${lastError.message}`);
         throw err;
     }
 }

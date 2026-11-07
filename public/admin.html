@@ -1706,6 +1706,19 @@
         <!-- ==================== TAB 6: Integrations ==================== -->
         <div id="tab-integrations" class="tab-content">
             <div class="card manager-only">
+                <div class="card-title"><span class="icon"><i class="fas fa-bell"></i></span> تنبيهات الأعطال</div>
+                <p class="status-text" style="margin:0 0 10px">عندما يتكرر فشل جزء من النظام تصلك رسالة بريد بما حدث وماذا تفعل، ثم رسالة «عاد للعمل» عند إصلاحه. فشل واحد عابر لا يُرسل تنبيهاً. الأجزاء المراقبة: المساعد الذكي، ردود MazBot، تنبيهات الطلبات للمبيعات، واتساب المباشر، Webhooks، النسخ الاحتياطي، البريد.</p>
+                <div id="alertsBox" class="status-text" style="line-height:1.9">…</div>
+                <div class="table-wrapper" id="alertsTableWrap" hidden><table class="stack-table">
+                    <thead><tr><th>الجزء</th><th>الحالة</th><th>آخر خطأ</th><th>الوقت</th></tr></thead>
+                    <tbody id="alertsBody"></tbody>
+                </table></div>
+                <div class="form-buttons">
+                    <button class="btn btn-outline btn-sm" id="alertsTest" onclick="sendAlertTest()">أرسل تنبيهاً تجريبياً</button>
+                    <span id="alertsStatus" class="status-text"></span>
+                </div>
+            </div>
+            <div class="card manager-only">
                 <div class="card-title"><span class="icon"><i class="fas fa-location-crosshairs"></i></span> عنوانك كما يراه النظام (فحص إعداد الوكيل)</div>
                 <p class="status-text" style="margin:0 0 10px">يتأكد أن TRUSTED_PROXIES مضبوط بشكل صحيح وآمن: يعرض عنوانك الحقيقي، ثم يرسل طلباً بعنوان مزيّف ليتأكد أن النظام لا ينخدع به. افتح هذه الصفحة من جهازين على شبكتين مختلفتين (مثلاً الجوال ببيانات الهاتف، والكمبيوتر على شبكة المكتب) وقارن.</p>
                 <div class="db-actions" style="margin-top:0">

@@ -3,6 +3,7 @@
    ============================================================= */
 const crypto = require('node:crypto');
 const { assertPublicUrl } = require('./safe-url');
+const alerts = require('./alerts');
 
 const EVENTS = [
     'quote.created',
@@ -52,6 +53,8 @@ async function deliver(db, hook, event, body) {
     db.prepare(`INSERT INTO webhook_deliveries (webhook_id, event, status_code, ok, error)
                 VALUES (?, ?, ?, ?, ?)`)
         .run(hook.id, event, statusCode, error ? 0 : 1, error);
+    if (error) alerts.fail(db, `webhook:${hook.id}`, error, { label: hook.name || hook.url });
+    else alerts.ok(db, `webhook:${hook.id}`);
     return { ok: !error, status_code: statusCode, error };
 }
 

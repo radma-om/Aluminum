@@ -49,6 +49,7 @@ const LABELS = [
     ['POST', /^\/webhooks$/, 'إضافة Webhook'], ['PUT', /^\/webhooks\/\d+$/, 'تعديل Webhook'], ['DELETE', /^\/webhooks\/\d+$/, 'حذف Webhook'], ['POST', /^\/webhooks\/\d+\/test$/, 'تجربة Webhook'],
     ['POST', /^\/restore$/, 'استعادة نسخة احتياطية من ملف'], ['POST', /^\/backups\/[^/]+\/restore$/, 'استعادة نسخة احتياطية محفوظة'],
     ['POST', /^\/offsite-backup$/, 'إرسال نسخة احتياطية بالبريد'],
+    ['POST', /^\/alerts\/test$/, 'إرسال تنبيه أعطال تجريبي'],
     ['GET', /^\/backup\.xlsx$/, 'تنزيل نسخة احتياطية'], ['GET', /^\/backups\/[^/]+\.xlsx$/, 'تنزيل نسخة احتياطية محفوظة'],
     ['POST', /^\/me\/password$/, 'تغيير كلمة المرور'],
     ['POST', /^\/me\/2fa\/enable$/, 'تفعيل التحقق بخطوتين'], ['POST', /^\/me\/2fa\/disable$/, 'إيقاف التحقق بخطوتين']

@@ -14,6 +14,7 @@
    ============================================================= */
 const backup = require('./backup');
 const mailer = require('./mailer');
+const alerts = require('./alerts');
 
 const MAX_BYTES = 20 * 1024 * 1024; // most mail servers refuse larger attachments
 const DAY_MS = 24 * 3600_000;
@@ -62,11 +63,13 @@ async function sendBackup(db, { reason = 'daily' } = {}) {
             attachments: [{ filename: file, content, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }]
         });
         logAttempt(db, { file, bytes, ok: true, reason });
+        alerts.ok(db, 'backup_offsite');
         return { ok: true, file, bytes, to: c.to };
     } catch (err) {
         // The mail server's answer, without the password (nodemailer never includes it)
         const error = String(err && err.message || err).slice(0, 300);
         logAttempt(db, { file, bytes, ok: false, error, reason });
+        alerts.fail(db, 'backup_offsite', error);
         console.error('[offsite-backup]', error);
         return { ok: false, error };
     }
