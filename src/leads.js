@@ -26,6 +26,25 @@ const err = (status, message) => Object.assign(new Error(message), { status });
 const clip = (s, n) => String(s ?? '').trim().slice(0, n);
 const now = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 
+/* Today's date in Oman (follow-up dates are local dates) */
+const localToday = (nowMs = Date.now()) => new Date(nowMs + 4 * 3600_000).toISOString().slice(0, 10);
+const markStaff = (db, leadId) => db.prepare('UPDATE leads SET last_staff_at = ? WHERE id = ?').run(now(), leadId);
+
+/* Why an open customer needs following up now, or null:
+   - 'due' / 'overdue': the follow-up date is today / has passed;
+   - 'stale': no date planned and no employee follow-up for staleDays days. */
+function attentionOf(lead, { staleDays = 3, today = localToday() } = {}) {
+    if (!OPEN_STATUSES.includes(lead.status)) return null;
+    if (lead.next_follow_up) {
+        if (lead.next_follow_up > today) return null; // planned: not forgotten
+        return { reason: lead.next_follow_up < today ? 'overdue' : 'due', date: lead.next_follow_up };
+    }
+    const since = String(lead.last_staff_at || lead.created_at || '').slice(0, 10);
+    if (!since) return null;
+    const days = Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(since + 'T00:00:00Z')) / 86400000);
+    return days >= Math.max(1, Number(staleDays) || 3) ? { reason: 'stale', days, since } : null;
+}
+
 const phoneKey = (phone) => {
     const digits = String(phone || '').replace(/\D/g, '');
     return digits ? 'tel:' + digits : null;
@@ -98,7 +117,7 @@ function quoteCreated(db, quote, { key = null, channel = 'calculator' } = {}) {
 
 /* ---- Admin ---- */
 
-function list(db, { status = '', assigned = '', channel = '', q = '', open = false, mineOf = null } = {}) {
+function list(db, { status = '', assigned = '', channel = '', q = '', open = false, mineOf = null, attention = false, staleDays = 3 } = {}) {
     const where = [];
     const args = [];
     if (mineOf) { where.push("(assigned_to = ? OR IFNULL(assigned_to, '') = '')"); args.push(mineOf); }
@@ -118,7 +137,17 @@ function list(db, { status = '', assigned = '', channel = '', q = '', open = fal
             (SELECT COUNT(*) FROM quotes WHERE l.phone IS NOT NULL AND customer_phone = l.phone) AS quote_count,
             (SELECT text FROM lead_notes WHERE lead_id = l.id ORDER BY id DESC LIMIT 1) AS last_note
         FROM leads l ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-        ORDER BY CASE status WHEN 'needs_staff' THEN 0 WHEN 'new' THEN 1 ELSE 2 END, last_activity_at DESC LIMIT 300`).all(...args);
+        ORDER BY CASE status WHEN 'needs_staff' THEN 0 WHEN 'new' THEN 1 ELSE 2 END, last_activity_at DESC LIMIT ${attention ? 2000 : 300}`).all(...args)
+        .map((l) => ({ ...l, attention: attentionOf(l, { staleDays }) }))
+        .filter((l) => !attention || l.attention)
+        .slice(0, 300);
+}
+
+/* Open customers that need following up now (for reminders and the weekly report) */
+function needingAttention(db, { staleDays = 3, today = localToday() } = {}) {
+    return db.prepare(`SELECT * FROM leads WHERE status IN (${OPEN_STATUSES.map(() => '?').join(',')})`).all(...OPEN_STATUSES)
+        .map((l) => ({ ...l, attention: attentionOf(l, { staleDays, today }) }))
+        .filter((l) => l.attention);
 }
 
 function detail(db, id) {
@@ -153,6 +182,7 @@ function update(db, id, patch, author) {
     if (patch.name !== undefined) set.name = clip(patch.name, 120) || null;
     if (!Object.keys(set).length) return detail(db, lead.id);
     db.prepare(`UPDATE leads SET ${Object.keys(set).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(set), lead.id);
+    if (author && ['status', 'assigned_to', 'next_follow_up'].some((k) => k in set && set[k] !== lead[k])) markStaff(db, lead.id);
     if ('assigned_to' in set && set.assigned_to !== lead.assigned_to) {
         const text = set.assigned_to
             ? `${lead.assigned_to ? `تم تحويل المتابعة من ${lead.assigned_to} إلى ${set.assigned_to}` : `تم إسناد المتابعة إلى ${set.assigned_to}`}`
@@ -174,12 +204,14 @@ function addNote(db, leadId, { kind, text }, author, { system = false } = {}) {
     db.prepare('INSERT INTO lead_notes (lead_id, kind, author, text, created_at) VALUES (?, ?, ?, ?, ?)')
         .run(lead.id, k, clip(author, 80) || (system ? 'النظام' : null), body, now());
     db.prepare('UPDATE leads SET last_activity_at = ? WHERE id = ?').run(now(), lead.id);
+    if (author || !system) markStaff(db, lead.id);
 }
 
 function staffMessage(db, leadId, text, author) {
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(Number(leadId));
     if (!lead) throw err(404, 'العميل غير موجود');
     addMessage(db, lead, 'staff', text, { author: clip(author, 80) || null });
+    markStaff(db, lead.id);
     if (['new', 'needs_staff'].includes(lead.status)) db.prepare("UPDATE leads SET status = 'following' WHERE id = ?").run(lead.id);
     return lead;
 }
@@ -203,7 +235,7 @@ function backfill(db) {
 }
 
 module.exports = {
-    STATUSES, OPEN_STATUSES, NOTE_KINDS, CHANNELS, phoneKey,
+    STATUSES, OPEN_STATUSES, NOTE_KINDS, CHANNELS, phoneKey, attentionOf, needingAttention, localToday,
     touch, customerMessage, assistantMessage, humanRequested, quoteCreated,
     list, detail, update, addNote, staffMessage, backfill
 };

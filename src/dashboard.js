@@ -4,6 +4,7 @@
    All over one period (last N days) compared with the period before.
    ============================================================= */
 const leads = require('./leads');
+const { getSettings } = require('./db');
 
 const CALCULATORS = { rolling_shutter: 'رولينج شتر', overhead: 'أوفرهيد', motors: 'مكائن البوابات', other: 'أخرى' };
 const SOURCES = { web: 'الحاسبات', mazbot: 'واتساب', whatsapp: 'واتساب', website: 'دردشة الموقع', admin: 'لوحة الإدارة' };
@@ -71,7 +72,8 @@ function build(db, { days = 30 } = {}) {
             new_customers: { value: newLeads(day(start)), previous: newLeads(day(prevStart), day(start)) },
             open_leads: { value: open.length },
             needs_staff: { value: open.filter((l) => l.status === 'needs_staff').length },
-            due_follow_ups: { value: open.filter((l) => l.next_follow_up && l.next_follow_up <= todayStr).length },
+            // Due or overdue dates, and open customers nobody followed up for a while
+            due_follow_ups: { value: leads.needingAttention(db, { staleDays: getSettings(db).follow_up_stale_days }).length },
             unassigned: { value: open.filter((l) => !l.assigned_to).length }
         },
         per_day: perDay,

@@ -16,6 +16,8 @@ const DEFAULT_SETTINGS = {
     sqm_to_linear: 13,       // 1 م² = 13 متر طولي من الشرائح
     // Employees who follow customers (names); they become accounts with permissions later
     staff_members: [],
+    follow_up_stale_days: 3,     // عميل مفتوح بلا متابعة من موظف لهذه المدة يظهر في «بحاجة متابعة»
+    follow_up_emails: true,      // بريد يومي لكل موظف بعملائه المستحقين + تقرير أسبوعي للمديرين
     // Slat thicknesses of the in-house calculators (pricing and weight tabs): details, mm, kg per meter
     slat_thicknesses: [
         { details: 'شريحة نابكو 1.1 ملم', thickness: 1.1, weight: 0.63 },
@@ -407,6 +409,13 @@ CREATE TABLE IF NOT EXISTS system_alerts (
     resolved_at      TEXT
 );
 
+-- Jobs that run once a day / week (follow-up reminders, weekly report): the last day they ran
+CREATE TABLE IF NOT EXISTS scheduled_runs (
+    name      TEXT PRIMARY KEY,
+    last_key  TEXT,
+    at        TEXT
+);
+
 -- Copies of the daily backup sent outside the server (by email)
 CREATE TABLE IF NOT EXISTS offsite_backups (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -546,6 +555,14 @@ function migrate(db) {
     addColumns('staff_users', { totp_secret: 'TEXT', totp_pending: 'TEXT', totp_last_step: 'INTEGER NOT NULL DEFAULT 0' });
     // Email for password-reset links (set by a manager)
     addColumns('staff_users', { email: 'TEXT' });
+    // Last time an employee followed the customer up (report, reply, status / date / employee change)
+    const hadStaffAt = db.prepare('PRAGMA table_info(leads)').all().some((c) => c.name === 'last_staff_at');
+    addColumns('leads', { last_staff_at: 'TEXT' });
+    if (!hadStaffAt) {
+        db.exec(`UPDATE leads SET last_staff_at = (SELECT MAX(t) FROM (
+                     SELECT MAX(created_at) AS t FROM lead_notes WHERE lead_id = leads.id
+                     UNION ALL SELECT MAX(created_at) FROM lead_messages WHERE lead_id = leads.id AND role = 'staff'))`);
+    }
 }
 
 /* "~/radma-data/aluminum.db" → the account's home folder. On shared hosting this keeps the
@@ -636,6 +653,9 @@ function saveSettings(db, patch) {
             : numeric ? Number(patch[key]) : String(patch[key]);
         if (numeric && !Number.isFinite(value)) {
             throw badValue(`قيمة غير صالحة للحقل ${key}`);
+        }
+        if (key === 'follow_up_stale_days' && !(Number.isInteger(value) && value >= 1 && value <= 60)) {
+            throw badValue('مدة «بلا متابعة» يجب أن تكون عدد أيام من 1 إلى 60');
         }
         upsert.run(key, JSON.stringify(value));
     }
