@@ -393,6 +393,20 @@ CREATE TABLE IF NOT EXISTS password_resets (
     ip          TEXT
 );
 
+-- Failure alerts: one row per part of the system (or per webhook), open faults and recent recoveries
+CREATE TABLE IF NOT EXISTS system_alerts (
+    key              TEXT PRIMARY KEY,
+    label            TEXT NOT NULL,
+    state            TEXT NOT NULL DEFAULT 'ok',
+    fail_count       INTEGER NOT NULL DEFAULT 0,
+    window_start     TEXT,
+    first_failed_at  TEXT,
+    last_failed_at   TEXT,
+    last_error       TEXT,
+    notified_at      TEXT,
+    resolved_at      TEXT
+);
+
 -- Copies of the daily backup sent outside the server (by email)
 CREATE TABLE IF NOT EXISTS offsite_backups (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

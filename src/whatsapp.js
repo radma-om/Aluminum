@@ -108,6 +108,9 @@ async function notifyQuote(db, quote) {
         .then(() => sendQuotePdf(db, quote.customer_phone, quote)));
     const results = await Promise.allSettled(jobs);
     for (const r of results) if (r.status === 'rejected') console.error('[whatsapp]', r.reason.message);
+    const failed = results.find((r) => r.status === 'rejected');
+    if (failed) require('./alerts').fail(db, 'whatsapp', failed.reason.message);
+    else require('./alerts').ok(db, 'whatsapp');
 }
 
 function menuText(settings) {
