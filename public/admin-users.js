@@ -26,6 +26,7 @@ function renderUsers() {
             <td class="perm-badges">${u.role === 'manager' ? '<span class="pill">كل الأقسام</span>'
                 : u.permissions.map((p) => `<span class="pill">${esc(usersData.sections[p] || p)}</span>`).join(' ')}</td>
             <td>${u.permissions.includes('leads') ? esc(u.leads_scope === 'mine' ? 'عملاؤه فقط' : 'كل العملاء') : '—'}</td>
+            <td>${u.totp_enabled ? '<span class="badge on">مفعّل</span>' : u.role === 'manager' ? '<span class="badge lme">يُطلب عند الدخول</span>' : '<span class="badge">غير مفعّل</span>'}</td>
             <td>${u.active ? '<span class="badge on">مفعّل</span>' : '<span class="badge">موقوف</span>'}</td>
             <td><small>${u.last_login_at ? esc(new Date(u.last_login_at.replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' })) : 'لم يدخل بعد'}</small></td>
             <td style="white-space:nowrap">
@@ -42,6 +43,8 @@ function resetUserForm() {
     $id('uPassword').value = '';
     $id('uRole').value = 'staff';
     $id('uActive').checked = true;
+    $id('uReset2fa').checked = false;
+    $id('uReset2faRow').hidden = true;
     document.querySelectorAll('#uPerms input').forEach((c) => { c.checked = c.value === 'leads'; });
     document.querySelector('input[name="uScope"][value="all"]').checked = true;
     $id('userFormTitle').textContent = 'إضافة موظف';
@@ -53,6 +56,7 @@ function resetUserForm() {
 
 function userRoleChanged() {
     $id('uPermsBox').hidden = $id('uRole').value === 'manager';
+    $id('uManagerNote').hidden = $id('uRole').value !== 'manager';
 }
 
 function editUser(id) {
@@ -64,6 +68,8 @@ function editUser(id) {
     $id('uPassword').value = '';
     $id('uRole').value = u.role;
     $id('uActive').checked = u.active;
+    $id('uReset2fa').checked = false;
+    $id('uReset2faRow').hidden = !u.totp_enabled;
     document.querySelectorAll('#uPerms input').forEach((c) => { c.checked = u.permissions.includes(c.value); });
     document.querySelector(`input[name="uScope"][value="${u.leads_scope}"]`).checked = true;
     $id('userFormTitle').textContent = 'تعديل: ' + u.display_name;
@@ -84,6 +90,10 @@ async function saveUser() {
         active: $id('uActive').checked
     };
     if ($id('uPassword').value) body.password = $id('uPassword').value;
+    if (id && $id('uReset2fa').checked) {
+        if (!confirm('إعادة ضبط التحقق بخطوتين لهذا الحساب؟ يخرج من كل الأجهزة، ويضبطه من جديد بجواله عند الدخول.')) return;
+        body.reset_2fa = true;
+    }
     try {
         await api(id ? 'PUT' : 'POST', id ? `/api/admin/users/${id}` : '/api/admin/users', body);
         const created = !id;

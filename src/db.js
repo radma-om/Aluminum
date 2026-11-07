@@ -369,6 +369,31 @@ CREATE TABLE IF NOT EXISTS staff_sessions (
     expires_at  TEXT NOT NULL
 );
 
+-- Who changed what in the admin panel (kept 365 days); details_json = before/after or the request
+CREATE TABLE IF NOT EXISTS audit_log (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    at            TEXT NOT NULL DEFAULT (datetime('now')),
+    user_id       INTEGER,
+    actor         TEXT NOT NULL,
+    ip            TEXT,
+    action        TEXT NOT NULL,
+    method        TEXT,
+    path          TEXT,
+    details_json  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
+
+-- Copies of the daily backup sent outside the server (by email)
+CREATE TABLE IF NOT EXISTS offsite_backups (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    at          TEXT NOT NULL DEFAULT (datetime('now')),
+    file        TEXT,
+    bytes       INTEGER,
+    ok          INTEGER NOT NULL,
+    error       TEXT,
+    reason      TEXT
+);
+
 CREATE TABLE IF NOT EXISTS agent_conversations (
     conversation_key  TEXT PRIMARY KEY,
     channel           TEXT NOT NULL,
@@ -493,6 +518,8 @@ function migrate(db) {
     addColumns('inbound_events', { reply_json: 'TEXT' });
     // Gate motors: sections added in the admin, and a profit % per item
     addColumns('motor_items', { section_id: 'INTEGER', profit_percent: 'REAL' });
+    // Two-step sign-in: the confirmed secret, one waiting for its first code, and the last code step used
+    addColumns('staff_users', { totp_secret: 'TEXT', totp_pending: 'TEXT', totp_last_step: 'INTEGER NOT NULL DEFAULT 0' });
 }
 
 /* "~/radma-data/aluminum.db" → the account's home folder. On shared hosting this keeps the

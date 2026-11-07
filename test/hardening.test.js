@@ -145,7 +145,9 @@ test('logs older than 90 days are removed; business data never is', () => {
     const conv = db.prepare("INSERT INTO agent_conversations (conversation_key, channel, messages_json, updated_at) VALUES (?, 'mazbot', '[]', datetime('now', ?))");
     conv.run('old', '-100 days'); conv.run('new', '-1 days');
     db.prepare("INSERT INTO leads (contact_key, created_at, last_activity_at) VALUES ('tel:1', datetime('now', '-400 days'), datetime('now', '-400 days'))").run();
-    assert.deepEqual(pruneOldLogs(db), { webhook_deliveries: 2, agent_conversations: 1, staff_sessions: 0 });
+    db.prepare("INSERT INTO audit_log (actor, action, at) VALUES ('x', 'old', datetime('now', '-400 days')), ('x', 'new', datetime('now', '-300 days'))").run();
+    assert.deepEqual(pruneOldLogs(db), { webhook_deliveries: 2, agent_conversations: 1, staff_sessions: 0, audit_log: 1, offsite_backups: 0 });
+    assert.equal(db.prepare('SELECT action FROM audit_log').get().action, 'new'); // the activity log is kept a year
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM webhook_deliveries').get().n, 1);
     assert.equal(db.prepare("SELECT conversation_key FROM agent_conversations").get().conversation_key, 'new');
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM leads').get().n, 1); // customers are kept

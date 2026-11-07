@@ -10,6 +10,7 @@ const { createApp, saveQuote } = require('../src/server');
 const { exportWorkbook, restoreWorkbook } = require('../src/backup');
 const leads = require('../src/leads');
 const staff = require('../src/staff');
+const { codeFor } = require('./two-step-helper');
 
 process.env.ADMIN_TOKEN = 'test-token';
 process.env.BACKUP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'radma-backup-staff-'));
@@ -27,7 +28,7 @@ async function start(db = openDatabase(':memory:')) {
         return { status: res.status, body: ct.includes('json') ? await res.json() : Buffer.from(await res.arrayBuffer()) };
     };
     const login = async (username, password) => {
-        const r = await call('POST', '/api/auth/login', { username, password }, null);
+        const r = await call('POST', '/api/auth/login', { username, password, code: codeFor(db, username) }, null);
         assert.strictEqual(r.status, 200, JSON.stringify(r.body));
         return r.body.token;
     };

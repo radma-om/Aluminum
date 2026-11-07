@@ -11,6 +11,7 @@
      server, so hiding a tab is never the only protection.
    ============================================================= */
 const crypto = require('node:crypto');
+const totp = require('./totp');
 
 const SECTIONS = {
     dashboard: 'لوحة المؤشرات',
@@ -61,7 +62,10 @@ const toUser = (row) => (row ? {
     id: row.id, username: row.username, display_name: row.display_name, role: row.role,
     permissions: row.role === 'manager' ? Object.keys(SECTIONS) : JSON.parse(row.permissions_json || '[]').filter((s) => SECTIONS[s]),
     leads_scope: row.role === 'manager' ? 'all' : (SCOPES[row.leads_scope] ? row.leads_scope : 'all'),
-    active: Boolean(row.active), created_at: row.created_at, last_login_at: row.last_login_at
+    active: Boolean(row.active), created_at: row.created_at, last_login_at: row.last_login_at,
+    totp_enabled: Boolean(row.totp_secret),
+    // Managers must turn on two-step sign-in before they can use the panel
+    must_setup_2fa: row.role === 'manager' && !row.totp_secret
 } : null);
 
 const list = (db) => db.prepare('SELECT * FROM staff_users ORDER BY active DESC, display_name').all().map(toUser);
@@ -115,8 +119,10 @@ function update(db, id, input) {
         db.prepare(`UPDATE staff_users SET username = ?, display_name = ?, role = ?, permissions_json = ?, leads_scope = ?, active = ? WHERE id = ?`)
             .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, existing.id);
         if (hash) db.prepare('UPDATE staff_users SET password_hash = ? WHERE id = ?').run(hash, existing.id);
-        // New permissions apply at once; a deactivated account or a new password signs out everywhere
-        if (!u.active || hash) db.prepare('DELETE FROM staff_sessions WHERE user_id = ?').run(existing.id);
+        // Lost phone: the manager turns two-step sign-in off; it is set up again at the next sign-in
+        if (input.reset_2fa) db.prepare('UPDATE staff_users SET totp_secret = NULL, totp_pending = NULL WHERE id = ?').run(existing.id);
+        // New permissions apply at once; a deactivated account, a new password or a 2FA reset signs out everywhere
+        if (!u.active || hash || input.reset_2fa) db.prepare('DELETE FROM staff_sessions WHERE user_id = ?').run(existing.id);
     });
     return toUser(db.prepare('SELECT * FROM staff_users WHERE id = ?').get(existing.id));
 }
@@ -143,12 +149,21 @@ function changeOwnPassword(db, user, current, next) {
 
 /* ------------------------------ Sessions ------------------------------ */
 
-function login(db, username, password) {
+/* Password, then (when turned on) the 6-digit code.
+   Returns { token, user }, { need_code: true } (password right, code still needed),
+   { bad_code: true }, or null (wrong username or password). */
+function login(db, username, password, code) {
     const row = db.prepare('SELECT * FROM staff_users WHERE username = ?').get(String(username || '').trim().toLowerCase());
     // Same work and the same answer whether or not the user exists
     const ok = row ? checkPassword(password, row.password_hash) : (checkPassword(password, hashPassword('x')), false);
     if (!ok) return null;
     if (!row.active) throw err(403, 'هذا الحساب موقوف — راجع المدير العام');
+    if (row.totp_secret) {
+        if (!String(code || '').trim()) return { need_code: true };
+        const step = totp.verify(row.totp_secret, code, { lastStep: row.totp_last_step });
+        if (step === null) return { bad_code: true, user_id: row.id };
+        db.prepare('UPDATE staff_users SET totp_last_step = ? WHERE id = ?').run(step, row.id);
+    }
     const token = crypto.randomBytes(32).toString('base64url');
     db.prepare(`INSERT INTO staff_sessions (token_hash, user_id, expires_at) VALUES (?, ?, datetime('now', '+${SESSION_DAYS} days'))`)
         .run(sha256(token), row.id);
@@ -167,6 +182,45 @@ function fromToken(db, token) {
     db.prepare(`UPDATE staff_sessions SET expires_at = datetime('now', '+${SESSION_DAYS} days') WHERE token_hash = ?`).run(hash);
     return toUser(row);
 }
+
+/* ------------------------------ Two-step sign-in ------------------------------ */
+
+const ISSUER = 'Radma';
+
+/* A new secret waits (totp_pending) until the first code from the phone confirms it */
+function setup2fa(db, user) {
+    if (!user.id) throw err(400, 'المدير العام (ADMIN_TOKEN) لا يستخدم التحقق بخطوتين — أنشئ لنفسك حساب «مدير» من «المستخدمون والصلاحيات»');
+    const secret = totp.generateSecret();
+    db.prepare('UPDATE staff_users SET totp_pending = ? WHERE id = ?').run(secret, user.id);
+    const uri = totp.otpauthUri({ issuer: ISSUER, account: user.username, secret });
+    return { secret: secret.replace(/(.{4})/g, '$1 ').trim(), uri, qr_svg: totp.qrSvg(uri) };
+}
+
+/* The first code proves the phone has the secret. Other devices sign out (this one stays). */
+function enable2fa(db, user, code, keepTokenHash) {
+    const row = user.id && db.prepare('SELECT * FROM staff_users WHERE id = ?').get(user.id);
+    if (!row || !row.totp_pending) throw err(400, 'ابدأ بالضغط على «تفعيل التحقق بخطوتين» لعرض رمز QR');
+    const step = totp.verify(row.totp_pending, code);
+    if (step === null) throw err(400, 'الرمز غير صحيح — اكتب الرمز الظاهر الآن في التطبيق (6 أرقام)، وتأكد أن وقت الجوال تلقائي');
+    tx(db, () => {
+        db.prepare('UPDATE staff_users SET totp_secret = totp_pending, totp_pending = NULL, totp_last_step = ? WHERE id = ?').run(step, row.id);
+        db.prepare('DELETE FROM staff_sessions WHERE user_id = ? AND token_hash != ?').run(row.id, keepTokenHash || '');
+    });
+    return toUser(db.prepare('SELECT * FROM staff_users WHERE id = ?').get(row.id));
+}
+
+/* Employees may turn it off with their password; for managers it is required */
+function disable2fa(db, user, password) {
+    const row = user.id && db.prepare('SELECT * FROM staff_users WHERE id = ?').get(user.id);
+    if (!row) throw err(400, 'هذا الإجراء لحسابات الموظفين');
+    if (row.role === 'manager') throw err(400, 'التحقق بخطوتين إلزامي لحسابات المديرين ولا يمكن إيقافه');
+    if (!checkPassword(password, row.password_hash)) throw err(400, 'كلمة المرور غير صحيحة');
+    db.prepare('UPDATE staff_users SET totp_secret = NULL, totp_pending = NULL WHERE id = ?').run(row.id);
+    return toUser(db.prepare('SELECT * FROM staff_users WHERE id = ?').get(row.id));
+}
+
+/* Routes a manager who has not set up two-step sign-in yet may still use */
+const SETUP_2FA_PATHS = new Set(['/me', '/me/2fa/setup', '/me/2fa/enable', '/me/password']);
 
 const logout = (db, token) => db.prepare('DELETE FROM staff_sessions WHERE token_hash = ?').run(sha256(String(token || '')));
 
@@ -240,6 +294,7 @@ function seesQuote(db, user, quote) {
 }
 
 module.exports = {
+    setup2fa, enable2fa, disable2fa, SETUP_2FA_PATHS, sha256,
     SECTIONS, ROLES, SCOPES, OWNER, hashPassword, checkPassword, list, create, update, remove, changeOwnPassword,
     login, fromToken, logout, can, sectionsFor, allowedSettings, allowedRegionFields, seesLead, seesQuote
 };

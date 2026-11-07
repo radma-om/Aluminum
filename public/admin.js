@@ -71,6 +71,10 @@ async function api(method, url, body) {
         setStatus('loginStatus', data.error || '');
         throw new Error(data.error || 'غير مصرح');
     }
+    if (res.status === 403) {
+        const data = await res.clone().json().catch(() => ({}));
+        if (data.need_2fa_setup) { openTwoStep(true); throw new Error(data.error); }
+    }
     if (res.status === 204) return null;
     const ct = res.headers.get('content-type') || '';
     const data = ct.includes('json') ? await res.json() : await res.text();
@@ -85,21 +89,31 @@ async function logout() {
     location.reload();
 }
 
-/* Employee: username + password → session token. General manager: password only (ADMIN_TOKEN). */
+/* Employee: username + password (+ the 6-digit code when two-step sign-in is on) → session token.
+   General manager: password only (ADMIN_TOKEN). */
 async function login() {
     const username = $id('loginUser').value.trim();
     const password = $id('adminToken').value;
+    const code = $id('loginCode').value.replace(/\s/g, '');
     let token = password.trim();
     if (username) {
         const res = await fetch('/api/auth/login', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password, code })
         });
         const data = await res.json().catch(() => ({}));
+        if (data.need_code) {
+            // Password accepted: ask for the code from the phone
+            $id('loginCode').hidden = false;
+            $id('loginCode').value = '';
+            setTimeout(() => $id('loginCode').focus(), 0);
+        }
         if (!res.ok) return setStatus('loginStatus', data.error || 'تعذر الدخول');
         token = data.token;
     }
     try { localStorage.setItem('adminToken', token); } catch { /* ignore */ }
     $id('adminToken').value = '';
+    $id('loginCode').value = '';
+    $id('loginCode').hidden = true;
     try {
         await initAdmin();
         $id('loginBar').hidden = true;
@@ -1034,6 +1048,7 @@ async function loadBackups() {
                 <button class="btn btn-outline btn-sm" onclick="restoreSaved('${esc(b.name)}')">استعادة</button>
             </td>
         </tr>`).join('') || '<tr><td colspan="5">لا توجد نسخ محفوظة بعد.</td></tr>';
+    loadOffsite().catch((err) => { $id('offsiteBox').textContent = err.message; });
 }
 
 async function downloadSaved(name) {
@@ -1574,6 +1589,12 @@ async function loadSystemStatus() {
 
 async function initAdmin() {
     ME = (await api('GET', '/api/admin/me')).user;
+    if (ME.must_setup_2fa) {
+        // Manager accounts: nothing else until two-step sign-in is on (the server refuses the rest)
+        $id('meName').textContent = ME.display_name;
+        openTwoStep(true);
+        return;
+    }
     applyPermissions();
     applySettings(await api('GET', '/api/admin/settings'));
     online = true;
@@ -1594,7 +1615,7 @@ function applyPermissions() {
     const manager = ME.role === 'manager';
     document.querySelectorAll('.sidebar .tab-btn[data-tab]').forEach((b) => {
         const tab = b.dataset.tab;
-        b.hidden = tab === 'users' ? !manager : !canSee(tab);
+        b.hidden = tab === 'users' || tab === 'audit' ? !manager : !canSee(tab);
     });
     document.querySelectorAll('.manager-only').forEach((el) => { el.hidden = !manager; });
     // Where customers and sales alerts go: only managers change them (the server ignores them from staff)
@@ -1612,6 +1633,9 @@ function applyPermissions() {
     $id('meName').textContent = ME.display_name;
     $id('meRole').textContent = ME.owner ? 'المدير العام' : ME.role === 'manager' ? 'مدير' : 'موظف';
     $id('mePwd').hidden = Boolean(ME.owner);
+    $id('me2fa').hidden = Boolean(ME.owner);
+    $id('me2fa').style.color = ME.totp_enabled ? 'var(--success)' : '';
+    $id('me2fa').title = ME.totp_enabled ? 'التحقق بخطوتين مفعّل' : 'تفعيل التحقق بخطوتين';
     const active = document.querySelector('.sidebar .tab-btn.active');
     if (!active || active.hidden) {
         const first = document.querySelector('.sidebar .tab-btn[data-tab]:not([hidden])');

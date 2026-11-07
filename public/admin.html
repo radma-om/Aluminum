@@ -559,6 +559,18 @@
         .login-card input:focus { outline: none; border-color: var(--primary-light); }
         .login-card .btn { width: 100%; padding: 12px; font-size: 1rem; justify-content: center; }
         .login-card .status-text { display: block; margin-top: 10px; color: var(--danger); }
+        .two-step-card { max-width: 440px; text-align: right; }
+        .two-step-card ol { margin: 0 20px 12px 0; padding: 0; font-size: 0.9rem; line-height: 1.9; }
+        .ts-qr { width: 200px; height: 200px; margin: 6px auto 10px; background: #fff; }
+        .ts-qr svg { width: 100%; height: 100%; }
+        .ts-secret { direction: ltr; text-align: center; font-family: monospace; font-size: 0.95rem; letter-spacing: 1px;
+            background: var(--bg); border-radius: 8px; padding: 8px; margin-bottom: 12px; user-select: all; word-break: break-all; }
+        .two-step-card .btn + .btn { margin-top: 8px; }
+        .audit-details { font-size: 0.82rem; line-height: 1.7; max-width: 520px; }
+        .audit-details .chg { display: block; }
+        .audit-details .old { color: var(--danger); text-decoration: line-through; }
+        .audit-details .new { color: var(--success); font-weight: 600; }
+        .audit-details pre { white-space: pre-wrap; word-break: break-word; direction: ltr; text-align: left; margin: 0; font-size: 0.78rem; }
         .filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
         .filter-row select { padding: 8px 12px; border: 2px solid var(--border); border-radius: 8px; font-family: inherit; }
         .badge {
@@ -638,6 +650,7 @@
             <button class="tab-btn" data-tab="agent" onclick="switchTab('agent')" title="المساعد الذكي"><i class="fas fa-robot"></i><span class="t-label">المساعد الذكي</span></button>
             <button class="tab-btn" data-tab="integrations" onclick="switchTab('integrations')" title="الربط"><i class="fas fa-plug"></i><span class="t-label">الربط</span></button>
             <button class="tab-btn" data-tab="users" onclick="switchTab('users')" title="المستخدمون والصلاحيات" hidden><i class="fas fa-user-shield"></i><span class="t-label">المستخدمون والصلاحيات</span></button>
+            <button class="tab-btn" data-tab="audit" onclick="switchTab('audit')" title="سجل النشاط" hidden><i class="fas fa-clock-rotate-left"></i><span class="t-label">سجل النشاط</span></button>
         </nav>
         <button type="button" class="sb-fold" onclick="toggleSidebar()" title="طي القائمة / فتحها">
             <i class="fas fa-angles-right"></i><span class="t-label">طي القائمة</span>
@@ -655,6 +668,7 @@
                 <span id="meName">—</span>
                 <span class="role" id="meRole"></span>
                 <button type="button" id="mePwd" onclick="changeMyPassword()" title="تغيير كلمة المرور" hidden><i class="fas fa-key"></i></button>
+                <button type="button" id="me2fa" onclick="openTwoStep()" title="التحقق بخطوتين" hidden><i class="fas fa-shield-halved"></i></button>
             </div>
             <button class="logout-btn" onclick="logout()" title="تسجيل الخروج"><i class="fas fa-right-from-bracket"></i> <span class="t-out">خروج</span></button>
         </div>
@@ -748,12 +762,32 @@
         </div>
 
         <!-- ==================== Staff accounts (managers) ==================== -->
+        <div id="tab-audit" class="tab-content">
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-clock-rotate-left"></i></span> سجل النشاط — من غيّر ماذا ومتى</div>
+                <p class="status-text" style="margin:0 0 12px">كل تعديل في لوحة الإدارة يُسجَّل باسم الحساب ووقته وعنوانه: الأسعار ونسب الربح والإعدادات والمنتجات والحسابات والنسخ الاحتياطية، مع القيمة قبل التعديل وبعده. ويُسجَّل الدخول ومحاولات الدخول الفاشلة. كلمات المرور والأسرار لا تُحفظ أبداً. يُحتفظ بالسجل سنة كاملة.</p>
+                <div class="filter-row">
+                    <input type="search" id="auditQ" placeholder="بحث: منتج، ولاية، LME، اسم..." style="flex:1; min-width:180px; padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-family:inherit">
+                    <input type="text" id="auditUser" placeholder="الحساب" style="width:140px; padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-family:inherit">
+                    <label class="status-text">من <input type="date" id="auditFrom"></label>
+                    <label class="status-text">إلى <input type="date" id="auditTo"></label>
+                    <button class="btn btn-primary btn-sm" onclick="loadAudit()">بحث</button>
+                </div>
+                <div class="table-wrapper"><table>
+                    <thead><tr><th>الوقت</th><th>الحساب</th><th>الإجراء</th><th>التفاصيل</th><th>العنوان</th></tr></thead>
+                    <tbody id="auditBody"></tbody>
+                </table></div>
+                <div class="form-buttons"><button class="btn btn-outline btn-sm" id="auditMore" onclick="loadAudit(true)" hidden>عرض المزيد</button>
+                    <span id="auditStatus" class="status-text"></span></div>
+            </div>
+        </div>
+
         <div id="tab-users" class="tab-content">
             <div class="card">
                 <div class="card-title"><span class="icon"><i class="fas fa-user-shield"></i></span> حسابات الموظفين وصلاحياتهم</div>
-                <p class="status-text" style="margin:0 0 12px">كل موظف يدخل باسم المستخدم وكلمة المرور الخاصة به، ويرى فقط الأقسام المختارة له، ويُكتب اسمه تلقائياً على تقارير المتابعة والرسائل. «المدير» يرى كل شيء ويدير الحسابات. المدير العام يدخل بكلمة مرور الإدارة (ADMIN_TOKEN) كما هو.</p>
+                <p class="status-text" style="margin:0 0 12px">كل موظف يدخل باسم المستخدم وكلمة المرور الخاصة به، ويرى فقط الأقسام المختارة له، ويُكتب اسمه تلقائياً على تقارير المتابعة والرسائل. «المدير» يرى كل شيء ويدير الحسابات، والتحقق بخطوتين إلزامي له. المدير العام يدخل بكلمة مرور الإدارة (ADMIN_TOKEN)، ويُنصح أن ينشئ لنفسه حساب «مدير» ويجعل ADMIN_TOKEN للطوارئ فقط.</p>
                 <div class="table-wrapper"><table>
-                    <thead><tr><th>الموظف</th><th>اسم المستخدم</th><th>الدور</th><th>الأقسام</th><th>متابعة العملاء</th><th>الحالة</th><th>آخر دخول</th><th></th></tr></thead>
+                    <thead><tr><th>الموظف</th><th>اسم المستخدم</th><th>الدور</th><th>الأقسام</th><th>متابعة العملاء</th><th>التحقق بخطوتين</th><th>الحالة</th><th>آخر دخول</th><th></th></tr></thead>
                     <tbody id="usersBody"></tbody>
                 </table></div>
                 <div id="usersEmpty" class="empty-message" hidden>لا توجد حسابات موظفين بعد — أضف أول موظف من النموذج أدناه.</div>
@@ -778,7 +812,9 @@
                         <label><input type="radio" name="uScope" value="mine"> عملاؤه فقط (ومن لم يُسند لأحد بعد)</label>
                     </div>
                 </div>
-                <div class="check-row"><label><input type="checkbox" id="uActive" checked> الحساب مفعّل</label></div>
+                <div class="check-row"><label><input type="checkbox" id="uActive" checked> الحساب مفعّل</label>
+                    <label id="uReset2faRow" hidden><input type="checkbox" id="uReset2fa"> إعادة ضبط التحقق بخطوتين (فقد جواله) — يضبطه من جديد عند الدخول</label></div>
+                <p class="status-text" id="uManagerNote" hidden>حساب «مدير» يُطلب منه تفعيل التحقق بخطوتين (رمز من تطبيق على الجوال) عند أول دخول، ولا يستطيع استخدام اللوحة قبل ذلك.</p>
                 <div class="form-buttons">
                     <button class="btn btn-primary" id="uSave" onclick="saveUser()">إضافة الموظف</button>
                     <button class="btn btn-outline" onclick="resetUserForm()">جديد</button>
@@ -1267,6 +1303,12 @@
                         <input type="file" id="restoreFile" accept=".xlsx" hidden onchange="restoreFromFile(this)">
                     </label>
                     <span id="backupStatus" class="status-text"></span>
+                </div>
+                <p class="sub-heading">نسخة خارج الخادم (بالبريد) <span class="status-text">— إذا فُقد حساب الاستضافة تبقى نسختك في بريدك</span></p>
+                <div id="offsiteBox" class="status-text" style="line-height:1.9">…</div>
+                <div class="form-buttons" style="margin-top:6px">
+                    <button class="btn btn-outline btn-sm" id="offsiteSend" onclick="sendOffsiteNow()">أرسل نسخة الآن</button>
+                    <span id="offsiteStatus" class="status-text"></span>
                 </div>
                 <p class="sub-heading">النسخ المحفوظة على الخادم <span class="status-text">— نسخة تلقائية كل يوم (آخر 14 يوماً)، ونسخة تلقائية قبل كل استعادة</span></p>
                 <div class="table-wrapper"><table>
@@ -1846,8 +1888,37 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
             <p>الموظفون: اسم المستخدم وكلمة المرور.<br>المدير العام: كلمة مرور الإدارة فقط.</p>
             <input type="text" id="loginUser" placeholder="اسم المستخدم (اتركه فارغاً للمدير العام)" autocomplete="username" autocapitalize="none" spellcheck="false" dir="ltr">
             <input type="password" id="adminToken" placeholder="كلمة المرور" autocomplete="current-password" required>
+            <input type="text" id="loginCode" placeholder="رمز التحقق من التطبيق (6 أرقام)" inputmode="numeric" autocomplete="one-time-code" maxlength="7" dir="ltr" hidden>
             <button class="btn btn-primary" type="submit">دخول</button>
             <span id="loginStatus" class="status-text"></span>
+        </form>
+    </div>
+
+    <!-- Two-step sign-in setup (required for manager accounts) -->
+    <div id="twoStepBar" class="login-bar" hidden>
+        <form class="login-card two-step-card" onsubmit="event.preventDefault(); confirmTwoStep();">
+            <h2><i class="fas fa-shield-halved"></i> التحقق بخطوتين</h2>
+            <p id="tsIntro">عند الدخول يُطلب، مع كلمة المرور، رمز من 6 أرقام يظهر في تطبيق على جوالك ويتغير كل 30 ثانية. حتى لو عرف أحد كلمة المرور لا يستطيع الدخول بدون جوالك.</p>
+            <div id="tsSetup">
+                <ol>
+                    <li>ثبّت على جوالك تطبيق <strong>Google Authenticator</strong> أو <strong>Microsoft Authenticator</strong>.</li>
+                    <li>في التطبيق اضغط «+» ثم «مسح رمز QR»، وامسح الرمز التالي:</li>
+                </ol>
+                <div class="ts-qr" id="tsQr"></div>
+                <p style="margin-bottom:4px">لا تستطيع المسح؟ أدخل هذا المفتاح يدوياً في التطبيق:</p>
+                <div class="ts-secret" id="tsSecret"></div>
+                <ol start="3"><li>اكتب الرمز الظاهر الآن في التطبيق:</li></ol>
+                <input type="text" id="tsCode" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" maxlength="7" dir="ltr">
+                <button class="btn btn-primary" type="submit">تأكيد وتفعيل</button>
+            </div>
+            <div id="tsEnabled" hidden>
+                <p style="color:var(--success); font-weight:700">✓ التحقق بخطوتين مفعّل لحسابك.</p>
+                <button class="btn btn-outline" type="button" onclick="startTwoStep()">نقله إلى جوال جديد</button>
+                <button class="btn btn-outline" type="button" id="tsDisable" onclick="disableTwoStep()">إيقاف التحقق بخطوتين</button>
+            </div>
+            <button class="btn btn-outline" type="button" id="tsClose" onclick="closeTwoStep()">إغلاق</button>
+            <button class="btn btn-outline" type="button" id="tsLogout" onclick="logout()" hidden>تسجيل الخروج</button>
+            <span id="tsStatus" class="status-text"></span>
         </form>
     </div>
 
@@ -2358,5 +2429,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin.js"></script>
     <script src="admin-crm.js"></script>
     <script src="admin-users.js"></script>
+    <script src="admin-security.js"></script>
 </body>
 </html>

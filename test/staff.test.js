@@ -4,6 +4,7 @@ const http = require('node:http');
 const { openDatabase } = require('../src/db');
 const { createApp, saveQuote } = require('../src/server');
 const leads = require('../src/leads');
+const { codeFor } = require('./two-step-helper');
 
 process.env.ADMIN_TOKEN = 'test-token';
 
@@ -24,7 +25,7 @@ async function start() {
         return { status: res.status, body: data };
     };
     const login = async (username, password) => {
-        const r = await call('POST', '/api/auth/login', { username, password }, null);
+        const r = await call('POST', '/api/auth/login', { username, password, code: codeFor(db, username) }, null);
         assert.strictEqual(r.status, 200, JSON.stringify(r.body));
         return r.body.token;
     };
