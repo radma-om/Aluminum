@@ -27,6 +27,8 @@ const TABLES = [
     ['quotes', 'عروض الأسعار'],
     ['invoices', 'الفواتير'],
     ['payments', 'الدفعات'],
+    ['work_orders', 'أوامر العمل'],
+    ['work_order_events', 'سجل أوامر العمل'],
     ['webhooks', 'Webhooks'],
     ['shutter_types', 'أنواع البوابات'],
     ['shutter_variants', 'السماكات'],
@@ -48,10 +50,10 @@ const TABLES = [
 ];
 /* Sheets added after the first backups: an older file without them keeps the current data */
 const OPTIONAL = new Set(['overhead_sizes', 'overhead_motors', 'knowledge_items', 'motor_sections', 'motor_items', 'motor_extra_fees',
-    'staff_users', 'leads', 'lead_messages', 'lead_notes', 'invoices', 'payments']);
+    'staff_users', 'leads', 'lead_messages', 'lead_notes', 'invoices', 'payments', 'work_orders', 'work_order_events']);
 /* Restored together or not at all (a customer without its messages, or messages of another
    backup's customers, would be inconsistent) */
-const GROUPS = [['leads', 'lead_messages', 'lead_notes'], ['invoices', 'payments']];
+const GROUPS = [['leads', 'lead_messages', 'lead_notes'], ['invoices', 'payments'], ['work_orders', 'work_order_events']];
 const INFO_SHEET = 'معلومات';
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
 
@@ -158,7 +160,7 @@ async function restoreWorkbook(db, buffer) {
             require('./motors').linkItems(db);
             const broken = db.prepare('PRAGMA foreign_key_check').all();
             if (broken.length) throw err400(`بيانات غير مترابطة في الملف (مثلاً ${broken[0].table} يشير إلى سجل غير موجود في ${broken[0].parent})`);
-            const badRole = data.staff_users && db.prepare("SELECT username FROM staff_users WHERE role NOT IN ('staff', 'manager') OR password_hash NOT LIKE 'scrypt$%'").get();
+            const badRole = data.staff_users && db.prepare("SELECT username FROM staff_users WHERE role NOT IN ('staff', 'manager', 'technician') OR password_hash NOT LIKE 'scrypt$%'").get();
             if (badRole) throw err400(`حساب «${badRole.username}» في الملف غير صالح (الدور أو تجزئة كلمة المرور)`);
             db.exec('COMMIT');
         } catch (err) {

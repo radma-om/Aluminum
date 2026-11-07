@@ -1656,7 +1656,8 @@ function applyPermissions() {
         g.hidden = !any;
     });
     $id('meName').textContent = ME.display_name;
-    $id('meRole').textContent = ME.owner ? 'المدير العام' : ME.role === 'manager' ? 'مدير' : 'موظف';
+    $id('meRole').textContent = ME.owner ? 'المدير العام' : ME.role === 'manager' ? 'مدير' : ME.role === 'technician' ? 'فني' : 'موظف';
+    document.querySelectorAll('.office-only').forEach((el) => { el.hidden = ME.role === 'technician'; });
     $id('mePwd').hidden = Boolean(ME.owner);
     $id('me2fa').hidden = Boolean(ME.owner);
     $id('me2fa').style.color = ME.totp_enabled ? 'var(--success)' : '';

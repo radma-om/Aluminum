@@ -135,6 +135,7 @@ function showInvoice(inv) {
             <button class="btn btn-outline btn-sm" onclick="copyInvoiceLink()">نسخ رابط العميل</button>
             <a class="btn btn-outline btn-sm" href="${esc(wa)}" target="_blank" rel="noopener">إرسال عبر واتساب</a>
             ${inv.state !== 'cancelled' ? `<button class="btn btn-outline btn-sm" onclick="editInvoice()">تعديل الاستحقاق / الملاحظات</button>` : ''}
+            ${canSee('work_orders') && inv.state !== 'cancelled' ? `<button class="btn btn-primary btn-sm" onclick="closeSheet('invSheet'); newWorkOrder({ invoice: invCurrent })"><i class="fas fa-screwdriver-wrench"></i> إنشاء أمر عمل</button>` : ''}
             ${manager && inv.state !== 'cancelled' ? `<button class="btn btn-outline btn-sm" style="color:#a93226" onclick="cancelInvoice()">إلغاء الفاتورة</button>` : ''}
         </div>`;
     $id('invPayForm').hidden = inv.state === 'cancelled' || inv.balance <= 0.0005;
