@@ -63,6 +63,7 @@ const toUser = (row) => (row ? {
     permissions: row.role === 'manager' ? Object.keys(SECTIONS) : JSON.parse(row.permissions_json || '[]').filter((s) => SECTIONS[s]),
     leads_scope: row.role === 'manager' ? 'all' : (SCOPES[row.leads_scope] ? row.leads_scope : 'all'),
     active: Boolean(row.active), created_at: row.created_at, last_login_at: row.last_login_at,
+    email: row.email || '',
     totp_enabled: Boolean(row.totp_secret),
     // Managers must turn on two-step sign-in before they can use the panel
     must_setup_2fa: row.role === 'manager' && !row.totp_secret
@@ -83,15 +84,20 @@ function clean(db, input, { existing = null } = {}) {
     if (role === 'staff' && !permissions.length) throw err(400, 'اختر قسماً واحداً على الأقل يعمل فيه الموظف');
     const leadsScope = SCOPES[input.leads_scope] ? input.leads_scope : existing?.leads_scope || 'all';
     const active = input.active === undefined ? (existing ? existing.active : 1) : (input.active ? 1 : 0);
-    return { username, display_name: display, role, permissions_json: JSON.stringify(permissions), leads_scope: leadsScope, active };
+    const email = String(input.email ?? existing?.email ?? '').trim().toLowerCase().slice(0, 120);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw err(400, 'البريد الإلكتروني غير صالح');
+    if (email && db.prepare('SELECT id FROM staff_users WHERE lower(email) = ? AND id != ?').get(email, existing ? existing.id : 0)) {
+        throw err(400, 'هذا البريد مستخدم لحساب آخر');
+    }
+    return { username, display_name: display, role, permissions_json: JSON.stringify(permissions), leads_scope: leadsScope, active, email: email || null };
 }
 
 function create(db, input) {
     const u = clean(db, input);
     validatePassword(input.password);
-    const info = db.prepare(`INSERT INTO staff_users (username, display_name, role, permissions_json, leads_scope, active, password_hash)
-                             VALUES (?, ?, ?, ?, ?, ?, ?)`)
-        .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, hashPassword(input.password));
+    const info = db.prepare(`INSERT INTO staff_users (username, display_name, role, permissions_json, leads_scope, active, email, password_hash)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, u.email, hashPassword(input.password));
     return toUser(db.prepare('SELECT * FROM staff_users WHERE id = ?').get(Number(info.lastInsertRowid)));
 }
 
@@ -116,9 +122,11 @@ function update(db, id, input) {
     if (input.password) validatePassword(input.password);
     const hash = input.password ? hashPassword(input.password) : null;
     tx(db, () => {
-        db.prepare(`UPDATE staff_users SET username = ?, display_name = ?, role = ?, permissions_json = ?, leads_scope = ?, active = ? WHERE id = ?`)
-            .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, existing.id);
+        db.prepare(`UPDATE staff_users SET username = ?, display_name = ?, role = ?, permissions_json = ?, leads_scope = ?, active = ?, email = ? WHERE id = ?`)
+            .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, u.email, existing.id);
         if (hash) db.prepare('UPDATE staff_users SET password_hash = ? WHERE id = ?').run(hash, existing.id);
+        // A new password (or a changed email) makes earlier reset links useless
+        if (hash || (u.email || '') !== (existing.email || '')) db.prepare('DELETE FROM password_resets WHERE user_id = ?').run(existing.id);
         // Lost phone: the manager turns two-step sign-in off; it is set up again at the next sign-in
         if (input.reset_2fa) db.prepare('UPDATE staff_users SET totp_secret = NULL, totp_pending = NULL WHERE id = ?').run(existing.id);
         // New permissions apply at once; a deactivated account, a new password or a 2FA reset signs out everywhere
@@ -142,6 +150,7 @@ function changeOwnPassword(db, user, current, next) {
     const hash = hashPassword(next);
     const ended = tx(db, () => {
         db.prepare('UPDATE staff_users SET password_hash = ? WHERE id = ?').run(hash, row.id);
+        db.prepare('DELETE FROM password_resets WHERE user_id = ?').run(row.id);
         return Number(db.prepare('DELETE FROM staff_sessions WHERE user_id = ?').run(row.id).changes);
     });
     return { signed_out: true, sessions_ended: ended };
@@ -181,6 +190,45 @@ function fromToken(db, token) {
     if (!row) return null;
     db.prepare(`UPDATE staff_sessions SET expires_at = datetime('now', '+${SESSION_DAYS} days') WHERE token_hash = ?`).run(hash);
     return toUser(row);
+}
+
+/* ------------------------------ Forgotten password (email link) ------------------------------ */
+
+const RESET_MINUTES = 30;
+const RESETS_PER_HOUR = 3; // per account, so the inbox is not flooded
+
+/* By username or email. Returns { user, token } to email, or null (no such active account with an
+   email, or too many requests) — the caller answers the same either way. */
+function requestReset(db, identifier, ip) {
+    const id = String(identifier || '').trim().toLowerCase().slice(0, 120);
+    if (!id) return null;
+    const row = db.prepare('SELECT * FROM staff_users WHERE (username = ? OR lower(email) = ?) AND active = 1').get(id, id);
+    if (!row || !row.email) return null;
+    const recent = db.prepare("SELECT COUNT(*) AS n FROM password_resets WHERE user_id = ? AND created_at > datetime('now', '-1 hour')").get(row.id).n;
+    if (recent >= RESETS_PER_HOUR) return null;
+    const token = crypto.randomBytes(32).toString('base64url');
+    db.prepare(`INSERT INTO password_resets (token_hash, user_id, expires_at, ip) VALUES (?, ?, datetime('now', '+${RESET_MINUTES} minutes'), ?)`)
+        .run(sha256(token), row.id, ip ? String(ip).replace(/^::ffff:/, '') : null);
+    return { user: toUser(row), token };
+}
+
+/* The link's code + a new password. Ends every session; two-step sign-in stays as it is. */
+function resetPassword(db, token, password) {
+    const hash = sha256(String(token || ''));
+    const reset = db.prepare(`SELECT r.*, u.active FROM password_resets r JOIN staff_users u ON u.id = r.user_id
+                              WHERE r.token_hash = ?`).get(hash);
+    if (!reset || reset.used_at || !reset.active || db.prepare("SELECT datetime('now') >= ? AS late").get(reset.expires_at).late) {
+        throw err(400, 'رابط الاستعادة غير صالح أو منتهي (صالح 30 دقيقة ولمرة واحدة) — اطلب رابطاً جديداً');
+    }
+    validatePassword(password);
+    const newHash = hashPassword(password);
+    tx(db, () => {
+        db.prepare('UPDATE staff_users SET password_hash = ? WHERE id = ?').run(newHash, reset.user_id);
+        db.prepare("UPDATE password_resets SET used_at = datetime('now') WHERE token_hash = ?").run(hash);
+        db.prepare('DELETE FROM password_resets WHERE user_id = ? AND token_hash != ?').run(reset.user_id, hash);
+        db.prepare('DELETE FROM staff_sessions WHERE user_id = ?').run(reset.user_id);
+    });
+    return toUser(db.prepare('SELECT * FROM staff_users WHERE id = ?').get(reset.user_id));
 }
 
 /* ------------------------------ Two-step sign-in ------------------------------ */
@@ -294,7 +342,7 @@ function seesQuote(db, user, quote) {
 }
 
 module.exports = {
-    setup2fa, enable2fa, disable2fa, SETUP_2FA_PATHS, sha256,
+    setup2fa, enable2fa, disable2fa, SETUP_2FA_PATHS, sha256, requestReset, resetPassword, RESET_MINUTES,
     SECTIONS, ROLES, SCOPES, OWNER, hashPassword, checkPassword, list, create, update, remove, changeOwnPassword,
     login, fromToken, logout, can, sectionsFor, allowedSettings, allowedRegionFields, seesLead, seesQuote
 };

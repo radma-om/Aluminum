@@ -26,6 +26,7 @@ const agent = require('./agent');
 const mazbot = require('./mazbot');
 const backup = require('./backup');
 const offsite = require('./offsite');
+const mailer = require('./mailer');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const audit = require('./audit');
@@ -377,6 +378,7 @@ function pruneOldLogs(db) {
         agent_conversations: Number(db.prepare("DELETE FROM agent_conversations WHERE updated_at < datetime('now', ?)").run(days).changes),
         staff_sessions: Number(db.prepare("DELETE FROM staff_sessions WHERE expires_at < datetime('now')").run().changes),
         audit_log: audit.prune(db), // 365 days
+        password_resets: Number(db.prepare("DELETE FROM password_resets WHERE expires_at < datetime('now', '-1 day')").run().changes),
         offsite_backups: Number(db.prepare("DELETE FROM offsite_backups WHERE at < datetime('now', ?)").run(days).changes)
     };
 }
@@ -698,6 +700,54 @@ function createApp(db, { agentClient } = {}) {
         audit.record(db, { user_id: r.user.id, actor: `${r.user.display_name} (${r.user.username})`, ip: req.ip, action: 'تسجيل دخول' });
         res.json(r);
     });
+    /* ---- Forgotten password: a one-time link by email (staff accounts with an email) ----
+       The answer never says whether the account exists. The link is built from the «الرابط العام»
+       setting only, never from the request's Host header (which a stranger controls). */
+    const resetLink = () => {
+        const base = String(getSettings(db).public_base_url || '').trim().replace(/\/+$/, '');
+        try {
+            const u = new URL(base);
+            return ['https:', 'http:'].includes(u.protocol) ? `${u.origin}/admin` : null;
+        } catch { return null; }
+    };
+    const forgotLimit = rateLimit({ windowMs: 60 * 60_000, max: 5 });
+    const resetLimit = rateLimit({ windowMs: 15 * 60_000, max: 10 });
+    const forgotAnswer = 'إذا كان الحساب موجوداً وله بريد مسجّل، فقد أُرسل إليه رابط لتعيين كلمة مرور جديدة (صالح 30 دقيقة). افحص أيضاً مجلد الرسائل غير المرغوبة.';
+
+    app.post('/api/auth/forgot', forgotLimit, (req, res) => {
+        if (!mailer.isConfigured() || !resetLink()) {
+            return res.status(503).json({ error: 'استعادة كلمة المرور بالبريد غير مفعّلة حالياً — اطلب من المدير تعيين كلمة مرور جديدة لك.' });
+        }
+        const identifier = String((req.body || {}).identifier || '').slice(0, 120);
+        const r = staff.requestReset(db, identifier, req.ip);
+        res.json({ ok: true, message: forgotAnswer });
+        if (!r) return;
+        audit.record(db, { user_id: r.user.id, actor: `${r.user.display_name} (${r.user.username})`, ip: req.ip, action: 'طلب رابط استعادة كلمة المرور' });
+        const link = `${resetLink()}#reset=${r.token}`;
+        const company = getSettings(db).company_name || 'نظام التسعير';
+        mailer.send({
+            to: r.user.email,
+            subject: `تعيين كلمة مرور جديدة — ${company}`,
+            text: [
+                `مرحباً ${r.user.display_name}،`,
+                '',
+                `طُلب تعيين كلمة مرور جديدة لحسابك (${r.user.username}) في لوحة إدارة ${company}.`,
+                `افتح هذا الرابط خلال ${staff.RESET_MINUTES} دقيقة (يعمل مرة واحدة فقط):`,
+                link,
+                '',
+                'إذا كان التحقق بخطوتين مفعّلاً لحسابك فسيبقى مطلوباً عند الدخول.',
+                'إذا لم تطلب ذلك فتجاهل هذه الرسالة — كلمة مرورك الحالية لا تتغير، وأبلغ المدير.'
+            ].join('\n')
+        }).catch((err) => console.error('[password-reset] email', err.message));
+    });
+
+    app.post('/api/auth/reset', resetLimit, (req, res) => {
+        const b = req.body || {};
+        const user = staff.resetPassword(db, b.token, b.password);
+        audit.record(db, { user_id: user.id, actor: `${user.display_name} (${user.username})`, ip: req.ip, action: 'تعيين كلمة مرور جديدة عبر رابط البريد' });
+        res.json({ ok: true, username: user.username, totp_enabled: user.totp_enabled });
+    });
+
     app.post('/api/auth/logout', (req, res) => {
         staff.logout(db, (req.get('Authorization') || '').replace(/^Bearer\s+/i, ''));
         res.status(204).end();
@@ -793,6 +843,9 @@ function createApp(db, { agentClient } = {}) {
                     'لذلك يظهر كل العملاء بعنوان واحد: تُشترك محاولات الدخول الخاطئة، وتُشترك حدود النماذج العامة. ' +
                     'إذا تأكدت من مزوّد الاستضافة أن هذا العنوان (أو شبكته) هو وكيل الاستضافة فأضفه إلى TRUSTED_PROXIES.'
             });
+        }
+        if (mailer.isConfigured() && !String(getSettings(db).public_base_url || '').trim()) {
+            warnings.push({ level: 'warning', text: 'البريد مضبوط، لكن «الرابط العام للنظام» فارغ في تبويب الربط، فروابط استعادة كلمة المرور لا تُرسل. اكتب فيه رابط النظام (مثل https://calcshutter.radma.co) ثم احفظ.' });
         }
         const offsiteWarning = offsite.warning(db);
         if (offsiteWarning) warnings.push(offsiteWarning);

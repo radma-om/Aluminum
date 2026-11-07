@@ -21,7 +21,7 @@ function renderUsers() {
     $id('usersBody').innerHTML = rows.map((u) => `
         <tr class="${u.active ? '' : 'muted-row'}">
             <td data-label="الموظف"><strong>${esc(u.display_name)}</strong></td>
-            <td data-label="اسم المستخدم" dir="ltr">${esc(u.username)}</td>
+            <td data-label="اسم المستخدم" dir="ltr">${esc(u.username)}${u.email ? `<br><small class="status-text">${esc(u.email)}</small>` : ''}</td>
             <td data-label="الدور">${u.role === 'manager' ? '<span class="badge on">مدير</span>' : '<span class="badge">موظف</span>'}</td>
             <td data-label="الأقسام" class="perm-badges">${u.role === 'manager' ? '<span class="pill">كل الأقسام</span>'
                 : u.permissions.map((p) => `<span class="pill">${esc(usersData.sections[p] || p)}</span>`).join(' ')}</td>
@@ -40,6 +40,7 @@ function resetUserForm() {
     $id('uId').value = '';
     $id('uDisplay').value = '';
     $id('uUsername').value = '';
+    $id('uEmail').value = '';
     $id('uPassword').value = '';
     $id('uRole').value = 'staff';
     $id('uActive').checked = true;
@@ -65,6 +66,7 @@ function editUser(id) {
     $id('uId').value = u.id;
     $id('uDisplay').value = u.display_name;
     $id('uUsername').value = u.username;
+    $id('uEmail').value = u.email || '';
     $id('uPassword').value = '';
     $id('uRole').value = u.role;
     $id('uActive').checked = u.active;
@@ -84,6 +86,7 @@ async function saveUser() {
     const body = {
         display_name: $id('uDisplay').value,
         username: $id('uUsername').value,
+        email: $id('uEmail').value.trim(),
         role: $id('uRole').value,
         permissions: [...document.querySelectorAll('#uPerms input:checked')].map((c) => c.value),
         leads_scope: document.querySelector('input[name="uScope"]:checked').value,

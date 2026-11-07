@@ -559,7 +559,9 @@
         .login-card input:focus { outline: none; border-color: var(--primary-light); }
         .login-card .btn { width: 100%; padding: 12px; font-size: 1rem; justify-content: center; }
         .login-card .status-text { display: block; margin-top: 10px; color: var(--danger); }
+        .login-card .status-text.ok { color: var(--success); }
         .two-step-card { max-width: 440px; text-align: right; }
+        .link-btn { background: none; border: none; color: var(--primary-light); cursor: pointer; font-family: inherit; font-size: 0.88rem; margin-top: 12px; text-decoration: underline; }
         .two-step-card ol { margin: 0 20px 12px 0; padding: 0; font-size: 0.9rem; line-height: 1.9; }
         .ts-qr { width: 200px; height: 200px; margin: 6px auto 10px; background: #fff; }
         .ts-qr svg { width: 100%; height: 100%; }
@@ -810,6 +812,7 @@
                 <div class="form-grid">
                     <div class="form-group"><label>اسم الموظف (يظهر في التقارير)</label><input type="text" id="uDisplay" placeholder="مثال: سالم البلوشي"></div>
                     <div class="form-group"><label>اسم المستخدم للدخول</label><input type="text" id="uUsername" dir="ltr" placeholder="salem" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+                    <div class="form-group"><label>البريد الإلكتروني <span class="unit">(لاستعادة كلمة المرور — اختياري)</span></label><input type="email" id="uEmail" dir="ltr" placeholder="salem@radma.co" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
                     <div class="form-group"><label id="uPasswordLabel">كلمة المرور (8 أحرف على الأقل)</label><input type="text" id="uPassword" dir="ltr" autocomplete="new-password" placeholder="••••••••"></div>
                     <div class="form-group"><label>الدور</label>
                         <select id="uRole" onchange="userRoleChanged()"><option value="staff">موظف — أقسام محددة</option><option value="manager">مدير — كل الأقسام وإدارة الحسابات</option></select></div>
@@ -1902,6 +1905,20 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
             <input type="text" id="loginCode" placeholder="رمز التحقق من التطبيق (6 أرقام)" inputmode="numeric" autocomplete="one-time-code" maxlength="7" dir="ltr" hidden>
             <button class="btn btn-primary" type="submit">دخول</button>
             <span id="loginStatus" class="status-text"></span>
+            <button type="button" class="link-btn" onclick="forgotPassword()">نسيت كلمة المرور؟</button>
+        </form>
+    </div>
+
+    <!-- New password from the emailed link (/admin#reset=…) -->
+    <div id="resetBar" class="login-bar" hidden>
+        <form class="login-card" onsubmit="event.preventDefault(); submitReset();">
+            <img src="images/logo.png" alt="">
+            <h2>تعيين كلمة مرور جديدة</h2>
+            <p>اكتب كلمة مرور جديدة (8 أحرف على الأقل). ستخرج من كل الأجهزة، ثم تدخل بالكلمة الجديدة.</p>
+            <input type="password" id="resetPass1" placeholder="كلمة المرور الجديدة" autocomplete="new-password" required>
+            <input type="password" id="resetPass2" placeholder="أعد كتابتها للتأكيد" autocomplete="new-password" required>
+            <button class="btn btn-primary" type="submit">حفظ كلمة المرور</button>
+            <span id="resetStatus" class="status-text"></span>
         </form>
     </div>
 

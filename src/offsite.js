@@ -12,37 +12,19 @@
    - Every attempt is logged (offsite_backups) and shown in the admin panel;
      a failed send is retried every hour, and the system status warns.
    ============================================================= */
-const nodemailer = require('nodemailer');
 const backup = require('./backup');
+const mailer = require('./mailer');
 
 const MAX_BYTES = 20 * 1024 * 1024; // most mail servers refuse larger attachments
 const DAY_MS = 24 * 3600_000;
 
 function config() {
-    const env = process.env;
-    const port = Number(env.SMTP_PORT) || 465;
-    const to = String(env.BACKUP_EMAIL_TO || '').split(',').map((s) => s.trim()).filter(Boolean);
-    return {
-        host: String(env.SMTP_HOST || '').trim(),
-        port,
-        secure: port === 465,
-        user: String(env.SMTP_USER || '').trim(),
-        pass: env.SMTP_PASS || '',
-        from: String(env.SMTP_FROM || env.SMTP_USER || '').trim(),
-        to
-    };
+    const to = String(process.env.BACKUP_EMAIL_TO || '').split(',').map((x) => x.trim()).filter(Boolean);
+    return { ...mailer.config(), to };
 }
 
-const isConfigured = (c = config()) => Boolean(c.host && c.user && c.pass && c.to.length);
-
-/* Replaced in tests (no real email is ever sent from a test) */
-let makeTransport = (c) => nodemailer.createTransport({
-    host: c.host, port: c.port, secure: c.secure, requireTLS: !c.secure,
-    auth: { user: c.user, pass: c.pass },
-    tls: { minVersion: 'TLSv1.2' },
-    connectionTimeout: 20_000, greetingTimeout: 20_000, socketTimeout: 60_000
-});
-const setTransportForTests = (fn) => { makeTransport = fn; };
+const isConfigured = (c = config()) => mailer.isConfigured(c) && c.to.length > 0;
+const setTransportForTests = mailer.setTransportForTests;
 
 const logAttempt = (db, row) => db.prepare('INSERT INTO offsite_backups (file, bytes, ok, error, reason) VALUES (?, ?, ?, ?, ?)')
     .run(row.file || null, row.bytes || null, row.ok ? 1 : 0, row.error || null, row.reason || null);
@@ -65,8 +47,7 @@ async function sendBackup(db, { reason = 'daily' } = {}) {
             const n = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
             return `- ${label}: ${n}`;
         }).join('\n');
-        await makeTransport(c).sendMail({
-            from: c.from,
+        await mailer.send({
             to: c.to.join(', '),
             subject: `نسخة احتياطية — ${settings.company_name || 'نظام التسعير'} — ${date}`,
             text: [
