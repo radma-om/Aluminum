@@ -454,6 +454,41 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS payments_invoice ON payments (invoice_id);
 
+-- Work orders for the installation and maintenance team (no prices: technicians see them)
+CREATE TABLE IF NOT EXISTS work_orders (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    number           TEXT NOT NULL UNIQUE,
+    kind             TEXT NOT NULL DEFAULT 'installation',
+    quote_id         INTEGER REFERENCES quotes(id) ON DELETE SET NULL,
+    invoice_id       INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
+    customer_name    TEXT NOT NULL,
+    customer_phone   TEXT NOT NULL,
+    location         TEXT,
+    address          TEXT,
+    map_url          TEXT,
+    scheduled_date   TEXT,
+    scheduled_time   TEXT,
+    technician_id    INTEGER REFERENCES staff_users(id) ON DELETE SET NULL,
+    description      TEXT NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'scheduled', 'in_progress', 'done', 'cancelled')),
+    completion_note  TEXT,
+    completed_at     TEXT,
+    created_by       TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS work_orders_tech ON work_orders (technician_id, status);
+
+-- What happened to a work order: status changes, notes from the office and the technician
+CREATE TABLE IF NOT EXISTS work_order_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id    INTEGER NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+    author      TEXT,
+    text        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS work_order_events_order ON work_order_events (order_id, id);
+
 -- Jobs that run once a day / week (follow-up reminders, weekly report): the last day they ran
 CREATE TABLE IF NOT EXISTS scheduled_runs (
     name      TEXT PRIMARY KEY,

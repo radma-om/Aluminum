@@ -574,6 +574,21 @@
         .badge.st-partial { background: #fff7e6; color: #8a5a00; }
         .badge.st-paid { background: #e8f8ef; color: var(--success); }
         .badge.st-cancelled { background: #eceff3; color: var(--text-light); text-decoration: line-through; }
+        .wo-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px; background: #fff; }
+        .wo-card.done, .wo-card.cancelled { opacity: 0.75; }
+        .wo-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+        .wo-head strong { font-size: 1.02rem; }
+        .wo-line { font-size: 0.92rem; margin: 3px 0; line-height: 1.7; }
+        .wo-line i { width: 18px; color: var(--text-light); }
+        .wo-desc { white-space: pre-line; background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 0.9rem; margin: 8px 0; }
+        .wo-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+        .wo-actions .btn { padding: 9px 14px; }
+        .wo-events { font-size: 0.82rem; color: var(--text-light); margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 6px; white-space: pre-line; }
+        .badge.wo-new { background: #fff7e6; color: #8a5a00; }
+        .badge.wo-scheduled { background: #e8f0fd; color: #1e40af; }
+        .badge.wo-in_progress { background: #efe9fd; color: #5b3cc4; }
+        .badge.wo-done { background: #e8f8ef; color: var(--success); }
+        .badge.wo-cancelled { background: #eceff3; color: var(--text-light); }
         .link-btn { background: none; border: none; color: var(--primary-light); cursor: pointer; font-family: inherit; font-size: 0.88rem; margin-top: 12px; text-decoration: underline; }
         .two-step-card ol { margin: 0 20px 12px 0; padding: 0; font-size: 0.9rem; line-height: 1.9; }
         .ts-qr { width: 200px; height: 200px; margin: 6px auto 10px; background: #fff; }
@@ -664,6 +679,7 @@
             <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')" title="متابعة العملاء"><i class="fas fa-headset"></i><span class="t-label">متابعة العملاء</span><span class="count" id="leadsBadge" hidden></span></button>
             <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')" title="طلبات العروض"><i class="fas fa-file-invoice-dollar"></i><span class="t-label">طلبات العروض</span></button>
             <button class="tab-btn" data-tab="invoices" onclick="switchTab('invoices')" title="الفواتير والمدفوعات"><i class="fas fa-receipt"></i><span class="t-label">الفواتير والمدفوعات</span></button>
+            <button class="tab-btn" data-tab="work_orders" onclick="switchTab('work_orders')" title="أوامر العمل"><i class="fas fa-screwdriver-wrench"></i><span class="t-label">أوامر العمل</span></button>
             <div class="nav-group">الحاسبات</div>
             <button class="tab-btn" data-tab="pricing" onclick="switchTab('pricing')" title="حاسبة التسعير"><i class="fas fa-calculator"></i><span class="t-label">حاسبة التسعير</span></button>
             <button class="tab-btn" data-tab="weight" onclick="switchTab('weight')" title="حاسبة الوزن"><i class="fas fa-weight-hanging"></i><span class="t-label">حاسبة الوزن</span></button>
@@ -861,7 +877,7 @@
                     <div class="form-group"><label>البريد الإلكتروني <span class="unit">(لاستعادة كلمة المرور — اختياري)</span></label><input type="email" id="uEmail" dir="ltr" placeholder="salem@radma.co" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
                     <div class="form-group"><label id="uPasswordLabel">كلمة المرور (8 أحرف على الأقل)</label><input type="text" id="uPassword" dir="ltr" autocomplete="new-password" placeholder="••••••••"></div>
                     <div class="form-group"><label>الدور</label>
-                        <select id="uRole" onchange="userRoleChanged()"><option value="staff">موظف — أقسام محددة</option><option value="manager">مدير — كل الأقسام وإدارة الحسابات</option></select></div>
+                        <select id="uRole" onchange="userRoleChanged()"><option value="staff">موظف — أقسام محددة</option><option value="manager">مدير — كل الأقسام وإدارة الحسابات</option><option value="technician">فني تركيب وصيانة — أوامره فقط</option></select></div>
                 </div>
                 <div id="uPermsBox">
                     <p class="sub-heading">الأقسام التي يعمل فيها</p>
@@ -874,6 +890,7 @@
                 </div>
                 <div class="check-row"><label><input type="checkbox" id="uActive" checked> الحساب مفعّل</label>
                     <label id="uReset2faRow" hidden><input type="checkbox" id="uReset2fa"> إعادة ضبط التحقق بخطوتين (فقد جواله) — يضبطه من جديد عند الدخول</label></div>
+                <p class="status-text" id="uTechNote" hidden>حساب «فني» يرى قسم «أوامر العمل» فقط، وفيه الأوامر المسندة إليه فقط (بدون أسعار): يبدأ العمل ويكتب ما تم ويغلقه. أضف بريده ليصله كل أمر جديد وقائمة أعماله كل صباح.</p>
                 <p class="status-text" id="uManagerNote" hidden>حساب «مدير» يُطلب منه تفعيل التحقق بخطوتين (رمز من تطبيق على الجوال) عند أول دخول، ولا يستطيع استخدام اللوحة قبل ذلك.</p>
                 <div class="form-buttons">
                     <button class="btn btn-primary" id="uSave" onclick="saveUser()">إضافة الموظف</button>
@@ -1750,6 +1767,22 @@
             </div>
         </div>
 
+        <!-- ==================== TAB: Work orders ==================== -->
+        <div id="tab-work_orders" class="tab-content">
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-screwdriver-wrench"></i></span> <span id="woTitle">أوامر العمل — التركيب والصيانة</span></div>
+                <p class="status-text office-only" style="margin:0 0 10px">يُنشأ أمر العمل من الفاتورة (زر «إنشاء أمر عمل»)، أو يدوياً لزيارة صيانة أو معاينة. حدّد الموعد والفني، فيصله بريد بالتفاصيل، ويرى أوامره فقط من حسابه على الجوال — بدون أسعار.</p>
+                <div class="filter-row">
+                    <div id="woChips" class="check-row" style="margin:0; gap:6px"></div>
+                    <select id="woTech" class="office-only" onchange="loadWorkOrders()"></select>
+                    <input type="search" id="woSearch" placeholder="بحث: الرقم، العميل، الهاتف، المكان" style="flex:1; min-width:160px; padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-family:inherit" oninput="debouncedWorkOrders()">
+                    <button class="btn btn-primary btn-sm office-only" onclick="newWorkOrder()">أمر عمل جديد</button>
+                </div>
+                <div id="woList"></div>
+                <span id="woStatus" class="status-text"></span>
+            </div>
+        </div>
+
         <!-- ==================== TAB 6: Integrations ==================== -->
         <div id="tab-integrations" class="tab-content">
             <div class="card manager-only">
@@ -2071,6 +2104,32 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
                 </div>
             </form>
         </div>
+    </div>
+
+    <!-- Create / schedule a work order -->
+    <div id="woSheet" class="sheet" hidden>
+        <form class="sheet-card" onsubmit="event.preventDefault(); submitWorkOrder();">
+            <button type="button" class="sheet-close" onclick="closeSheet('woSheet')" aria-label="إغلاق">×</button>
+            <h3><i class="fas fa-screwdriver-wrench"></i> <span id="woSheetTitle">أمر عمل جديد</span></h3>
+            <p class="status-text" id="woSource" style="margin:0 0 10px"></p>
+            <div class="form-grid">
+                <div class="form-group"><label>نوع العمل</label><select id="woKind"></select></div>
+                <div class="form-group wo-manual"><label>اسم العميل</label><input type="text" id="woName" maxlength="120"></div>
+                <div class="form-group wo-manual"><label>جوال العميل</label><input type="tel" id="woPhone" dir="ltr" maxlength="20" placeholder="968XXXXXXXX"></div>
+                <div class="form-group"><label>المنطقة / الولاية</label><input type="text" id="woLocation" maxlength="120"></div>
+                <div class="form-group"><label>العنوان التفصيلي</label><input type="text" id="woAddress" maxlength="200"></div>
+                <div class="form-group"><label>رابط الموقع على الخريطة <span class="unit">(اختياري)</span></label><input type="url" id="woMap" dir="ltr" placeholder="https://maps.app.goo.gl/..."></div>
+                <div class="form-group"><label>تاريخ الموعد</label><input type="date" id="woDate"></div>
+                <div class="form-group"><label>الوقت <span class="unit">(مثلاً 9 صباحاً)</span></label><input type="text" id="woTime" maxlength="40"></div>
+                <div class="form-group"><label>الفني</label><select id="woTechSel"></select></div>
+            </div>
+            <div class="form-group"><label>المطلوب من الفني</label><textarea id="woDesc" rows="5" maxlength="3000"></textarea></div>
+            <div class="form-buttons">
+                <button class="btn btn-primary" type="submit" id="woSubmit">حفظ</button>
+                <button class="btn btn-outline" type="button" onclick="closeSheet('woSheet')">إلغاء</button>
+                <span id="woSheetStatus" class="status-text"></span>
+            </div>
+        </form>
     </div>
 
     <!-- Footer -->
@@ -2582,5 +2641,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-users.js"></script>
     <script src="admin-security.js"></script>
     <script src="admin-invoices.js"></script>
+    <script src="admin-workorders.js"></script>
 </body>
 </html>

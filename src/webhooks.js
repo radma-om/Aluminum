@@ -11,6 +11,8 @@ const EVENTS = [
     'invoice.created',
     'invoice.cancelled',
     'payment.created',
+    'work_order.created',
+    'work_order.status_changed',
     'product.created',
     'product.updated',
     'product.deleted',

@@ -18,6 +18,7 @@ const SECTIONS = {
     leads: 'متابعة العملاء',
     quotes: 'طلبات العروض',
     invoices: 'الفواتير والمدفوعات',
+    work_orders: 'أوامر العمل (التركيب والصيانة)',
     pricing: 'حاسبة التسعير',
     weight: 'حاسبة الوزن',
     products: 'المنتجات والأسعار',
@@ -28,7 +29,7 @@ const SECTIONS = {
     agent: 'المساعد الذكي',
     integrations: 'الربط والإعدادات'
 };
-const ROLES = { staff: 'موظف', manager: 'مدير' };
+const ROLES = { staff: 'موظف', manager: 'مدير', technician: 'فني تركيب وصيانة' };
 const SCOPES = { all: 'كل العملاء', mine: 'عملاؤه فقط (وغير المُسندين)' };
 const SESSION_DAYS = 14;
 const OWNER = { id: null, username: '', display_name: 'المدير العام', role: 'manager', permissions: Object.keys(SECTIONS), leads_scope: 'all', owner: true };
@@ -61,7 +62,9 @@ function validatePassword(p) {
 
 const toUser = (row) => (row ? {
     id: row.id, username: row.username, display_name: row.display_name, role: row.role,
-    permissions: row.role === 'manager' ? Object.keys(SECTIONS) : JSON.parse(row.permissions_json || '[]').filter((s) => SECTIONS[s]),
+    // A technician only works on the work orders assigned to them
+    permissions: row.role === 'manager' ? Object.keys(SECTIONS) : row.role === 'technician' ? ['work_orders']
+        : JSON.parse(row.permissions_json || '[]').filter((s) => SECTIONS[s]),
     leads_scope: row.role === 'manager' ? 'all' : (SCOPES[row.leads_scope] ? row.leads_scope : 'all'),
     active: Boolean(row.active), created_at: row.created_at, last_login_at: row.last_login_at,
     email: row.email || '',
@@ -83,6 +86,7 @@ function clean(db, input, { existing = null } = {}) {
     const permissions = Array.isArray(input.permissions) ? [...new Set(input.permissions.filter((s) => SECTIONS[s]))]
         : existing ? JSON.parse(existing.permissions_json || '[]') : [];
     if (role === 'staff' && !permissions.length) throw err(400, 'اختر قسماً واحداً على الأقل يعمل فيه الموظف');
+    if (role === 'technician') permissions.length = 0; // fixed: their own work orders
     const leadsScope = SCOPES[input.leads_scope] ? input.leads_scope : existing?.leads_scope || 'all';
     const active = input.active === undefined ? (existing ? existing.active : 1) : (input.active ? 1 : 0);
     const email = String(input.email ?? existing?.email ?? '').trim().toLowerCase().slice(0, 120);
@@ -291,6 +295,7 @@ function sectionsFor(method, path) {
         // Deleting a payment or cancelling an invoice: managers only
         [/^\/invoices\/\d+\/(payments\/\d+|cancel)$/, method === 'GET' ? ['invoices'] : 'manager'],
         [/^\/invoices(\/|$)/, ['invoices']],
+        [/^\/work-orders(\/|$)/, ['work_orders']],
         [/^\/quotes(\/|$)/, ['quotes']],
         [/^\/products$/, method === 'GET' ? ['products', 'purchases'] : ['products']],
         [/^\/(products|price-list\.txt)(\/|$)/, ['products']],

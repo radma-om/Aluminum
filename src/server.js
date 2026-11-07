@@ -30,6 +30,7 @@ const mailer = require('./mailer');
 const alerts = require('./alerts');
 const followup = require('./followup');
 const invoices = require('./invoices');
+const workorders = require('./workorders');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const audit = require('./audit');
@@ -1092,6 +1093,64 @@ function createApp(db, { agentClient } = {}) {
         const inv = invoices.cancel(db, req.params.id, (req.body || {}).reason, staffName(req));
         webhooks.emit(db, 'invoice.cancelled', invoicePublic(inv));
         res.json(invoicePublic(inv));
+    });
+
+    /* ---- Work orders (installation / maintenance team) ----
+       Technicians: only their own orders, status and notes. The office: everything. */
+    const officeOnly = (req) => { if (req.user.role === 'technician') throw httpError(403, 'هذا الإجراء للمكتب — راجع المدير'); };
+    const orderFor = (req, id) => {
+        const o = workorders.get(db, id);
+        const visible = o && (req.user.role === 'technician' ? o.technician_id === req.user.id : staff.seesQuote(db, req.user, o));
+        if (!visible) throw httpError(404, 'أمر العمل غير موجود');
+        return o;
+    };
+    admin.get('/work-orders', (req, res) => {
+        const q = req.query;
+        res.json({
+            orders: workorders.list(db, { status: String(q.status || ''), technician: String(q.technician || ''), q: String(q.q || '').trim(), open: q.open === '1', user: req.user })
+                .filter((o) => req.user.role === 'technician' || staff.seesQuote(db, req.user, o)),
+            technicians: req.user.role === 'technician' ? [] : workorders.technicians(db),
+            kinds: workorders.KINDS, statuses: workorders.STATUSES
+        });
+    });
+    admin.get('/work-orders/:id', (req, res) => res.json(orderFor(req, req.params.id)));
+    admin.post('/work-orders', (req, res) => {
+        officeOnly(req);
+        const b = req.body || {};
+        let source = null;
+        if (b.invoice_id) {
+            const inv = invoices.get(db, b.invoice_id);
+            if (!inv || !staff.seesQuote(db, req.user, inv)) throw httpError(404, 'الفاتورة غير موجودة');
+            source = { invoice: inv };
+        } else if (b.quote_id) {
+            source = { quote: parseQuote(quoteFor(req, b.quote_id)) };
+        }
+        const order = workorders.create(db, b, staffName(req), { source });
+        webhooks.emit(db, 'work_order.created', order);
+        res.status(201).json(order);
+    });
+    admin.patch('/work-orders/:id', (req, res) => {
+        officeOnly(req);
+        orderFor(req, req.params.id);
+        res.json(workorders.update(db, req.params.id, req.body || {}, staffName(req)));
+    });
+    admin.post('/work-orders/:id/status', (req, res) => {
+        orderFor(req, req.params.id);
+        const b = req.body || {};
+        const order = workorders.setStatus(db, req.params.id, String(b.status || ''), b.note, req.user);
+        webhooks.emit(db, 'work_order.status_changed', order);
+        res.json(order);
+    });
+    admin.post('/work-orders/:id/notes', (req, res) => {
+        orderFor(req, req.params.id);
+        res.status(201).json(workorders.addNote(db, req.params.id, (req.body || {}).text, req.user));
+    });
+    admin.post('/work-orders/:id/cancel', (req, res) => {
+        officeOnly(req);
+        orderFor(req, req.params.id);
+        const order = workorders.cancel(db, req.params.id, (req.body || {}).reason, staffName(req));
+        webhooks.emit(db, 'work_order.status_changed', order);
+        res.json(order);
     });
 
     /* ---- Dashboard figures ---- */

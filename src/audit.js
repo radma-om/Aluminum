@@ -26,6 +26,7 @@ const RECORDS = [
     [/^\/webhooks\/(\d+)$/, 'webhooks'],
     [/^\/quotes\/(\d+)$/, 'quotes'],
     [/^\/invoices\/(\d+)$/, 'invoices'],
+    [/^\/work-orders\/(\d+)$/, 'work_orders'],
     [/^\/invoices\/\d+\/payments\/(\d+)$/, 'payments'],
     [/^\/leads\/(\d+)$/, 'leads']
 ];
@@ -50,6 +51,9 @@ const LABELS = [
     ['POST', /^\/invoices\/\d+\/payments$/, 'تسجيل دفعة'],
     ['DELETE', /^\/invoices\/\d+\/payments\/\d+$/, 'حذف دفعة'],
     ['POST', /^\/invoices\/\d+\/cancel$/, 'إلغاء فاتورة'],
+    ['POST', /^\/work-orders$/, 'إنشاء أمر عمل'], ['PATCH', /^\/work-orders\/\d+$/, 'تعديل / جدولة أمر عمل'],
+    ['POST', /^\/work-orders\/\d+\/status$/, 'تغيير حالة أمر عمل'], ['POST', /^\/work-orders\/\d+\/notes$/, 'ملاحظة على أمر عمل'],
+    ['POST', /^\/work-orders\/\d+\/cancel$/, 'إلغاء أمر عمل'],
     ['PATCH', /^\/leads\/\d+$/, 'تعديل بيانات عميل'], ['POST', /^\/leads\/\d+\/notes$/, 'إضافة تقرير متابعة'],
     ['POST', /^\/leads\/\d+\/reply$/, 'رد على عميل'], ['DELETE', /^\/leads\/\d+\/pause$/, 'إعادة تشغيل المساعد لعميل'],
     ['POST', /^\/users$/, 'إضافة حساب موظف'], ['PUT', /^\/users\/\d+$/, 'تعديل حساب موظف'], ['DELETE', /^\/users\/\d+$/, 'حذف حساب موظف'],

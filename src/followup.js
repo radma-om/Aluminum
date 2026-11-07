@@ -143,8 +143,11 @@ function buildWeekly(db, { today = leads.localToday() } = {}) {
     const owed = db.prepare(`SELECT IFNULL(SUM(i.total - IFNULL((SELECT SUM(amount) FROM payments WHERE invoice_id = i.id), 0)), 0) AS v
                              FROM invoices i WHERE i.status = 'issued'`).get().v;
 
+    const jobs = require('./workorders').weekFigures(db, fromUtc, toUtc);
+
     return {
         from: start, to: end,
+        work_orders: jobs,
         invoices: { count: issued.n, value: round2(issued.v), collected: round2(collected), outstanding: round2(owed) },
         new_customers: newLeads.reduce((s, r) => s + r.n, 0),
         new_by_channel: Object.fromEntries(newLeads.map((r) => [leads.CHANNELS[r.channel] || r.channel, r.n])),
@@ -168,6 +171,7 @@ function weeklyText(db, r) {
         `📄 عروض الأسعار: ${r.quotes.count} بقيمة ${r.quotes.value.toFixed(2)} ر.ع`,
         `✅ المقبولة: ${r.quotes.accepted} بقيمة ${r.quotes.accepted_value.toFixed(2)} ر.ع — نسبة القبول ${r.quotes.rate}%`,
         `❌ المرفوضة: ${r.quotes.rejected}`,
+        `🔧 أوامر العمل: اكتمل ${r.work_orders.done} هذا الأسبوع — مفتوحة ${r.work_orders.open}${r.work_orders.unscheduled ? `، منها ${r.work_orders.unscheduled} بانتظار الجدولة` : ''}`,
         `🧾 الفواتير: ${r.invoices.count} بقيمة ${r.invoices.value.toFixed(2)} ر.ع — المحصّل هذا الأسبوع ${r.invoices.collected.toFixed(2)} ر.ع — المتبقي على العملاء ${r.invoices.outstanding.toFixed(2)} ر.ع`,
         `🏁 عملاء أُغلقوا هذا الأسبوع: تم البيع ${r.leads_won}، لم يتم ${r.leads_lost}`,
         '',
@@ -219,6 +223,7 @@ async function tick(db, nowMs = Date.now()) {
     if (lastRun(db, 'follow_up_daily') !== today) {
         setRun(db, 'follow_up_daily', today); // before sending: a failure is not retried every hour
         done.daily = await sendDaily(db);
+        done.technicians = await require('./workorders').sendTechnicianDigests(db);
     }
     if (local.getUTCDay() === 0 && lastRun(db, 'follow_up_weekly') !== today) { // Sunday
         setRun(db, 'follow_up_weekly', today);
