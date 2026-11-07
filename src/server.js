@@ -28,6 +28,7 @@ const backup = require('./backup');
 const offsite = require('./offsite');
 const mailer = require('./mailer');
 const alerts = require('./alerts');
+const followup = require('./followup');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const audit = require('./audit');
@@ -1038,8 +1039,10 @@ function createApp(db, { agentClient } = {}) {
             leads: leads.list(db, {
                 status: String(q.status || ''), assigned: String(q.assigned || ''), channel: String(q.channel || ''),
                 q: String(q.q || '').trim().slice(0, 60), open: q.open === '1',
-                mineOf: req.user.leads_scope === 'mine' ? req.user.display_name : null
+                mineOf: req.user.leads_scope === 'mine' ? req.user.display_name : null,
+                attention: q.attention === '1', staleDays: getSettings(db).follow_up_stale_days
             }),
+            stale_days: getSettings(db).follow_up_stale_days,
             statuses: leads.STATUSES, note_kinds: leads.NOTE_KINDS, channels: leads.CHANNELS,
             staff: assignableStaff(),
             me: { name: staffName(req), scope: req.user.leads_scope },
@@ -1470,6 +1473,25 @@ function createApp(db, { agentClient } = {}) {
 
     admin.get('/backups', (req, res) => res.json(backup.listBackups()));
 
+    /* Follow-up reminders and the weekly report (managers): preview and "send now" */
+    admin.get('/follow-up/weekly', (req, res) => res.json({
+        report: followup.buildWeekly(db), recipients: followup.weeklyRecipients(db),
+        digests: followup.buildDigests(db).map((d) => ({ name: d.name, to: d.to, count: d.items.length + d.others.length })),
+        mail_configured: mailer.isConfigured()
+    }));
+    admin.post('/follow-up/send', asyncRoute(async (req, res) => {
+        if (!mailer.isConfigured()) throw httpError(400, 'البريد غير مضبوط — أضف متغيرات SMTP أولاً');
+        const kind = (req.body || {}).kind;
+        if (kind === 'daily') return res.json(await followup.sendDaily(db));
+        if (kind === 'weekly') {
+            const r = await followup.sendWeekly(db);
+            if (!r.total) throw httpError(400, 'لا يوجد بريد لاستقبال التقرير — أضف بريداً لحسابات المديرين، أو BACKUP_EMAIL_TO');
+            if (!r.sent) throw httpError(502, 'لم يُرسل التقرير: ' + r.error);
+            return res.json(r);
+        }
+        throw httpError(400, 'نوع غير معروف');
+    }));
+
     /* Failure alerts (managers): what is failing now, and a test email */
     admin.get('/alerts', (req, res) => res.json(alerts.status(db)));
     admin.post('/alerts/test', asyncRoute(async (req, res) => {
@@ -1787,6 +1809,7 @@ function start() {
     const db = openDatabase();
     backup.scheduleDailyBackups(db);
     offsite.scheduleDaily(db);
+    followup.schedule(db);
     // PORT is usually a number; some hosting runners pass a socket path instead
     const port = process.env.PORT || 3000;
     createApp(db).listen(/^\d+$/.test(String(port)) ? Number(port) : port, () => {

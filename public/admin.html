@@ -1710,6 +1710,22 @@
         <!-- ==================== TAB 6: Integrations ==================== -->
         <div id="tab-integrations" class="tab-content">
             <div class="card manager-only">
+                <div class="card-title"><span class="icon"><i class="fas fa-user-clock"></i></span> تذكيرات المتابعة والتقرير الأسبوعي</div>
+                <p class="status-text" style="margin:0 0 10px">كل صباح (8:00 بتوقيت مسقط) يصل كل موظف له بريد قائمة بعملائه الذين يحتاجون متابعة: موعد متابعة حلّ أو فات، أو عميل مفتوح لم يكتب عنه أحد تقريراً أو يرد عليه منذ المدة أدناه. العملاء بلا موظف (أو موظفهم بلا بريد) يصلون للمديرين. وكل يوم أحد يصل المديرين تقرير الأسبوع.</p>
+                <div class="form-grid">
+                    <div class="form-group"><label>عميل «بلا متابعة» بعد <span class="unit">(أيام)</span></label><input type="number" id="fuStaleDays" min="1" max="60" step="1"></div>
+                    <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="fuEmails"> إرسال التذكيرات والتقرير بالبريد</label></div>
+                    <div class="form-group" style="justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="saveFollowUpSettings()">حفظ</button></div>
+                </div>
+                <div id="fuPreview" class="status-text" style="line-height:1.9; margin-top:8px">…</div>
+                <div class="form-buttons">
+                    <button class="btn btn-outline btn-sm" onclick="sendFollowUp('daily')">أرسل تذكيرات اليوم الآن</button>
+                    <button class="btn btn-outline btn-sm" onclick="sendFollowUp('weekly')">أرسل تقرير الأسبوع الآن</button>
+                    <span id="fuStatus" class="status-text"></span>
+                </div>
+            </div>
+
+            <div class="card manager-only">
                 <div class="card-title"><span class="icon"><i class="fas fa-bell"></i></span> تنبيهات الأعطال</div>
                 <p class="status-text" style="margin:0 0 10px">عندما يتكرر فشل جزء من النظام تصلك رسالة بريد بما حدث وماذا تفعل، ثم رسالة «عاد للعمل» عند إصلاحه. فشل واحد عابر لا يُرسل تنبيهاً. الأجزاء المراقبة: المساعد الذكي، ردود MazBot، تنبيهات الطلبات للمبيعات، واتساب المباشر، Webhooks، النسخ الاحتياطي، البريد.</p>
                 <div id="alertsBox" class="status-text" style="line-height:1.9">…</div>

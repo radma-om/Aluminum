@@ -310,7 +310,8 @@ const SETTING_SECTIONS = {
     motors_profit_percent: 'motors',
     staff_members: 'manager',
     // Where customers and sales alerts are sent: an employee changing these could divert both to their own number
-    company_whatsapp: 'manager', mazbot_recipients: 'manager', public_base_url: 'manager'
+    company_whatsapp: 'manager', mazbot_recipients: 'manager', public_base_url: 'manager',
+    follow_up_stale_days: 'manager', follow_up_emails: 'manager'
 };
 function allowedSettings(user, body) {
     const out = {};

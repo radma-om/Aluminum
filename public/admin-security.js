@@ -277,3 +277,49 @@ window.switchTab = function (tabId) {
     switchTabBeforeAlerts(tabId);
     if (online && tabId === 'integrations' && ME && ME.role === 'manager') loadAlerts().catch((err) => setStatus('alertsStatus', err.message, 'err'));
 };
+
+/* ---------------------------- Follow-up reminders ---------------------------- */
+
+async function loadFollowUp() {
+    if (!ME || ME.role !== 'manager') return;
+    const [settings, r] = await Promise.all([api('GET', '/api/admin/settings'), api('GET', '/api/admin/follow-up/weekly')]);
+    $id('fuStaleDays').value = settings.follow_up_stale_days;
+    $id('fuEmails').checked = Boolean(settings.follow_up_emails);
+    const w = r.report;
+    const who = r.digests.length
+        ? r.digests.map((d) => `${esc(d.name)} (${esc(d.count)})`).join('، ')
+        : 'لا أحد — لا يوجد عملاء بحاجة متابعة، أو لا توجد حسابات لها بريد';
+    $id('fuPreview').innerHTML = (r.mail_configured ? '' : '⚠️ البريد غير مضبوط (متغيرات <code dir="ltr">SMTP_…</code>) — لن تُرسل التذكيرات.<br>')
+        + `<strong>تذكيرات اليوم ستصل إلى:</strong> ${who}<br>`
+        + `<strong>التقرير الأسبوعي يصل إلى:</strong> ${r.recipients.length ? `<span dir="ltr">${esc(r.recipients.join(', '))}</span>` : 'لا أحد — أضف بريداً لحسابات المديرين'}<br>`
+        + `<strong>هذا الأسبوع (${esc(w.from)} — ${esc(w.to)}):</strong> ${esc(w.new_customers)} عميل جديد، ${esc(w.quotes.count)} عرض سعر، `
+        + `${esc(w.quotes.accepted)} مقبول (${esc(w.quotes.rate)}%)، و${esc(w.needs_attention)} عميل بحاجة متابعة الآن.`;
+}
+
+async function saveFollowUpSettings() {
+    try {
+        await api('PUT', '/api/admin/settings', { follow_up_stale_days: Number($id('fuStaleDays').value), follow_up_emails: $id('fuEmails').checked });
+        setStatus('fuStatus', 'تم الحفظ ✓', 'ok');
+        loadFollowUp().catch(() => {});
+    } catch (err) {
+        setStatus('fuStatus', err.message, 'err');
+    }
+}
+
+async function sendFollowUp(kind) {
+    setStatus('fuStatus', 'جاري الإرسال...');
+    try {
+        const r = await api('POST', '/api/admin/follow-up/send', { kind });
+        setStatus('fuStatus', kind === 'daily'
+            ? (r.total ? `أُرسلت ${r.sent} من ${r.total} رسالة ✓` : 'لا يوجد ما يُرسل اليوم: لا عملاء بحاجة متابعة، أو لا بريد لأصحابهم')
+            : `أُرسل التقرير ✓ إلى ${r.to.join(', ')}`, r.total && r.sent < r.total ? 'err' : 'ok');
+    } catch (err) {
+        setStatus('fuStatus', err.message, 'err');
+    }
+}
+
+const switchTabBeforeFollowUp = window.switchTab;
+window.switchTab = function (tabId) {
+    switchTabBeforeFollowUp(tabId);
+    if (online && tabId === 'integrations' && ME && ME.role === 'manager') loadFollowUp().catch((err) => setStatus('fuStatus', err.message, 'err'));
+};

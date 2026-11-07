@@ -139,7 +139,7 @@ function renderAttention() {
     const k = dash.kpis;
     const items = [
         { cls: 'critical', icon: 'fa-hand', n: k.needs_staff.value, label: 'عملاء يطلبون موظفاً', filter: { status: 'needs_staff' }, pulse: k.needs_staff.value > 0 },
-        { cls: 'warning', icon: 'fa-calendar-day', n: k.due_follow_ups.value, label: 'متابعات مستحقة اليوم', filter: { status: 'open', due: true } },
+        { cls: 'warning', icon: 'fa-bell', n: k.due_follow_ups.value, label: 'بحاجة متابعة', filter: { status: 'open', due: true } },
         { cls: 'serious', icon: 'fa-user-slash', n: k.unassigned.value, label: 'عملاء بلا موظف متابع', filter: { status: 'open', assigned: '-' } },
         { cls: 'info', icon: 'fa-comments', n: k.open_leads.value, label: 'متابعات مفتوحة', filter: { status: 'open' } }
     ];
@@ -355,7 +355,6 @@ function ago(s) {
 }
 const timeOf = (s) => parseUtc(s).toLocaleTimeString('ar-OM', { hour: '2-digit', minute: '2-digit' });
 const dayOf = (s) => parseUtc(s).toLocaleDateString('ar-OM', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-const todayStr = () => new Date().toISOString().slice(0, 10);
 
 function avatar(lead, cls = '') {
     const name = lead.name || lead.phone || '؟';
@@ -368,7 +367,7 @@ function renderLeadFilters() {
     const chips = [['open', 'المفتوحة'], ...Object.entries(leadMeta.statuses), ['', 'الكل']];
     $id('leadStatusChips').innerHTML = chips.map(([k, label]) =>
         `<button type="button" class="chip ${leadFilter.status === k && !leadFilter.due ? 'on' : ''}" data-status="${esc(k)}">${esc(label)}</button>`).join('') +
-        `<button type="button" class="chip ${leadFilter.due ? 'on' : ''}" data-due="1"><i class="fas fa-calendar-day"></i> مستحقة اليوم</button>`;
+        `<button type="button" class="chip ${leadFilter.due ? 'on' : ''}" data-due="1"><i class="fas fa-bell"></i> بحاجة متابعة</button>`;
     const keep = leadFilter.assigned;
     $id('leadAssigned').innerHTML = `<option value="">${ME && ME.leads_scope === 'mine' ? 'عملائي وغير المُسندين' : 'كل الموظفين'}</option><option value="__me">مهامي (${esc(currentMe())})</option>
         <option value="-">غير مُسند</option>${leadMeta.staff.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}`;
@@ -401,6 +400,7 @@ async function loadLeads() {
     if (!online) return;
     const firstLoad = !Object.keys(leadMeta.statuses).length;
     const p = new URLSearchParams();
+    if (leadFilter.due) p.set('attention', '1');
     if (leadFilter.status === 'open') p.set('open', '1');
     else if (leadFilter.status) p.set('status', leadFilter.status);
     const assigned = leadFilter.assigned;
@@ -410,7 +410,7 @@ async function loadLeads() {
     const r = await api('GET', '/api/admin/leads?' + p);
     leadMeta = { statuses: r.statuses, note_kinds: r.note_kinds, channels: r.channels, staff: r.staff, can_reply_whatsapp: r.can_reply_whatsapp };
     if (firstLoad) renderLeadFilters();
-    leadsCache = leadFilter.due ? r.leads.filter((l) => l.next_follow_up && l.next_follow_up <= todayStr()) : r.leads;
+    leadsCache = r.leads; // «بحاجة متابعة» is filtered on the server (due dates + customers nobody followed up)
     renderLeadItems();
     if (leadFilter.status === 'open' && !assigned) updateLeadsBadge(r.leads.filter((l) => l.status === 'needs_staff').length);
 }
@@ -422,7 +422,10 @@ function renderLeadItems() {
         return;
     }
     el.innerHTML = leadsCache.map((l) => {
-        const due = l.next_follow_up && l.next_follow_up <= todayStr() && leadMeta.statuses && ['new', 'needs_staff', 'following', 'waiting'].includes(l.status);
+        const a = l.attention;
+        const attention = !a ? '' : a.reason === 'stale'
+            ? `<span class="pill due" title="لم يكتب أحد تقريراً أو يرد عليه منذ ${esc(a.since)}"><i class="fas fa-hourglass-half"></i>بلا متابعة ${esc(a.days)} يوم</span>`
+            : `<span class="pill due"><i class="fas fa-bell"></i>${a.reason === 'due' ? 'اليوم' : 'فات: ' + esc(a.date)}</span>`;
         const who = l.last_role === 'assistant' ? '🤖 ' : l.last_role === 'staff' ? '👤 ' : '';
         return `<div class="lead-item ${l.id === currentLeadId ? 'active' : ''}" data-id="${l.id}" tabindex="0">
             ${avatar(l)}
@@ -433,7 +436,7 @@ function renderLeadItems() {
                     <span class="pill st-${esc(l.status)}">${esc(leadMeta.statuses[l.status] || l.status)}</span>
                     ${l.assigned_to ? `<span class="pill"><i class="fas fa-user"></i>${esc(l.assigned_to)}</span>` : ''}
                     ${l.quote_count ? `<span class="pill"><i class="fas fa-file-invoice"></i>${l.quote_count}</span>` : ''}
-                    ${due ? `<span class="pill due"><i class="fas fa-bell"></i>${esc(l.next_follow_up)}</span>` : ''}
+                    ${attention}
                 </div>
             </div></div>`;
     }).join('');
