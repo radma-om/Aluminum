@@ -1568,7 +1568,8 @@ window.switchTab = function (tabId) {
     if (!online) return;
     if (tabId === 'quotes') loadQuotes();
     if (tabId === 'products') renderProducts();
-    if (tabId === 'doors') { loadDoors(); if (ME && ME.role === 'manager') loadBackups().catch(() => {}); }
+    if (tabId === 'doors') loadDoors();
+    if (tabId === 'backup' && ME && ME.role === 'manager') loadBackups().catch((err) => setStatus('backupStatus', err.message, 'err'));
     if (tabId === 'overhead') loadOverhead();
     if (tabId === 'motors') loadMotors();
     if (tabId === 'integrations') { loadInbound().catch(() => {}); runDiagnose(); }
@@ -1615,7 +1616,7 @@ function applyPermissions() {
     const manager = ME.role === 'manager';
     document.querySelectorAll('.sidebar .tab-btn[data-tab]').forEach((b) => {
         const tab = b.dataset.tab;
-        b.hidden = tab === 'users' || tab === 'audit' ? !manager : !canSee(tab);
+        b.hidden = ['users', 'audit', 'backup'].includes(tab) ? !manager : !canSee(tab);
     });
     document.querySelectorAll('.manager-only').forEach((el) => { el.hidden = !manager; });
     // Where customers and sales alerts go: only managers change them (the server ignores them from staff)
