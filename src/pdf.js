@@ -128,14 +128,19 @@ const money = (n) => Number(n).toFixed(2);
 const amount = (from, to) => (to != null && to !== from ? `${money(from)} – ${money(to)}` : money(from));
 const qty = (n) => String(Math.round(Number(n) * 100) / 100);
 
+const METHOD_LABELS = { cash: 'نقداً', bank: 'تحويل بنكي', card: 'بطاقة', cheque: 'شيك', other: 'أخرى' };
+
 /**
- * Stream a quotation PDF.
- * @param quote    quote row with parsed .items and optional .details
+ * Stream a quotation PDF — or an invoice (opts.invoice), which shares the layout.
+ * @param quote    quote row with parsed .items and optional .details (for an invoice: the invoice itself)
  * @param settings getSettings(db)
  * @param out      writable stream (HTTP response or file)
+ * @param opts     { invoice?: invoice from invoices.get() (with payments, paid, balance) }
  */
-function renderQuotePdf(quote, settings, out) {
-    const doc = new PDFDocument({ size: 'A4', margin: 40, info: { Title: `Quotation ${quote.ref}` } });
+function renderQuotePdf(quote, settings, out, opts = {}) {
+    const inv = opts.invoice || null;
+    const ref = inv ? inv.number : quote.ref;
+    const doc = new PDFDocument({ size: 'A4', margin: 40, info: { Title: inv ? `Invoice ${ref}` : `Quotation ${ref}` } });
     doc.pipe(out);
     const w = new RtlWriter(doc);
     const left = 40;
@@ -151,9 +156,9 @@ function renderQuotePdf(quote, settings, out) {
         try { doc.image(LOGO, right - 60, 18, { fit: [56, 56], align: 'center', valign: 'center' }); nameRight = width - 76; } catch { /* unreadable image: skip */ }
     }
     w.line(settings.company_name, left, 18, nameRight, { size: 18, bold: true, color: '#ffffff' });
-    w.line('عرض سعر', left, 52, nameRight, { size: 13, color: '#ffffff' });
-    doc.font('Helvetica-Bold').fontSize(13).fillColor('#ffffff').text(quote.ref, left, 26, { lineBreak: false });
-    const created = String(quote.created_at || new Date().toISOString()).slice(0, 10);
+    w.line(inv ? (inv.status === 'cancelled' ? 'فاتورة (ملغاة)' : 'فاتورة') : 'عرض سعر', left, 52, nameRight, { size: 13, color: '#ffffff' });
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#ffffff').text(ref, left, 26, { lineBreak: false });
+    const created = inv ? inv.issue_date : String(quote.created_at || new Date().toISOString()).slice(0, 10);
     doc.font('Helvetica').fontSize(10).text(created, left, 50, { lineBreak: false });
     if (settings.company_whatsapp) doc.text('WhatsApp: +' + settings.company_whatsapp.replace(/\D/g, ''), left, 66, { lineBreak: false });
 
@@ -165,6 +170,10 @@ function renderQuotePdf(quote, settings, out) {
         ['رقم الجوال', quote.customer_phone],
         ['الموقع', quote.customer_city || details.region || '—']
     ];
+    if (inv && inv.customer_address) infoRows.push(['العنوان', inv.customer_address]);
+    if (inv && opts.quoteRef) infoRows.push(['عرض السعر', opts.quoteRef]);
+    if (inv && inv.due_date) infoRows.push(['تاريخ الاستحقاق', inv.due_date]);
+    if (!inv && quote.valid_until) infoRows.push(['صالح حتى', quote.valid_until]);
     // Door basics only (gate type and size); the color and accessories are listed in the items table
     const spec = [];
     const given = new Map(Array.isArray(details.spec) ? details.spec : []);
@@ -245,10 +254,19 @@ function renderQuotePdf(quote, settings, out) {
     const tW = range.total_to != null ? 290 : 230;
     const tX = left;
     const valW = range.total_to != null ? 130 : 80;
-    const totals = [
-        ['المجموع قبل الضريبة', amount(quote.subtotal, range.subtotal_to)],
-        [`ضريبة القيمة المضافة ${quote.vat_percent}%`, amount(quote.vat, range.vat_to)]
-    ];
+    const totals = inv
+        ? [
+            ...(Math.abs(inv.adjustment) >= 0.005 ? [
+                ['مجموع البنود', amount(inv.quote_subtotal, range.subtotal_to)],
+                [range.total_to != null ? 'السعر النهائي المتفق عليه' : inv.adjustment < 0 ? 'خصم' : 'تعديل السعر', money(inv.adjustment)]
+            ] : []),
+            ['المجموع قبل الضريبة', money(inv.subtotal)],
+            ...(inv.vat_percent ? [[`ضريبة القيمة المضافة ${inv.vat_percent}%`, money(inv.vat)]] : [])
+        ]
+        : [
+            ['المجموع قبل الضريبة', amount(quote.subtotal, range.subtotal_to)],
+            [`ضريبة القيمة المضافة ${quote.vat_percent}%`, amount(quote.vat, range.vat_to)]
+        ];
     totals.forEach(([label, value]) => {
         w.line(label, tX + valW + 10, y, tW - valW - 10, { size: 10 });
         doc.font('Helvetica').fontSize(10).fillColor(COLORS.text).text(value, tX, y + 3, { width: valW, align: 'left', lineBreak: false });
@@ -256,20 +274,46 @@ function renderQuotePdf(quote, settings, out) {
     });
     doc.roundedRect(tX, y, tW, 30, 5).fill(COLORS.accent);
     w.line('الإجمالي (ر.ع)', tX + valW + 10, y + 6, tW - valW - 20, { size: 12, bold: true, color: '#ffffff', fit: true });
-    doc.font('Helvetica-Bold').fontSize(13).fillColor('#ffffff').text(amount(quote.total, range.total_to), tX + 10, y + 9, { width: valW, align: 'left', lineBreak: false });
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#ffffff').text(inv ? money(inv.total) : amount(quote.total, range.total_to), tX + 10, y + 9, { width: valW, align: 'left', lineBreak: false });
     y += 48;
+
+    // ---- Invoice: payments received and the balance ----
+    if (inv && inv.status !== 'cancelled') {
+        for (const [label, value, bold] of [['المدفوع', money(inv.paid)], ['المتبقي', money(inv.balance), true]]) {
+            w.line(label, tX + valW + 10, y, tW - valW - 10, { size: 10.5, bold });
+            doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10.5).fillColor(COLORS.text).text(value, tX, y + 3, { width: valW, align: 'left', lineBreak: false });
+            y += 20;
+        }
+        if (inv.payments.length) {
+            y += 6;
+            w.line('الدفعات المستلمة:', left, y, width, { size: 10, bold: true, color: COLORS.primary });
+            y += 20;
+            for (const p of inv.payments) {
+                if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
+                const line = `${p.paid_on} — ${METHOD_LABELS[p.method] || p.method}${p.reference ? ` (${p.reference})` : ''}${p.note ? ` — ${p.note}` : ''}`;
+                w.line(line, left + valW + 10, y, width - valW - 10, { size: 9.5, fit: true });
+                doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.text).text(money(p.amount), left, y + 2, { width: valW, align: 'left', lineBreak: false });
+                y += 18;
+            }
+        }
+        y += 10;
+    }
+    if (inv && inv.status === 'cancelled') {
+        w.line(`أُلغيت هذه الفاتورة: ${inv.cancel_reason || ''}`, left, y, width, { size: 11, bold: true, color: '#c0392b' });
+        y += 26;
+    }
 
     // ---- Customer notes, installation note ----
     const pageBottom = doc.page.height - 50;
     const ensureSpace = (h) => { if (y + h > pageBottom) { doc.addPage(); y = 40; } };
     const notes = [];
-    if (quote.notes) notes.push('ملاحظات العميل: ' + quote.notes);
+    if (quote.notes) notes.push((inv ? 'ملاحظات: ' : 'ملاحظات العميل: ') + quote.notes);
     if (details.fees_note) notes.push(details.fees_note);
     if (details.extra_fees_note) notes.push(details.extra_fees_note);
     for (const n of notes) { ensureSpace(20); y = w.paragraph('• ' + n, left, y, width, { size: 9.5, color: COLORS.light }) - 4; }
 
     // ---- Terms and conditions (admin setting; one term per line, numbered here) ----
-    const terms = String(settings.quote_terms || '').split('\n')
+    const terms = (inv ? '' : String(settings.quote_terms || '')).split('\n')
         .map((t) => t.trim().replace(/^\(?\d+\s*[).\-]\s*/, ''))   // drop any typed "1)" — numbers are drawn below
         .filter(Boolean);
     if (terms.length) {
@@ -290,7 +334,7 @@ function renderQuotePdf(quote, settings, out) {
     // ---- Footer (below the bottom margin, so disable it to avoid an automatic page break) ----
     doc.page.margins.bottom = 0;
     doc.fontSize(8).font('Helvetica').fillColor(COLORS.light)
-        .text(quote.ref, left, doc.page.height - 30, { width, align: 'center', lineBreak: false });
+        .text(ref, left, doc.page.height - 30, { width, align: 'center', lineBreak: false });
     doc.end();
     return doc;
 }

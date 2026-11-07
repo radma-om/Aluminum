@@ -8,6 +8,9 @@ const alerts = require('./alerts');
 const EVENTS = [
     'quote.created',
     'quote.status_changed',
+    'invoice.created',
+    'invoice.cancelled',
+    'payment.created',
     'product.created',
     'product.updated',
     'product.deleted',

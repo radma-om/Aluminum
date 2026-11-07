@@ -17,6 +17,7 @@ const SECTIONS = {
     dashboard: 'لوحة المؤشرات',
     leads: 'متابعة العملاء',
     quotes: 'طلبات العروض',
+    invoices: 'الفواتير والمدفوعات',
     pricing: 'حاسبة التسعير',
     weight: 'حاسبة الوزن',
     products: 'المنتجات والأسعار',
@@ -286,6 +287,10 @@ function sectionsFor(method, path) {
         [/^\/dashboard$/, ['dashboard']],
         [/^\/leads(\/|$)/, ['leads']],
         [/^\/quotes\/\d+\/pdf$/, ['quotes', 'leads']],
+        [/^\/quotes\/\d+\/invoice$/, ['invoices']],
+        // Deleting a payment or cancelling an invoice: managers only
+        [/^\/invoices\/\d+\/(payments\/\d+|cancel)$/, method === 'GET' ? ['invoices'] : 'manager'],
+        [/^\/invoices(\/|$)/, ['invoices']],
         [/^\/quotes(\/|$)/, ['quotes']],
         [/^\/products$/, method === 'GET' ? ['products', 'purchases'] : ['products']],
         [/^\/(products|price-list\.txt)(\/|$)/, ['products']],
@@ -311,7 +316,7 @@ const SETTING_SECTIONS = {
     staff_members: 'manager',
     // Where customers and sales alerts are sent: an employee changing these could divert both to their own number
     company_whatsapp: 'manager', mazbot_recipients: 'manager', public_base_url: 'manager',
-    follow_up_stale_days: 'manager', follow_up_emails: 'manager'
+    follow_up_stale_days: 'manager', follow_up_emails: 'manager', quote_validity_days: 'manager'
 };
 function allowedSettings(user, body) {
     const out = {};

@@ -25,6 +25,8 @@ const RECORDS = [
     [/^\/users\/(\d+)$/, 'staff_users'],
     [/^\/webhooks\/(\d+)$/, 'webhooks'],
     [/^\/quotes\/(\d+)$/, 'quotes'],
+    [/^\/invoices\/(\d+)$/, 'invoices'],
+    [/^\/invoices\/\d+\/payments\/(\d+)$/, 'payments'],
     [/^\/leads\/(\d+)$/, 'leads']
 ];
 
@@ -42,7 +44,12 @@ const LABELS = [
     ['PUT', /^\/knowledge\/\d+$/, 'تعديل قاعدة المعرفة'], ['DELETE', /^\/knowledge\/\d+$/, 'حذف من قاعدة المعرفة'],
     ['PUT', /^\/mazbot\/agent$/, 'إعدادات المساعد على واتساب'], ['POST', /^\/mazbot\/test$/, 'إرسال رسالة تجربة عبر MazBot'],
     ['DELETE', /^\/mazbot\/pauses$/, 'إعادة تشغيل المساعد لكل العملاء'], ['POST', /^\/agent\/reset$/, 'مسح محادثة تجربة المساعد'],
-    ['PATCH', /^\/quotes\/\d+$/, 'تغيير حالة عرض سعر'],
+    ['PATCH', /^\/quotes\/\d+$/, 'تعديل عرض سعر (الحالة / الصلاحية)'],
+    ['POST', /^\/quotes\/\d+\/invoice$/, 'إصدار فاتورة'],
+    ['PATCH', /^\/invoices\/\d+$/, 'تعديل فاتورة'],
+    ['POST', /^\/invoices\/\d+\/payments$/, 'تسجيل دفعة'],
+    ['DELETE', /^\/invoices\/\d+\/payments\/\d+$/, 'حذف دفعة'],
+    ['POST', /^\/invoices\/\d+\/cancel$/, 'إلغاء فاتورة'],
     ['PATCH', /^\/leads\/\d+$/, 'تعديل بيانات عميل'], ['POST', /^\/leads\/\d+\/notes$/, 'إضافة تقرير متابعة'],
     ['POST', /^\/leads\/\d+\/reply$/, 'رد على عميل'], ['DELETE', /^\/leads\/\d+\/pause$/, 'إعادة تشغيل المساعد لعميل'],
     ['POST', /^\/users$/, 'إضافة حساب موظف'], ['PUT', /^\/users\/\d+$/, 'تعديل حساب موظف'], ['DELETE', /^\/users\/\d+$/, 'حذف حساب موظف'],

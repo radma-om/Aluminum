@@ -237,5 +237,5 @@ function backfill(db) {
 module.exports = {
     STATUSES, OPEN_STATUSES, NOTE_KINDS, CHANNELS, phoneKey, attentionOf, needingAttention, localToday,
     touch, customerMessage, assistantMessage, humanRequested, quoteCreated,
-    list, detail, update, addNote, staffMessage, backfill
+    list, detail, update, addNote, staffMessage, backfill, addMessage
 };

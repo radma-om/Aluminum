@@ -136,8 +136,16 @@ function buildWeekly(db, { today = leads.localToday() } = {}) {
         needs_attention: attention.filter((l) => l.assigned_to === name).length
     })).sort((a, b) => (b.reports + b.replies) - (a.reports + a.replies) || b.open - a.open);
 
+    // Invoices issued and money received this week (by their own dates)
+    const issued = db.prepare("SELECT COUNT(*) AS n, IFNULL(SUM(total), 0) AS v FROM invoices WHERE status = 'issued' AND issue_date BETWEEN ? AND ?").get(start, end);
+    const collected = db.prepare(`SELECT IFNULL(SUM(p.amount), 0) AS v FROM payments p JOIN invoices i ON i.id = p.invoice_id
+                                  WHERE i.status = 'issued' AND p.paid_on BETWEEN ? AND ?`).get(start, end).v;
+    const owed = db.prepare(`SELECT IFNULL(SUM(i.total - IFNULL((SELECT SUM(amount) FROM payments WHERE invoice_id = i.id), 0)), 0) AS v
+                             FROM invoices i WHERE i.status = 'issued'`).get().v;
+
     return {
         from: start, to: end,
+        invoices: { count: issued.n, value: round2(issued.v), collected: round2(collected), outstanding: round2(owed) },
         new_customers: newLeads.reduce((s, r) => s + r.n, 0),
         new_by_channel: Object.fromEntries(newLeads.map((r) => [leads.CHANNELS[r.channel] || r.channel, r.n])),
         quotes: { count: quotes.length, value: sum(quotes), accepted: won.length, accepted_value: sum(won),
@@ -160,6 +168,7 @@ function weeklyText(db, r) {
         `📄 عروض الأسعار: ${r.quotes.count} بقيمة ${r.quotes.value.toFixed(2)} ر.ع`,
         `✅ المقبولة: ${r.quotes.accepted} بقيمة ${r.quotes.accepted_value.toFixed(2)} ر.ع — نسبة القبول ${r.quotes.rate}%`,
         `❌ المرفوضة: ${r.quotes.rejected}`,
+        `🧾 الفواتير: ${r.invoices.count} بقيمة ${r.invoices.value.toFixed(2)} ر.ع — المحصّل هذا الأسبوع ${r.invoices.collected.toFixed(2)} ر.ع — المتبقي على العملاء ${r.invoices.outstanding.toFixed(2)} ر.ع`,
         `🏁 عملاء أُغلقوا هذا الأسبوع: تم البيع ${r.leads_won}، لم يتم ${r.leads_lost}`,
         '',
         `🔔 بحاجة متابعة الآن: ${r.needs_attention}${r.unassigned_open ? ` — وعملاء مفتوحون بلا موظف: ${r.unassigned_open}` : ''}`,

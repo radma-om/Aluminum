@@ -29,6 +29,7 @@ const offsite = require('./offsite');
 const mailer = require('./mailer');
 const alerts = require('./alerts');
 const followup = require('./followup');
+const invoices = require('./invoices');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const audit = require('./audit');
@@ -250,14 +251,17 @@ function saveQuote(db, { customer_name, customer_phone, customer_city, notes, so
         total: priced.total,
         details,
         status: 'new',
-        source
+        source,
+        // The price holds for quote_validity_days (Muscat dates), then the quote shows as expired
+        valid_until: new Date(Date.parse(leads.localToday() + 'T00:00:00Z') + (Number(getSettings(db).quote_validity_days) || 15) * 86400000)
+            .toISOString().slice(0, 10)
     };
     const info = db.prepare(`INSERT INTO quotes (ref, access_key, customer_name, customer_phone, customer_city, notes,
-                             items_json, details_json, subtotal, vat_percent, vat, total, source)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+                             items_json, details_json, subtotal, vat_percent, vat, total, source, valid_until)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(quote.ref, quote.access_key, quote.customer_name, quote.customer_phone, quote.customer_city, quote.notes,
             JSON.stringify(quote.items), details ? JSON.stringify(details) : null,
-            quote.subtotal, quote.vat_percent, quote.vat, quote.total, quote.source);
+            quote.subtotal, quote.vat_percent, quote.vat, quote.total, quote.source, quote.valid_until);
     quote.id = Number(info.lastInsertRowid);
     quote.created_at = new Date().toISOString().replace('T', ' ').slice(0, 19);
     quote.pdf_url = pdfPath(quote);
@@ -673,6 +677,26 @@ function createApp(db, { agentClient } = {}) {
         sendPdf(res, parseQuote(row), getSettings(db));
     });
 
+    /* Customer-facing invoice PDF: like the quote, the random key in the link is the access control */
+    app.get('/invoices/:number.pdf', (req, res) => {
+        const inv = invoices.byNumber(db, req.params.number);
+        const key = String(req.query.k || '');
+        if (!inv || key.length !== inv.access_key.length || !crypto.timingSafeEqual(Buffer.from(key), Buffer.from(inv.access_key))) {
+            return res.status(404).type('text/plain').send('Not found');
+        }
+        sendInvoicePdf(res, inv);
+    });
+    const sendInvoicePdf = (res, inv) => {
+        const quoteRef = inv.quote_id ? (db.prepare('SELECT ref FROM quotes WHERE id = ?').get(inv.quote_id) || {}).ref : null;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="invoice-${inv.number}.pdf"`);
+        renderQuotePdf(inv, getSettings(db), res, { invoice: inv, quoteRef });
+    };
+    const invoicePublic = (inv) => {
+        const { access_key, ...rest } = inv;
+        return { ...rest, pdf_url: `/invoices/${inv.number}.pdf?k=${access_key}` };
+    };
+
     /* ------------------------- Admin API -------------------------- */
 
     /* ---- Staff login (the general manager keeps using ADMIN_TOKEN) ---- */
@@ -987,7 +1011,16 @@ function createApp(db, { agentClient } = {}) {
         const args = req.query.status ? [req.query.status] : [];
         const rows = db.prepare(`SELECT * FROM quotes ${where} ORDER BY id DESC LIMIT 500`).all(...args)
             .filter((r) => staff.seesQuote(db, req.user, r));
-        res.json(rows.map((r) => { const { access_key, ...q } = parseQuote(r); return q; }));
+        const today = leads.localToday();
+        res.json(rows.map((r) => {
+            const { access_key, ...q } = parseQuote(r);
+            const inv = invoices.activeForQuote(db, q.id);
+            return {
+                ...q,
+                expired: Boolean(q.valid_until && q.valid_until < today && ['new', 'contacted'].includes(q.status)),
+                invoice: inv ? { id: inv.id, number: inv.number } : null
+            };
+        }));
     });
 
     /* A quote the signed-in user may see (the customer scope applies to quotes too); 404 otherwise,
@@ -1000,12 +1033,65 @@ function createApp(db, { agentClient } = {}) {
 
     admin.patch('/quotes/:id', (req, res) => {
         quoteFor(req, req.params.id);
-        if (!QUOTE_STATUSES.includes(req.body.status)) throw httpError(400, 'الحالة غير صالحة');
-        const info = db.prepare('UPDATE quotes SET status = ? WHERE id = ?').run(req.body.status, Number(req.params.id));
+        const b = req.body || {};
+        if (b.status === undefined && b.valid_until === undefined) throw httpError(400, 'لا يوجد ما يُحفظ');
+        if (b.status !== undefined && !QUOTE_STATUSES.includes(b.status)) throw httpError(400, 'الحالة غير صالحة');
+        if (b.valid_until !== undefined && !(/^\d{4}-\d{2}-\d{2}$/.test(String(b.valid_until)) && !Number.isNaN(Date.parse(b.valid_until + 'T00:00:00Z')))) {
+            throw httpError(400, 'تاريخ الصلاحية غير صالح');
+        }
+        if (b.valid_until !== undefined) db.prepare('UPDATE quotes SET valid_until = ? WHERE id = ?').run(String(b.valid_until), Number(req.params.id));
+        if (b.status === undefined) {
+            const { access_key, ...quote } = parseQuote(db.prepare('SELECT * FROM quotes WHERE id = ?').get(Number(req.params.id)));
+            return res.json(quote);
+        }
+        const info = db.prepare('UPDATE quotes SET status = ? WHERE id = ?').run(b.status, Number(req.params.id));
         if (!info.changes) throw httpError(404, 'العرض غير موجود');
         const { access_key, ...quote } = parseQuote(db.prepare('SELECT * FROM quotes WHERE id = ?').get(Number(req.params.id)));
         webhooks.emit(db, 'quote.status_changed', quote);
         res.json(quote);
+    });
+
+    /* ---- Invoices and payments ---- */
+
+    // The customer scope applies to invoices as it does to quotes (by the customer's phone)
+    const invoiceFor = (req, id) => {
+        const inv = invoices.get(db, id);
+        if (!inv || !staff.seesQuote(db, req.user, inv)) throw httpError(404, 'الفاتورة غير موجودة');
+        return inv;
+    };
+    admin.post('/quotes/:id/invoice', (req, res) => {
+        const quote = parseQuote(quoteFor(req, req.params.id));
+        const inv = invoices.createFromQuote(db, quote, req.body || {}, staffName(req));
+        webhooks.emit(db, 'invoice.created', invoicePublic(inv));
+        if (inv.payments.length) webhooks.emit(db, 'payment.created', { invoice: inv.number, payment: inv.payments[0] });
+        res.status(201).json(invoicePublic(inv));
+    });
+    admin.get('/invoices', (req, res) => res.json({
+        invoices: invoices.list(db, { q: String(req.query.q || '').trim(), state: String(req.query.state || ''), from: String(req.query.from || ''), to: String(req.query.to || '') })
+            .filter((inv) => staff.seesQuote(db, req.user, inv)).map(invoicePublic),
+        summary: invoices.summary(db), methods: invoices.METHODS, states: invoices.PAY_STATES
+    }));
+    admin.get('/invoices/:id', (req, res) => res.json(invoicePublic(invoiceFor(req, req.params.id))));
+    admin.get('/invoices/:id/pdf', (req, res) => sendInvoicePdf(res, invoiceFor(req, req.params.id)));
+    admin.patch('/invoices/:id', (req, res) => {
+        invoiceFor(req, req.params.id);
+        res.json(invoicePublic(invoices.update(db, req.params.id, req.body || {})));
+    });
+    admin.post('/invoices/:id/payments', (req, res) => {
+        invoiceFor(req, req.params.id);
+        const inv = invoices.addPayment(db, req.params.id, req.body || {}, staffName(req));
+        webhooks.emit(db, 'payment.created', { invoice: inv.number, payment: inv.payments.at(-1), paid: inv.paid, balance: inv.balance });
+        res.status(201).json(invoicePublic(inv));
+    });
+    admin.delete('/invoices/:id/payments/:pid', (req, res) => {
+        invoiceFor(req, req.params.id);
+        res.json(invoicePublic(invoices.deletePayment(db, req.params.id, req.params.pid)));
+    });
+    admin.post('/invoices/:id/cancel', (req, res) => {
+        invoiceFor(req, req.params.id);
+        const inv = invoices.cancel(db, req.params.id, (req.body || {}).reason, staffName(req));
+        webhooks.emit(db, 'invoice.cancelled', invoicePublic(inv));
+        res.json(invoicePublic(inv));
     });
 
     /* ---- Dashboard figures ---- */
