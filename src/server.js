@@ -25,8 +25,10 @@ const dashboard = require('./dashboard');
 const agent = require('./agent');
 const mazbot = require('./mazbot');
 const backup = require('./backup');
+const offsite = require('./offsite');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
+const audit = require('./audit');
 const whatsappCheck = require('./whatsapp-check');
 const trustedProxies = require('./trusted-proxies');
 const { assertPublicUrl, allowPrivate } = require('./safe-url');
@@ -107,9 +109,9 @@ function rateLimit({ windowMs, max }) {
 /* Admin password check. After 10 wrong passwords from one IP in 15 minutes,
    that IP is locked out for 15 minutes (brute-force protection on a public server). */
 /* Too many wrong passwords from one address: wait 15 minutes (admin API and staff login) */
-function makeLoginGuard() {
+function makeLoginGuard({ maxFailures = 10 } = {}) {
     const WINDOW = 15 * 60_000;
-    const MAX_FAILURES = 10;
+    const MAX_FAILURES = maxFailures;
     const failures = new Map();
     sweepEvery(failures, WINDOW, (list) => list[list.length - 1] || 0);
     const recent = (ip) => (failures.get(ip) || []).filter((t) => Date.now() - t < WINDOW);
@@ -125,15 +127,27 @@ const tooMany = 'محاولات دخول كثيرة خاطئة. حاول مرة 
 
 /* Who is calling the admin API: the general manager (ADMIN_TOKEN) or a staff account (session token),
    and may they use this route? */
+/* ADMIN_TOKEN_LOGIN=off: the general manager's password stops working, so every manager signs in with
+   their own account and two-step code. Only honored while an active manager account with two-step
+   sign-in exists (otherwise nobody could reach the panel); to get back in, remove the variable. */
+function ownerLoginOff(db) {
+    if (String(process.env.ADMIN_TOKEN_LOGIN || '').toLowerCase() !== 'off') return false;
+    return Boolean(db.prepare("SELECT 1 FROM staff_users WHERE role = 'manager' AND active = 1 AND totp_secret IS NOT NULL").get());
+}
+
 function makeRequireAdmin(db, guard) {
     return (req, res, next) => {
         const expected = process.env.ADMIN_TOKEN;
-        if (!expected) return res.status(503).json({ error: 'ADMIN_TOKEN غير مضبوط على الخادم' });
+        if (!expected && !ownerLoginOff(db)) return res.status(503).json({ error: 'ADMIN_TOKEN غير مضبوط على الخادم' });
         if (guard.blocked(req.ip)) return res.status(429).json({ error: tooMany });
         const given = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '');
         const a = Buffer.from(given);
-        const b = Buffer.from(expected);
-        let user = a.length === b.length && crypto.timingSafeEqual(a, b) ? staff.OWNER : null;
+        const b = Buffer.from(expected || '');
+        const isOwner = Boolean(expected) && a.length === b.length && crypto.timingSafeEqual(a, b);
+        if (isOwner && ownerLoginOff(db)) {
+            return res.status(401).json({ error: 'الدخول بكلمة مرور الإدارة العامة موقوف (ADMIN_TOKEN_LOGIN=off) — ادخل باسم المستخدم وكلمة المرور ورمز التحقق' });
+        }
+        let user = isOwner ? staff.OWNER : null;
         if (!user) user = staff.fromToken(db, given);
         if (!user) {
             guard.fail(req.ip);
@@ -145,6 +159,10 @@ function makeRequireAdmin(db, guard) {
         }
         guard.ok(req.ip);
         req.user = user;
+        req.sessionHash = user.owner ? null : staff.sha256(given);
+        if (user.must_setup_2fa && !staff.SETUP_2FA_PATHS.has(req.path.replace(/\/+$/, ''))) {
+            return res.status(403).json({ error: 'فعّل التحقق بخطوتين أولاً — إلزامي لحسابات المديرين', need_2fa_setup: true });
+        }
 
         const rule = staff.sectionsFor(req.method, req.path);
         const allowed = rule === 'any' || user.role === 'manager'
@@ -357,7 +375,9 @@ function pruneOldLogs(db) {
     return {
         webhook_deliveries: Number(db.prepare("DELETE FROM webhook_deliveries WHERE created_at < datetime('now', ?)").run(days).changes),
         agent_conversations: Number(db.prepare("DELETE FROM agent_conversations WHERE updated_at < datetime('now', ?)").run(days).changes),
-        staff_sessions: Number(db.prepare("DELETE FROM staff_sessions WHERE expires_at < datetime('now')").run().changes)
+        staff_sessions: Number(db.prepare("DELETE FROM staff_sessions WHERE expires_at < datetime('now')").run().changes),
+        audit_log: audit.prune(db), // 365 days
+        offsite_backups: Number(db.prepare("DELETE FROM offsite_backups WHERE at < datetime('now', ?)").run(days).changes)
     };
 }
 
@@ -651,15 +671,31 @@ function createApp(db, { agentClient } = {}) {
     /* ---- Staff login (the general manager keeps using ADMIN_TOKEN) ---- */
 
     const loginGuard = makeLoginGuard();
+    // Wrong 6-digit codes per account (whatever the address): 5 in 15 minutes, then wait
+    const codeGuard = makeLoginGuard({ maxFailures: 5 });
     app.post('/api/auth/login', (req, res) => {
         if (loginGuard.blocked(req.ip)) return res.status(429).json({ error: tooMany });
         const b = req.body || {};
-        const r = staff.login(db, b.username, b.password);
+        const username = String(b.username || '').trim().toLowerCase().slice(0, 40);
+        const r = staff.login(db, b.username, b.password, codeGuard.blocked('u:' + username) ? null : b.code);
         if (!r) {
             loginGuard.fail(req.ip);
+            audit.record(db, { actor: username || '—', ip: req.ip, action: 'محاولة دخول فاشلة (كلمة مرور خاطئة)' });
             return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
         }
+        if (r.need_code) {
+            if (codeGuard.blocked('u:' + username)) return res.status(429).json({ error: 'رموز تحقق خاطئة كثيرة لهذا الحساب. حاول بعد 15 دقيقة.' });
+            return res.status(401).json({ need_code: true, error: 'اكتب رمز التحقق من تطبيق المصادقة (6 أرقام)' });
+        }
+        if (r.bad_code) {
+            loginGuard.fail(req.ip);
+            codeGuard.fail('u:' + username);
+            audit.record(db, { user_id: r.user_id, actor: username, ip: req.ip, action: 'محاولة دخول فاشلة (رمز تحقق خاطئ)' });
+            return res.status(401).json({ need_code: true, error: 'رمز التحقق غير صحيح أو مستخدم من قبل — اكتب الرمز الظاهر الآن' });
+        }
         loginGuard.ok(req.ip);
+        codeGuard.ok('u:' + username);
+        audit.record(db, { user_id: r.user.id, actor: `${r.user.display_name} (${r.user.username})`, ip: req.ip, action: 'تسجيل دخول' });
         res.json(r);
     });
     app.post('/api/auth/logout', (req, res) => {
@@ -669,6 +705,25 @@ function createApp(db, { agentClient } = {}) {
 
     const admin = express.Router();
     admin.use(makeRequireAdmin(db, loginGuard));
+    admin.use(audit.middleware(db, { getSettings }));
+
+    /* The general manager has no sign-in step: record when the panel is opened with ADMIN_TOKEN
+       (once per address every 6 hours), so an unexpected use of it shows in the activity log */
+    const ownerSeen = new Map();
+    sweepEvery(ownerSeen, 6 * 3600_000, (t) => t);
+    admin.use((req, res, next) => {
+        if (req.user.owner && req.method === 'GET' && req.path === '/me') {
+            const last = ownerSeen.get(req.ip);
+            if (last === undefined || Date.now() - last >= 6 * 3600_000) {
+                ownerSeen.set(req.ip, Date.now());
+                audit.record(db, { actor: audit.actorOf(req.user), ip: req.ip, action: 'فتح لوحة الإدارة بكلمة مرور الإدارة العامة' });
+            }
+        }
+        next();
+    });
+
+    /* Activity log (managers only: the route is not mapped to a section) */
+    admin.get('/audit', (req, res) => res.json(audit.list(db, req.query)));
 
     /* ---- The signed-in user, and staff accounts (managers) ---- */
 
@@ -685,6 +740,10 @@ function createApp(db, { agentClient } = {}) {
             trusted_proxies: proxyConf.list || []
         });
     });
+    /* Two-step sign-in for one's own account */
+    admin.post('/me/2fa/setup', (req, res) => res.json(staff.setup2fa(db, req.user)));
+    admin.post('/me/2fa/enable', (req, res) => res.json({ ok: true, user: staff.enable2fa(db, req.user, (req.body || {}).code, req.sessionHash) }));
+    admin.post('/me/2fa/disable', (req, res) => res.json({ ok: true, user: staff.disable2fa(db, req.user, (req.body || {}).password) }));
     admin.post('/me/password', (req, res) => {
         res.json({ ok: true, ...staff.changeOwnPassword(db, req.user, (req.body || {}).current, (req.body || {}).password) });
     });
@@ -734,6 +793,14 @@ function createApp(db, { agentClient } = {}) {
                     'لذلك يظهر كل العملاء بعنوان واحد: تُشترك محاولات الدخول الخاطئة، وتُشترك حدود النماذج العامة. ' +
                     'إذا تأكدت من مزوّد الاستضافة أن هذا العنوان (أو شبكته) هو وكيل الاستضافة فأضفه إلى TRUSTED_PROXIES.'
             });
+        }
+        const offsiteWarning = offsite.warning(db);
+        if (offsiteWarning) warnings.push(offsiteWarning);
+        const twoStepManager = db.prepare("SELECT 1 FROM staff_users WHERE role = 'manager' AND active = 1 AND totp_secret IS NOT NULL").get();
+        if (String(process.env.ADMIN_TOKEN_LOGIN || '').toLowerCase() === 'off' && !twoStepManager) {
+            warnings.push({ level: 'danger', text: 'ADMIN_TOKEN_LOGIN=off لم يُطبَّق: لا يوجد حساب «مدير» مفعّل بالتحقق بخطوتين بعد. أنشئ حساب مدير وفعّل له التحقق أولاً، وإلا لن يستطيع أحد الدخول.' });
+        } else if (!twoStepManager) {
+            warnings.push({ level: 'warning', text: 'الدخول بكلمة مرور الإدارة العامة (ADMIN_TOKEN) بلا تحقق بخطوتين. أنشئ لنفسك حساب «مدير» من «المستخدمون والصلاحيات» (يُطلب منه رمز من تطبيق على الجوال)، ثم اجعل ADMIN_TOKEN للطوارئ فقط.' });
         }
         if (String(process.env.ADMIN_TOKEN || '').length < 20) {
             warnings.push({ level: 'warning', text: 'كلمة مرور المدير العام (ADMIN_TOKEN) قصيرة — اجعلها 20 حرفاً على الأقل (حروف وأرقام عشوائية) ثم أعد النشر.' });
@@ -1343,6 +1410,14 @@ function createApp(db, { agentClient } = {}) {
 
     admin.get('/backups', (req, res) => res.json(backup.listBackups()));
 
+    /* A copy outside the server, by email (status, and "send now" to test the settings) */
+    admin.get('/offsite-backup', (req, res) => res.json(offsite.status(db)));
+    admin.post('/offsite-backup', asyncRoute(async (req, res) => {
+        const r = await offsite.sendBackup(db, { reason: 'manual' });
+        if (!r.ok) throw httpError(502, 'لم تُرسل النسخة: ' + r.error);
+        res.json({ ...r, status: offsite.status(db) });
+    }));
+
     admin.get('/backups/:name', (req, res) => {
         const file = backup.backupPath(req.params.name);
         if (!file) throw httpError(404, 'النسخة غير موجودة');
@@ -1641,6 +1716,7 @@ function start() {
     try { process.loadEnvFile(); } catch { /* .env is optional */ }
     const db = openDatabase();
     backup.scheduleDailyBackups(db);
+    offsite.scheduleDaily(db);
     // PORT is usually a number; some hosting runners pass a socket path instead
     const port = process.env.PORT || 3000;
     createApp(db).listen(/^\d+$/.test(String(port)) ? Number(port) : port, () => {

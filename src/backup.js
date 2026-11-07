@@ -5,8 +5,9 @@
      current data is saved first, so a restore can always be undone.
    - Automatic daily backups are kept next to the database file.
    - Staff accounts are saved with their password HASHES only (never a
-     password, never an environment secret); login sessions are not saved,
-     and every session ends after a successful restore.
+     password, never an environment secret, never a two-step sign-in
+     secret); login sessions are not saved, and every session ends after a
+     successful restore. Accounts keep their current two-step setup.
    Logs (webhook deliveries, incoming webhook requests, AI conversation
    history, temporary agent pauses) are not included; the webhook delivery
    log is emptied when the webhooks are replaced, so it never points at a
@@ -52,7 +53,11 @@ const GROUPS = [['leads', 'lead_messages', 'lead_notes']];
 const INFO_SHEET = 'معلومات';
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
 
+/* Never written to the file: two-step sign-in secrets (a copy sent by email must not carry them).
+   A restore keeps the current secret of each account with the same username. */
+const NOT_EXPORTED = { staff_users: new Set(['totp_secret', 'totp_pending', 'totp_last_step']) };
 const columnsOf = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+const exportedColumns = (db, table) => columnsOf(db, table).filter((c) => !(NOT_EXPORTED[table] && NOT_EXPORTED[table].has(c)));
 
 async function exportWorkbook(db) {
     const wb = new ExcelJS.Workbook();
@@ -66,7 +71,7 @@ async function exportWorkbook(db) {
     info.getRow(1).font = { bold: true };
 
     for (const [table, label] of TABLES) {
-        const cols = columnsOf(db, table);
+        const cols = exportedColumns(db, table);
         const rows = db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
         info.addRow([label, `${rows.length} سجل`]);
         const ws = wb.addWorksheet(label, { views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }] });
@@ -135,14 +140,18 @@ async function restoreWorkbook(db, buffer) {
             // Logs and sessions that point at rows being replaced
             if (data.webhooks) db.prepare('DELETE FROM webhook_deliveries').run();
             db.prepare('DELETE FROM staff_sessions').run(); // everyone signs in again after a restore
+            const twoStep = data.staff_users
+                ? db.prepare('SELECT username, totp_secret, totp_last_step FROM staff_users WHERE totp_secret IS NOT NULL').all() : [];
             for (const [table] of [...present].reverse()) db.prepare(`DELETE FROM ${table}`).run();
             for (const [table, label] of present) {
-                const cols = columnsOf(db, table).filter((c) => data[table].header.includes(c));
+                const cols = exportedColumns(db, table).filter((c) => data[table].header.includes(c));
                 if (!cols.length) throw err400(`ورقة «${label}» لا تحتوي أسماء الأعمدة في الصف الأول`);
                 const insert = db.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`);
                 for (const row of data[table].rows) insert.run(...cols.map((c) => row[c] ?? null));
                 counts[table] = data[table].rows.length;
             }
+            const keep2fa = db.prepare('UPDATE staff_users SET totp_secret = ?, totp_last_step = ? WHERE username = ?');
+            for (const u of twoStep) keep2fa.run(u.totp_secret, u.totp_last_step, u.username);
             // Motors items from a backup of version 3.0.0 (no sections yet) join the current sections
             require('./motors').linkItems(db);
             const broken = db.prepare('PRAGMA foreign_key_check').all();
