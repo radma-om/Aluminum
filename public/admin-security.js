@@ -187,3 +187,52 @@ window.switchTab = function (tabId) {
     switchTabBeforeSecurity(tabId);
     if (online && tabId === 'audit' && ME && ME.role === 'manager') loadAudit();
 };
+
+/* ---------------------------- Forgotten password ---------------------------- */
+
+async function forgotPassword() {
+    const identifier = prompt('اكتب اسم المستخدم أو البريد الإلكتروني المسجّل لحسابك:', $id('loginUser').value.trim());
+    if (!identifier || !identifier.trim()) return;
+    try {
+        const res = await fetch('/api/auth/forgot', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: identifier.trim() })
+        });
+        const data = await res.json().catch(() => ({}));
+        setStatus('loginStatus', res.ok ? data.message : (data.error || 'تعذر الطلب'), res.ok ? 'ok' : 'err');
+    } catch (err) {
+        setStatus('loginStatus', err.message, 'err');
+    }
+}
+
+/* The emailed link opens /admin#reset=<code>: the code stays in the page (a # part is never sent
+   to any server or in a Referer header) and is removed from the address bar at once */
+const resetToken = (() => {
+    const m = /^#reset=([A-Za-z0-9_-]{20,100})$/.exec(location.hash);
+    if (!m) return null;
+    history.replaceState(null, '', location.pathname + location.search);
+    return m[1];
+})();
+if (resetToken) {
+    $id('resetBar').hidden = false;
+    setTimeout(() => $id('resetPass1').focus(), 0);
+}
+
+async function submitReset() {
+    const password = $id('resetPass1').value;
+    if (password !== $id('resetPass2').value) return setStatus('resetStatus', 'الكلمتان غير متطابقتين', 'err');
+    try {
+        const res = await fetch('/api/auth/reset', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: resetToken, password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return setStatus('resetStatus', data.error || 'تعذر الحفظ', 'err');
+        $id('resetBar').hidden = true;
+        try { localStorage.removeItem('adminToken'); } catch { /* ignore */ }
+        $id('loginUser').value = data.username;
+        $id('loginBar').hidden = false;
+        setStatus('loginStatus', 'تم تعيين كلمة المرور ✓ — ادخل الآن بالكلمة الجديدة' + (data.totp_enabled ? ' ورمز التحقق من التطبيق' : ''), 'ok');
+        setTimeout(() => $id('adminToken').focus(), 0);
+    } catch (err) {
+        setStatus('resetStatus', err.message, 'err');
+    }
+}

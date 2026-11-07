@@ -383,6 +383,16 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
 
+-- Password-reset links sent by email: only the SHA-256 of the code is kept; 30 minutes, used once
+CREATE TABLE IF NOT EXISTS password_resets (
+    token_hash  TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES staff_users(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at  TEXT NOT NULL,
+    used_at     TEXT,
+    ip          TEXT
+);
+
 -- Copies of the daily backup sent outside the server (by email)
 CREATE TABLE IF NOT EXISTS offsite_backups (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -520,6 +530,8 @@ function migrate(db) {
     addColumns('motor_items', { section_id: 'INTEGER', profit_percent: 'REAL' });
     // Two-step sign-in: the confirmed secret, one waiting for its first code, and the last code step used
     addColumns('staff_users', { totp_secret: 'TEXT', totp_pending: 'TEXT', totp_last_step: 'INTEGER NOT NULL DEFAULT 0' });
+    // Email for password-reset links (set by a manager)
+    addColumns('staff_users', { email: 'TEXT' });
 }
 
 /* "~/radma-data/aluminum.db" → the account's home folder. On shared hosting this keeps the
