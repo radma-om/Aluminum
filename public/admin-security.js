@@ -134,11 +134,11 @@ async function loadAudit(more = false) {
         $id('auditMore').hidden = !r.more;
         $id('auditBody').innerHTML = auditRows.map((e) => `
             <tr class="${/فاشلة/.test(e.action) ? 'muted-row' : ''}">
-                <td style="white-space:nowrap"><small>${esc(auditTime(e.at))}</small></td>
-                <td>${esc(e.actor)}</td>
-                <td>${/فاشلة/.test(e.action) ? '⚠️ ' : ''}${esc(e.action)}</td>
-                <td class="audit-details">${auditDetails(e.details)}</td>
-                <td dir="ltr"><small>${esc(e.ip || '')}</small></td>
+                <td data-label="الوقت" style="white-space:nowrap"><small>${esc(auditTime(e.at))}</small></td>
+                <td data-label="الحساب">${esc(e.actor)}</td>
+                <td data-label="الإجراء">${/فاشلة/.test(e.action) ? '⚠️ ' : ''}${esc(e.action)}</td>
+                <td data-label="التفاصيل" class="audit-details">${auditDetails(e.details)}</td>
+                <td data-label="العنوان" dir="ltr"><small>${esc(e.ip || '')}</small></td>
             </tr>`).join('') || '<tr><td colspan="5">لا توجد سجلات مطابقة.</td></tr>';
         setStatus('auditStatus', '');
     } catch (err) {

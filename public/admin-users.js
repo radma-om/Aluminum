@@ -20,16 +20,16 @@ function renderUsers() {
     $id('usersEmpty').hidden = rows.length > 0;
     $id('usersBody').innerHTML = rows.map((u) => `
         <tr class="${u.active ? '' : 'muted-row'}">
-            <td><strong>${esc(u.display_name)}</strong></td>
-            <td dir="ltr">${esc(u.username)}</td>
-            <td>${u.role === 'manager' ? '<span class="badge on">مدير</span>' : '<span class="badge">موظف</span>'}</td>
-            <td class="perm-badges">${u.role === 'manager' ? '<span class="pill">كل الأقسام</span>'
+            <td data-label="الموظف"><strong>${esc(u.display_name)}</strong></td>
+            <td data-label="اسم المستخدم" dir="ltr">${esc(u.username)}</td>
+            <td data-label="الدور">${u.role === 'manager' ? '<span class="badge on">مدير</span>' : '<span class="badge">موظف</span>'}</td>
+            <td data-label="الأقسام" class="perm-badges">${u.role === 'manager' ? '<span class="pill">كل الأقسام</span>'
                 : u.permissions.map((p) => `<span class="pill">${esc(usersData.sections[p] || p)}</span>`).join(' ')}</td>
-            <td>${u.permissions.includes('leads') ? esc(u.leads_scope === 'mine' ? 'عملاؤه فقط' : 'كل العملاء') : '—'}</td>
-            <td>${u.totp_enabled ? '<span class="badge on">مفعّل</span>' : u.role === 'manager' ? '<span class="badge lme">يُطلب عند الدخول</span>' : '<span class="badge">غير مفعّل</span>'}</td>
-            <td>${u.active ? '<span class="badge on">مفعّل</span>' : '<span class="badge">موقوف</span>'}</td>
-            <td><small>${u.last_login_at ? esc(new Date(u.last_login_at.replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' })) : 'لم يدخل بعد'}</small></td>
-            <td style="white-space:nowrap">
+            <td data-label="متابعة العملاء">${u.permissions.includes('leads') ? esc(u.leads_scope === 'mine' ? 'عملاؤه فقط' : 'كل العملاء') : '—'}</td>
+            <td data-label="التحقق بخطوتين">${u.totp_enabled ? '<span class="badge on">مفعّل</span>' : u.role === 'manager' ? '<span class="badge lme">يُطلب عند الدخول</span>' : '<span class="badge">غير مفعّل</span>'}</td>
+            <td data-label="الحالة">${u.active ? '<span class="badge on">مفعّل</span>' : '<span class="badge">موقوف</span>'}</td>
+            <td data-label="آخر دخول"><small>${u.last_login_at ? esc(new Date(u.last_login_at.replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' })) : 'لم يدخل بعد'}</small></td>
+            <td data-label="" style="white-space:nowrap">
                 <button class="btn btn-outline btn-sm" onclick="editUser(${u.id})">تعديل</button>
                 <button class="btn btn-outline btn-sm" onclick="deleteUser(${u.id})">حذف</button>
             </td>
