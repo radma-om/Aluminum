@@ -25,6 +25,8 @@ const TABLES = [
     ['purchases', 'المشتريات'],
     ['price_history', 'سجل الأسعار'],
     ['quotes', 'عروض الأسعار'],
+    ['invoices', 'الفواتير'],
+    ['payments', 'الدفعات'],
     ['webhooks', 'Webhooks'],
     ['shutter_types', 'أنواع البوابات'],
     ['shutter_variants', 'السماكات'],
@@ -46,10 +48,10 @@ const TABLES = [
 ];
 /* Sheets added after the first backups: an older file without them keeps the current data */
 const OPTIONAL = new Set(['overhead_sizes', 'overhead_motors', 'knowledge_items', 'motor_sections', 'motor_items', 'motor_extra_fees',
-    'staff_users', 'leads', 'lead_messages', 'lead_notes']);
+    'staff_users', 'leads', 'lead_messages', 'lead_notes', 'invoices', 'payments']);
 /* Restored together or not at all (a customer without its messages, or messages of another
    backup's customers, would be inconsistent) */
-const GROUPS = [['leads', 'lead_messages', 'lead_notes']];
+const GROUPS = [['leads', 'lead_messages', 'lead_notes'], ['invoices', 'payments']];
 const INFO_SHEET = 'معلومات';
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
 

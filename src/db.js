@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS = {
     sqm_to_linear: 13,       // 1 م² = 13 متر طولي من الشرائح
     // Employees who follow customers (names); they become accounts with permissions later
     staff_members: [],
+    quote_validity_days: 15,     // صلاحية عرض السعر بالأيام (تظهر في PDF، ويمكن تمديد كل عرض)
     follow_up_stale_days: 3,     // عميل مفتوح بلا متابعة من موظف لهذه المدة يظهر في «بحاجة متابعة»
     follow_up_emails: true,      // بريد يومي لكل موظف بعملائه المستحقين + تقرير أسبوعي للمديرين
     // Slat thicknesses of the in-house calculators (pricing and weight tabs): details, mm, kg per meter
@@ -409,6 +410,50 @@ CREATE TABLE IF NOT EXISTS system_alerts (
     resolved_at      TEXT
 );
 
+-- Invoices made from accepted quotes (a regular invoice, not a tax invoice). The number is
+-- sequential per year and never reused: a cancelled invoice keeps its number.
+CREATE TABLE IF NOT EXISTS invoices (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    number           TEXT NOT NULL UNIQUE,
+    quote_id         INTEGER REFERENCES quotes(id) ON DELETE SET NULL,
+    access_key       TEXT NOT NULL,
+    customer_name    TEXT NOT NULL,
+    customer_phone   TEXT NOT NULL,
+    customer_city    TEXT,
+    customer_address TEXT,
+    items_json       TEXT NOT NULL,
+    details_json     TEXT,
+    quote_subtotal   REAL NOT NULL,
+    subtotal         REAL NOT NULL,
+    vat_percent      REAL NOT NULL,
+    vat              REAL NOT NULL,
+    total            REAL NOT NULL,
+    issue_date       TEXT NOT NULL,
+    due_date         TEXT,
+    notes            TEXT,
+    status           TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued', 'cancelled')),
+    cancel_reason    TEXT,
+    cancelled_at     TEXT,
+    created_by       TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- One valid invoice per quote (a cancelled one can be replaced)
+CREATE UNIQUE INDEX IF NOT EXISTS invoices_one_per_quote ON invoices (quote_id) WHERE status = 'issued';
+
+-- Money received against an invoice (deposit, instalments)
+CREATE TABLE IF NOT EXISTS payments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id  INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    amount      REAL NOT NULL CHECK (amount > 0),
+    method      TEXT NOT NULL,
+    paid_on     TEXT NOT NULL,
+    reference   TEXT,
+    note        TEXT,
+    created_by  TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS payments_invoice ON payments (invoice_id);
+
 -- Jobs that run once a day / week (follow-up reminders, weekly report): the last day they ran
 CREATE TABLE IF NOT EXISTS scheduled_runs (
     name      TEXT PRIMARY KEY,
@@ -555,6 +600,10 @@ function migrate(db) {
     addColumns('staff_users', { totp_secret: 'TEXT', totp_pending: 'TEXT', totp_last_step: 'INTEGER NOT NULL DEFAULT 0' });
     // Email for password-reset links (set by a manager)
     addColumns('staff_users', { email: 'TEXT' });
+    // How long a quote's price holds (filled for older quotes from their date)
+    const hadValidity = db.prepare('PRAGMA table_info(quotes)').all().some((c) => c.name === 'valid_until');
+    addColumns('quotes', { valid_until: 'TEXT' });
+    if (!hadValidity) db.exec("UPDATE quotes SET valid_until = date(created_at, '+15 days') WHERE valid_until IS NULL");
     // Last time an employee followed the customer up (report, reply, status / date / employee change)
     const hadStaffAt = db.prepare('PRAGMA table_info(leads)').all().some((c) => c.name === 'last_staff_at');
     addColumns('leads', { last_staff_at: 'TEXT' });
@@ -653,6 +702,9 @@ function saveSettings(db, patch) {
             : numeric ? Number(patch[key]) : String(patch[key]);
         if (numeric && !Number.isFinite(value)) {
             throw badValue(`قيمة غير صالحة للحقل ${key}`);
+        }
+        if (key === 'quote_validity_days' && !(Number.isInteger(value) && value >= 1 && value <= 365)) {
+            throw badValue('صلاحية عرض السعر يجب أن تكون عدد أيام من 1 إلى 365');
         }
         if (key === 'follow_up_stale_days' && !(Number.isInteger(value) && value >= 1 && value <= 60)) {
             throw badValue('مدة «بلا متابعة» يجب أن تكون عدد أيام من 1 إلى 60');

@@ -561,6 +561,19 @@
         .login-card .status-text { display: block; margin-top: 10px; color: var(--danger); }
         .login-card .status-text.ok { color: var(--success); }
         .two-step-card { max-width: 440px; text-align: right; }
+        /* Window over the page (invoice forms) */
+        .sheet { position: fixed; inset: 0; z-index: 150; background: rgba(15, 30, 50, 0.55); display: flex; align-items: flex-start; justify-content: center; padding: 24px 12px; overflow-y: auto; }
+        .sheet-card { background: #fff; border-radius: 14px; width: 100%; max-width: 620px; padding: 22px 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.25); }
+        .sheet-card h3 { margin: 0 0 4px; color: var(--primary); font-size: 1.15rem; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .sheet-close { float: left; background: none; border: none; font-size: 1.4rem; cursor: pointer; color: var(--text-light); line-height: 1; }
+        .money-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 12px 0; }
+        .money-grid div { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+        .money-grid small { display: block; color: var(--text-light); font-size: 0.78rem; }
+        .money-grid strong { font-size: 1.05rem; }
+        .badge.st-unpaid { background: #fdecea; color: #a93226; }
+        .badge.st-partial { background: #fff7e6; color: #8a5a00; }
+        .badge.st-paid { background: #e8f8ef; color: var(--success); }
+        .badge.st-cancelled { background: #eceff3; color: var(--text-light); text-decoration: line-through; }
         .link-btn { background: none; border: none; color: var(--primary-light); cursor: pointer; font-family: inherit; font-size: 0.88rem; margin-top: 12px; text-decoration: underline; }
         .two-step-card ol { margin: 0 20px 12px 0; padding: 0; font-size: 0.9rem; line-height: 1.9; }
         .ts-qr { width: 200px; height: 200px; margin: 6px auto 10px; background: #fff; }
@@ -650,6 +663,7 @@
             <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')" title="لوحة المؤشرات"><i class="fas fa-chart-line"></i><span class="t-label">لوحة المؤشرات</span></button>
             <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')" title="متابعة العملاء"><i class="fas fa-headset"></i><span class="t-label">متابعة العملاء</span><span class="count" id="leadsBadge" hidden></span></button>
             <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')" title="طلبات العروض"><i class="fas fa-file-invoice-dollar"></i><span class="t-label">طلبات العروض</span></button>
+            <button class="tab-btn" data-tab="invoices" onclick="switchTab('invoices')" title="الفواتير والمدفوعات"><i class="fas fa-receipt"></i><span class="t-label">الفواتير والمدفوعات</span></button>
             <div class="nav-group">الحاسبات</div>
             <button class="tab-btn" data-tab="pricing" onclick="switchTab('pricing')" title="حاسبة التسعير"><i class="fas fa-calculator"></i><span class="t-label">حاسبة التسعير</span></button>
             <button class="tab-btn" data-tab="weight" onclick="switchTab('weight')" title="حاسبة الوزن"><i class="fas fa-weight-hanging"></i><span class="t-label">حاسبة الوزن</span></button>
@@ -1683,6 +1697,9 @@
                     </select>
                     <button class="btn btn-outline btn-sm" onclick="loadQuotes()">تحديث</button>
                     <a class="btn btn-accent btn-sm" href="calculator.html" target="_blank">فتح حاسبة العملاء</a>
+                    <span class="manager-only status-text" style="margin-inline-start:auto">صلاحية العروض الجديدة
+                        <input type="number" id="quoteValidityDays" min="1" max="365" style="width:64px"> يوماً
+                        <button class="btn btn-outline btn-sm" onclick="saveQuoteValidity()">حفظ</button></span>
                 </div>
                 <div class="table-wrapper">
                     <table>
@@ -1697,6 +1714,8 @@
                                 <th>المصدر</th>
                                 <th>واتساب المبيعات</th>
                                 <th>الحالة</th>
+                                <th>الصلاحية</th>
+                                <th>الفاتورة</th>
                                 <th>PDF</th>
                             </tr>
                         </thead>
@@ -1704,6 +1723,30 @@
                     </table>
                     <div id="quotesEmpty" class="empty-message">لا توجد طلبات بعد.</div>
                 </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB: Invoices & payments ==================== -->
+        <div id="tab-invoices" class="tab-content">
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-receipt"></i></span> الفواتير والمدفوعات</div>
+                <p class="status-text" style="margin:0 0 10px">تُصدَر الفاتورة من «طلبات العروض» (زر «إصدار فاتورة»)، وتُسجَّل عليها الدفعات: العربون والأقساط. الرقم تسلسلي لكل سنة ولا يتكرر، والفاتورة الملغاة تبقى برقمها.</p>
+                <div class="money-grid" id="invSummary"></div>
+                <div class="filter-row">
+                    <input type="search" id="invSearch" placeholder="بحث: رقم الفاتورة، العميل، الهاتف" style="flex:1; min-width:180px; padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-family:inherit" oninput="debouncedInvoices()">
+                    <select id="invState" onchange="loadInvoices()">
+                        <option value="">كل الفواتير</option>
+                        <option value="unpaid">غير مدفوعة</option>
+                        <option value="partial">مدفوعة جزئياً</option>
+                        <option value="paid">مدفوعة</option>
+                        <option value="cancelled">ملغاة</option>
+                    </select>
+                </div>
+                <div class="table-wrapper"><table class="stack-table">
+                    <thead><tr><th>الرقم</th><th>التاريخ</th><th>العميل</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th></th></tr></thead>
+                    <tbody id="invBody"></tbody>
+                </table></div>
+                <span id="invStatus" class="status-text"></span>
             </div>
         </div>
 
@@ -1981,6 +2024,53 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
             <button class="btn btn-outline" type="button" id="tsLogout" onclick="logout()" hidden>تسجيل الخروج</button>
             <span id="tsStatus" class="status-text"></span>
         </form>
+    </div>
+
+    <!-- Issue an invoice from a quote -->
+    <div id="invNewSheet" class="sheet" hidden>
+        <form class="sheet-card" onsubmit="event.preventDefault(); submitNewInvoice();">
+            <button type="button" class="sheet-close" onclick="closeSheet('invNewSheet')" aria-label="إغلاق">×</button>
+            <h3><i class="fas fa-receipt"></i> إصدار فاتورة</h3>
+            <p class="status-text" id="invNewQuote" style="margin:0 0 12px"></p>
+            <div class="form-grid">
+                <div class="form-group"><label>تاريخ الفاتورة</label><input type="date" id="invIssue" required></div>
+                <div class="form-group"><label>تاريخ الاستحقاق <span class="unit">(اختياري)</span></label><input type="date" id="invDue"></div>
+                <div class="form-group"><label id="invFinalLabel">المبلغ النهائي قبل الضريبة <span class="unit">(اختياري — للخصم)</span></label><input type="number" id="invFinal" min="0" step="0.01" placeholder="كما في العرض"></div>
+                <div class="form-group"><label>عنوان العميل <span class="unit">(اختياري)</span></label><input type="text" id="invAddress" maxlength="200"></div>
+            </div>
+            <div class="form-group"><label>ملاحظات على الفاتورة <span class="unit">(اختياري)</span></label><input type="text" id="invNotes" maxlength="1000"></div>
+            <p class="sub-heading">عربون مدفوع الآن <span class="status-text">(اختياري)</span></p>
+            <div class="form-grid">
+                <div class="form-group"><label>المبلغ (ر.ع)</label><input type="number" id="invDeposit" min="0" step="0.01"></div>
+                <div class="form-group"><label>طريقة الدفع</label><select id="invDepositMethod"></select></div>
+            </div>
+            <div class="form-buttons">
+                <button class="btn btn-primary" type="submit">إصدار الفاتورة</button>
+                <button class="btn btn-outline" type="button" onclick="closeSheet('invNewSheet')">إلغاء</button>
+                <span id="invNewStatus" class="status-text"></span>
+            </div>
+        </form>
+    </div>
+
+    <!-- One invoice: amounts, payments, actions -->
+    <div id="invSheet" class="sheet" hidden>
+        <div class="sheet-card">
+            <button type="button" class="sheet-close" onclick="closeSheet('invSheet')" aria-label="إغلاق">×</button>
+            <div id="invDetail"></div>
+            <form id="invPayForm" onsubmit="event.preventDefault(); submitPayment();">
+                <p class="sub-heading">تسجيل دفعة</p>
+                <div class="form-grid">
+                    <div class="form-group"><label>المبلغ (ر.ع)</label><input type="number" id="payAmount" min="0" step="0.01" required></div>
+                    <div class="form-group"><label>طريقة الدفع</label><select id="payMethod"></select></div>
+                    <div class="form-group"><label>التاريخ</label><input type="date" id="payDate"></div>
+                    <div class="form-group"><label>المرجع <span class="unit">(رقم التحويل/الشيك)</span></label><input type="text" id="payRef" maxlength="80"></div>
+                </div>
+                <div class="form-buttons" style="margin-top:6px">
+                    <button class="btn btn-primary btn-sm" type="submit">تسجيل الدفعة</button>
+                    <span id="payStatus" class="status-text"></span>
+                </div>
+            </form>
+        </div>
     </div>
 
     <!-- Footer -->
@@ -2491,5 +2581,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-crm.js"></script>
     <script src="admin-users.js"></script>
     <script src="admin-security.js"></script>
+    <script src="admin-invoices.js"></script>
 </body>
 </html>

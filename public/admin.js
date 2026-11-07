@@ -447,6 +447,8 @@ async function deletePurchase(id) {
 
 /* ----------------------------- Quotes ----------------------------- */
 
+let quotesCache = [];
+
 async function loadQuotes() {
     if (!online) return;
     const status = $id('quoteFilter').value;
@@ -467,8 +469,16 @@ async function loadQuotes() {
                     ${Object.entries(STATUS_NAMES).map(([k, v]) => `<option value="${k}" ${k === q.status ? 'selected' : ''}>${v}</option>`).join('')}
                 </select>
             </td>
+            <td style="white-space:nowrap">${q.valid_until ? `<small>${esc(q.valid_until)}</small>` : '—'}
+                ${q.expired ? '<br><span class="badge" style="background:#fdecea;color:#a93226">منتهي</span>' : ''}
+                ${q.valid_until && !q.invoice && ['new', 'contacted'].includes(q.status) ? `<br><button class="link-btn" style="margin:0" onclick="extendQuote(${q.id}, '${esc(q.valid_until)}')">تمديد</button>` : ''}</td>
+            <td style="white-space:nowrap">${q.invoice
+                ? `<button class="btn btn-outline btn-sm" onclick="openInvoice(${q.invoice.id})">${esc(q.invoice.number)}</button>`
+                : canSee('invoices') && !['rejected'].includes(q.status) ? `<button class="btn btn-primary btn-sm" onclick="newInvoice(${q.id})">إصدار فاتورة</button>` : '—'}</td>
             <td><button class="btn btn-outline btn-sm" onclick="openQuotePdf(${q.id})">PDF</button></td>
         </tr>`).join('');
+    quotesCache = rows;
+    if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; }).catch(() => {});
     $id('quotesEmpty').style.display = rows.length ? 'none' : 'block';
 }
 
@@ -486,6 +496,20 @@ async function openQuotePdf(id) {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
+
+/* A new validity date (e.g. the customer asked for more time and the price still holds) */
+async function extendQuote(id, current) {
+    const next = prompt('تاريخ الصلاحية الجديد (YYYY-MM-DD):', current);
+    if (!next) return;
+    try { await api('PATCH', `/api/admin/quotes/${id}`, { valid_until: next.trim() }); await loadQuotes(); } catch (err) { alert(err.message); }
+}
+
+async function saveQuoteValidity() {
+    try {
+        await api('PUT', '/api/admin/settings', { quote_validity_days: Number($id('quoteValidityDays').value) });
+        alert('تم الحفظ ✓ — تُطبَّق على العروض الجديدة');
+    } catch (err) { alert(err.message); }
 }
 
 async function setQuoteStatus(id, status) {
