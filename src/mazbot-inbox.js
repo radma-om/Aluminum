@@ -104,6 +104,22 @@ async function reply(db, eventId, event, { phone, contact, saveQuote, notifySale
         alerts.ok(db, 'mazbot_reply');
     };
     try {
+        // Respect a pause before doing any external work. Stopped media is only recorded in the
+        // follow-up: it is never downloaded, transcribed, shown to AI or answered automatically.
+        // An automatic pause may be cleared only by a typed reset command; a manual stop never is.
+        const stopped = autoreply.stateOf(db, phone);
+        if (stopped && stopped.kind === 'manual') {
+            if (media) logCustomer(mediaLabel(media));
+            return setStatus(db, eventId, `paused: auto-reply off for this number${stopped.forever ? '' : ' until ' + stopped.until.slice(0, 10)}`);
+        }
+        if (stopped) {
+            if (text && /^\s*(جديد|ابدأ من جديد|reset|restart)\s*$/i.test(text)) unpause(db, phone);
+            else {
+                if (media) logCustomer(mediaLabel(media));
+                return setStatus(db, eventId, 'paused: with sales team');
+            }
+        }
+
         // A voice note becomes text; a photo is shown to the AI with its caption
         if (!text && media && media.kind === 'audio' && media.url) {
             try {
@@ -138,14 +154,6 @@ async function reply(db, eventId, event, { phone, contact, saveQuote, notifySale
             await send('أستطيع قراءة النصوص والصور والرسائل الصوتية 🙏 اكتب لي طلبك أو أرسله برسالة صوتية.');
             return setStatus(db, eventId, 'replied: unsupported message');
         }
-        const stopped = autoreply.stateOf(db, phone);
-        if (stopped && stopped.kind === 'manual') {
-            // Switched off by an employee: the customer's «جديد» does not switch it back on
-            return setStatus(db, eventId, `paused: auto-reply off for this number${stopped.forever ? '' : ' until ' + stopped.until.slice(0, 10)}`);
-        }
-        if (/^\s*(جديد|ابدأ من جديد|reset|restart)\s*$/i.test(text)) unpause(db, phone);
-        else if (stopped) return setStatus(db, eventId, 'paused: with sales team');
-
         const settings = getSettings(db);
         const result = await agent.chat({
             db, key: 'mz:' + phone, channel: 'mazbot', phone, text, images,

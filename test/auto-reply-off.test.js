@@ -50,6 +50,21 @@ const message = (text, phone = '96899887897') => ({
     id: 'evt-' + (++n), type: 'message.received',
     data: { contact: { id: 1376829, phone, name: 'محمد' }, message: { id: 900000 + n, message_type: 'text', value: text, meta_type: 'text' } }
 });
+const mediaMessage = (kind, phone = '96899887897') => {
+    const fields = { image: 'header_image', audio: 'header_audio', video: 'header_video', document: 'header_document' };
+    const seq = ++n;
+    return {
+        id: 'evt-' + seq, type: 'message.received',
+        data: {
+            contact: { id: 1376829, phone, name: 'محمد' },
+            message: {
+                id: 900000 + seq, message_type: kind,
+                [fields[kind]]: `https://mazbotapp.s3.me-central-1.amazonaws.com/tests/${seq}.${kind === 'image' ? 'jpg' : kind === 'audio' ? 'ogg' : kind === 'video' ? 'mp4' : 'pdf'}`,
+                value: kind === 'image' ? 'صورة البوابة' : null
+            }
+        }
+    };
+};
 const store = (db, e) => Number(db.prepare("INSERT INTO inbound_events (source, method, body) VALUES ('mazbot', 'POST', ?)").run(JSON.stringify(e)).lastInsertRowid);
 const statusOf = (db, id) => db.prepare('SELECT status FROM inbound_events WHERE id = ?').get(id).status;
 const answering = () => ({ beta: { messages: { create: async () => ({ content: [{ type: 'text', text: 'رد المساعد' }], stop_reason: 'end_turn' }) } } });
@@ -72,6 +87,51 @@ test('a number switched off gets no AI reply (even «جديد»); its messages s
     const id = store(db, other);
     await inbox.handleEvent(db, id, other, { saveQuote: (q) => saveQuote(db, q), notifySales: async () => null, client: answering() });
     assert.equal(statusOf(db, id), 'replied');
+});
+
+test('paused media is recorded without download, transcription, AI or an automatic reply', async (t) => {
+    const sent = await fakeMazbot(t);
+    const { db } = await start(t);
+    const manualPhone = '96899887897';
+    const autoPhone = '96891111111';
+    autoreply.stop(db, manualPhone, { reason: 'يتابعه موظف', by: 'أحمد' });
+    autoreply.pauseAuto(db, autoPhone);
+
+    const calls = { download: 0, transcribe: 0, imagePart: 0, ai: 0 };
+    const mediaTools = {
+        download: async () => { calls.download++; throw new Error('must not download while paused'); },
+        transcribe: async () => { calls.transcribe++; return 'نص'; },
+        imagePart: () => { calls.imagePart++; return { media_type: 'image/jpeg', data: 'x' }; }
+    };
+    const client = { beta: { messages: { create: async () => {
+        calls.ai++;
+        return { content: [{ type: 'text', text: 'رد المساعد' }], stop_reason: 'end_turn' };
+    } } } };
+    const ctx = { saveQuote: (q) => saveQuote(db, q), notifySales: async () => null, client, mediaTools };
+
+    for (const [phone, expected] of [[manualPhone, /auto-reply off for this number/], [autoPhone, /paused: with sales team/]]) {
+        for (const kind of ['image', 'audio', 'video', 'document']) {
+            const e = mediaMessage(kind, phone);
+            const id = store(db, e);
+            await inbox.handleEvent(db, id, e, ctx);
+            assert.match(statusOf(db, id), expected);
+        }
+    }
+
+    assert.deepEqual(calls, { download: 0, transcribe: 0, imagePart: 0, ai: 0 });
+    assert.equal(sent.length, 0, 'paused media must not trigger any WhatsApp reply');
+    const logged = db.prepare("SELECT text FROM lead_messages WHERE role = 'customer' ORDER BY id").all().map((r) => r.text);
+    assert.equal(logged.length, 8);
+    assert.ok(logged.every((text) => text.includes('https://mazbotapp.s3.me-central-1.amazonaws.com/tests/')));
+
+    // Preserve the existing rule: only a typed reset command clears an automatic pause.
+    const reset = message('جديد', autoPhone);
+    const resetId = store(db, reset);
+    await inbox.handleEvent(db, resetId, reset, ctx);
+    assert.equal(statusOf(db, resetId), 'replied');
+    assert.equal(autoreply.isStopped(db, autoPhone), false);
+    assert.equal(calls.ai, 0, 'the built-in reset reply does not need the AI model');
+    assert.equal(sent.length, 1);
 });
 
 test('until a date: the stop ends by itself after that day (Muscat time)', async (t) => {
