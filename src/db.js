@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS quotes (
     source          TEXT NOT NULL DEFAULT 'web',
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS quotes_customer_activity ON quotes (customer_phone, created_at);
 
 CREATE TABLE IF NOT EXISTS webhooks (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -337,6 +338,7 @@ CREATE TABLE IF NOT EXISTS leads (
     last_activity_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS leads_activity ON leads (last_activity_at);
+CREATE INDEX IF NOT EXISTS leads_phone_activity ON leads (phone, last_activity_at);
 
 CREATE TABLE IF NOT EXISTS lead_messages (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -445,6 +447,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 -- One valid invoice per quote (a cancelled one can be replaced)
 CREATE UNIQUE INDEX IF NOT EXISTS invoices_one_per_quote ON invoices (quote_id) WHERE status = 'issued';
+CREATE INDEX IF NOT EXISTS invoices_customer_activity ON invoices (customer_phone, created_at);
 
 -- Money received against an invoice (deposit, instalments)
 CREATE TABLE IF NOT EXISTS payments (
@@ -484,6 +487,7 @@ CREATE TABLE IF NOT EXISTS work_orders (
     updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS work_orders_tech ON work_orders (technician_id, status);
+CREATE INDEX IF NOT EXISTS work_orders_customer_activity ON work_orders (customer_phone, updated_at);
 
 -- What happened to a work order: status changes, notes from the office and the technician
 CREATE TABLE IF NOT EXISTS work_order_events (
@@ -509,6 +513,7 @@ CREATE TABLE IF NOT EXISTS customers (
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS customers_phone2 ON customers (phone2);
 
 -- Jobs that run once a day / week (follow-up reminders, weekly report): the last day they ran
 CREATE TABLE IF NOT EXISTS scheduled_runs (
