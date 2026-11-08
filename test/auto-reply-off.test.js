@@ -130,7 +130,7 @@ test('paused media is recorded without download, transcription, AI or an automat
     await inbox.handleEvent(db, resetId, reset, ctx);
     assert.equal(statusOf(db, resetId), 'replied');
     assert.equal(autoreply.isStopped(db, autoPhone), false);
-    assert.equal(calls.ai, 1);
+    assert.equal(calls.ai, 0, 'the built-in reset reply does not need the AI model');
     assert.equal(sent.length, 1);
 });
 
