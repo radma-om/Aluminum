@@ -145,6 +145,7 @@
             const res = await fetch('/api/public/motors');
             if (!res.ok) throw new Error();
             conf = await res.json();
+            showPromoBanner(conf, 'motors');
         } catch {
             $('calcForm').innerHTML = '<div class="submit-status status-error">تعذر تحميل الحاسبة. يرجى المحاولة لاحقاً.</div>';
             return;
@@ -235,7 +236,8 @@
         $('result').innerHTML = `السعر الإجمالي: <span style="font-size:1.2em" dir="ltr">${money(p.total)}</span> ريال عماني`;
         $('breakdown').innerHTML = p.items.map((i) =>
             `<div><span>${parts(i.name, i.type)}${i.quantity > 1 ? ` × ${i.quantity}` : ''}</span><span dir="ltr">${money(i.line_total)}</span></div>`).join('') +
-            `<div><span>المجموع</span><span dir="ltr">${money(p.subtotal)}</span></div>` +
+            promoRows(p) +
+            `<div><span>المجموع قبل الضريبة</span><span dir="ltr">${money(p.subtotal)}</span></div>` +
             `<div><span>ضريبة القيمة المضافة ${p.vat_percent}%</span><span dir="ltr">${money(p.vat)}</span></div>` +
             `<div class="total-row"><span>الإجمالي (ر.ع)</span><span dir="ltr">${money(p.total)}</span></div>`;
         $('feesNote').textContent = (p.details && p.details.fees_note) || '';

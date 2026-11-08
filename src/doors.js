@@ -6,6 +6,7 @@
    ============================================================= */
 const { getSettings } = require('./db');
 const { unitSellPrice, validateDoorSize, withTotals, round2 } = require('./pricing');
+const promotions = require('./promotions');
 
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
 
@@ -162,7 +163,7 @@ function priceChoice({ widthCm, heightCm, count = 1 }, choice, catalog, region) 
         if (g.allow_none && !accessories.some((a) => a.group.id === g.id)) spec.push([g.name, g.none_label || 'بدون']);
     }
 
-    return {
+    return promotions.apply(settings, {
         ...withTotals(items, settings),
         door: {
             width_cm: Number(widthCm), height_cm: Number(heightCm), count: size.count, area_m2: round2(size.area),
@@ -173,7 +174,7 @@ function priceChoice({ widthCm, heightCm, count = 1 }, choice, catalog, region) 
         },
         spec,
         delivery_installation: feesNote(region)
-    };
+    }, 'rolling_shutter');
 }
 
 function finalPrice(db, { widthCm, heightCm, count = 1, shutterTypeId, variantId, colorId, optionIds, regionId }) {
@@ -231,7 +232,8 @@ function priceRange(db, { widthCm, heightCm, count = 1, shutterTypeId = null, re
     return {
         available: true, currency: 'OMR', includes_vat: true, vat_percent: catalog.settings.vat_percent,
         area_m2: round2(size.area), region: region ? region.name : null, delivery_installation: feesNote(region),
-        from: Math.min(...rows.map((r) => r.from)), to: Math.max(...rows.map((r) => r.to)), by_type: rows
+        from: Math.min(...rows.map((r) => r.from)), to: Math.max(...rows.map((r) => r.to)), by_type: rows,
+        ...(promotions.active(catalog.settings, 'rolling_shutter') ? { promotion: promotions.publicInfo(catalog.settings) } : {})
     };
 }
 

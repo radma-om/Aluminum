@@ -56,3 +56,35 @@ if (embedded) {
     new ResizeObserver(report).observe(document.body);
     window.addEventListener('load', report);
 }
+
+/* ---- Customer discount (a promotion the company switched on) ---- */
+
+/* «🎉 عرض الشتاء: خصم 10% …» under the page title, when it covers this calculator */
+function showPromoBanner(conf, kind) {
+    const p = conf && conf.promotion;
+    if (!p || !p.applies_to.some((a) => a.key === kind)) return;
+    const header = document.querySelector('.calc-header');
+    if (!header || document.getElementById('promoBanner')) return;
+    const div = document.createElement('div');
+    div.id = 'promoBanner';
+    div.className = 'promo-banner';
+    div.textContent = `🎉 ${p.label}: خصم ${p.percent}% على ${p.applies_to.map((a) => a.name).join(' و')}${p.until ? ` حتى ${p.until}` : ''} — يظهر في السعر تلقائياً`;
+    header.appendChild(div);
+}
+
+/* The price before the discount and the discount, for the breakdown (live price or saved quote) */
+function promoRows(p) {
+    const pr = p.promo || null;
+    const d = p.details || {};
+    const label = pr ? pr.label : d.promo_label;
+    const percent = pr ? pr.percent : d.promo_percent;
+    const cut = pr ? pr.amount : d.discount_total;
+    if (!label || !(cut > 0)) return '';
+    const gross = pr ? pr.gross_subtotal : d.gross_subtotal;
+    const grossTo = pr ? pr.gross_subtotal_to : d.gross_subtotal_to;
+    const cutTo = pr ? pr.amount_to : d.discount_total_to;
+    const span = (a, b) => (b != null && b !== a ? `${money(a)} - ${money(b)}` : money(a));
+    const safe = String(label).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    return `<div><span>المجموع قبل الخصم</span><span dir="ltr">${span(gross, grossTo)}</span></div>`
+        + `<div class="promo-row"><span>🎉 ${safe} — خصم ${percent}%</span><span dir="ltr">-${span(cut, cutTo)}</span></div>`;
+}

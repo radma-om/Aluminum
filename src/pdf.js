@@ -257,7 +257,8 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
     const valW = range.total_to != null ? 130 : 80;
     const totals = inv
         ? [
-            ...(details.discount_total > 0.004 ? [['المجموع قبل الخصم', money(details.gross_subtotal)], ['الخصم', money(details.discount_total)]] : []),
+            ...(details.discount_total > 0.004 ? [['المجموع قبل الخصم', money(details.gross_subtotal)],
+                [details.promo_label ? `${details.promo_label} — خصم ${details.promo_percent}%` : 'الخصم', money(details.discount_total)]] : []),
             ...(Math.abs(inv.adjustment) >= 0.005 ? [
                 ['مجموع البنود', amount(inv.quote_subtotal, range.subtotal_to)],
                 [range.total_to != null ? 'السعر النهائي المتفق عليه' : inv.adjustment < 0 ? 'خصم' : 'تعديل السعر', money(inv.adjustment)]
@@ -268,9 +269,10 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
         : [
             // An employee's quote with discounts: the price before them, then the discount
             ...(details.discount_total > 0.004 ? [
-                ['المجموع قبل الخصم', money(details.gross_subtotal)],
-                [details.quote_discount && details.quote_discount.type === 'percent' && !details.lines_discount
-                    ? `الخصم ${details.quote_discount.value}%` : 'الخصم', money(details.discount_total)]
+                ['المجموع قبل الخصم', amount(details.gross_subtotal, details.gross_subtotal_to)],
+                [details.promo_label ? `${details.promo_label} — خصم ${details.promo_percent}%`
+                    : details.quote_discount && details.quote_discount.type === 'percent' && !details.lines_discount
+                        ? `الخصم ${details.quote_discount.value}%` : 'الخصم', amount(details.discount_total, details.discount_total_to)]
             ] : []),
             ['المجموع قبل الضريبة', amount(quote.subtotal, range.subtotal_to)],
             [`ضريبة القيمة المضافة ${quote.vat_percent}%`, amount(quote.vat, range.vat_to)]

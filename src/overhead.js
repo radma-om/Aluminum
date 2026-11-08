@@ -9,6 +9,7 @@
    ============================================================= */
 const { getSettings } = require('./db');
 const { round2 } = require('./pricing');
+const promotions = require('./promotions');
 const { getRegion, locations } = require('./doors');
 
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
@@ -84,7 +85,7 @@ function overheadPrice(db, { gateType, heightCm, widthCm, motorId, regionId }) {
     const vat = round2(subtotal * vatPercent / 100);
     const vatTo = round2(subtotalTo * vatPercent / 100);
 
-    return {
+    return promotions.apply(getSettings(db), {
         items,
         subtotal, vat_percent: vatPercent, vat, total: round2(subtotal + vat),
         // The upper end of the range (the price depends on the color)
@@ -97,7 +98,7 @@ function overheadPrice(db, { gateType, heightCm, widthCm, motorId, regionId }) {
         delivery_installation: 'شامل التركيب والملحقات الأساسية — اختلاف السعر ضمن النطاق حسب اللون',
         gate: { gate_type: size.gate_type, width_cm: size.width_cm, height_cm: size.height_cm, motor: motor.name, region: region.name },
         region
-    };
+    }, 'overhead');
 }
 
 module.exports = { loadOverhead, publicOverhead, overheadPrice, gateTypes };
