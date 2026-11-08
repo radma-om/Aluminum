@@ -135,7 +135,8 @@ function list(db, { status = '', assigned = '', channel = '', q = '', open = fal
     }
     return db.prepare(`SELECT l.*,
             (SELECT COUNT(*) FROM quotes WHERE l.phone IS NOT NULL AND customer_phone = l.phone) AS quote_count,
-            (SELECT text FROM lead_notes WHERE lead_id = l.id ORDER BY id DESC LIMIT 1) AS last_note
+            (SELECT text FROM lead_notes WHERE lead_id = l.id ORDER BY id DESC LIMIT 1) AS last_note,
+            (SELECT kind FROM agent_pauses WHERE phone = l.phone AND until > datetime('now')) AS agent_stop
         FROM leads l ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
         ORDER BY CASE status WHEN 'needs_staff' THEN 0 WHEN 'new' THEN 1 ELSE 2 END, last_activity_at DESC LIMIT ${attention ? 2000 : 300}`).all(...args)
         .map((l) => ({ ...l, attention: attentionOf(l, { staleDays }) }))

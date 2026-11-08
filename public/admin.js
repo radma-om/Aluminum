@@ -1535,10 +1535,14 @@ async function runDiagnose() {
             ${c.fix ? `<div class="d-fix">${esc(c.fix)}</div>` : ''}
             ${c.key === 'switch' && c.level === 'bad' ? '<button class="btn btn-success btn-sm" style="margin-top:6px" onclick="enableWhatsappAgent()">تفعيل الرد الآن</button>' : ''}
             ${c.key === 'webhook' && r.webhook_path ? `<div class="d-detail" dir="ltr" style="margin-top:4px"><code>${esc(location.origin + r.webhook_path)}</code></div>` : ''}</div></div>`).join('');
-        $id('diagPauses').innerHTML = r.pauses.length ? `<p class="sub-heading">أرقام متوقف عنها المساعد (طلبت موظفاً أو ردّ عليها موظف)</p>
-            ${r.pauses.map((p) => `<div class="pause-row"><span dir="ltr">+${esc(p.phone)}</span><span class="status-text">حتى ${esc(fmtWhen(p.until))}</span>
-                <button class="btn btn-outline btn-sm" onclick="resumeWhatsappAgent('${esc(p.phone)}')">ليرد المساعد عليه الآن</button></div>`).join('')}
-            ${r.pauses.length > 1 ? '<button class="btn btn-outline btn-sm" onclick="resumeWhatsappAgent()">استئناف الرد على كل الأرقام</button>' : ''}` : '';
+        const manual = r.pauses.filter((p) => p.kind === 'manual');
+        const auto = r.pauses.filter((p) => p.kind !== 'manual');
+        const pauseRow = (p) => `<div class="pause-row"><span dir="ltr">+${esc(p.phone)}</span>${p.name ? `<strong>${esc(p.name)}</strong>` : ''}
+            <span class="status-text">${p.forever ? 'دائماً' : 'حتى ' + esc(fmtWhen(p.until))}${p.reason ? ' — ' + esc(p.reason) : ''}${p.created_by ? ' — ' + esc(p.created_by) : ''}</span>
+            <button class="btn btn-outline btn-sm" onclick="resumeWhatsappAgent('${esc(p.phone)}')">${p.kind === 'manual' ? 'تشغيل الرد الآلي' : 'ليرد المساعد عليه الآن'}</button></div>`;
+        $id('diagPauses').innerHTML = (manual.length ? `<p class="sub-heading">⏸ أرقام أوقف الموظفون الرد الآلي عليها</p>${manual.map(pauseRow).join('')}` : '')
+            + (auto.length ? `<p class="sub-heading">أرقام متوقف عنها المساعد مؤقتاً (طلبت موظفاً أو ردّ عليها موظف — ${esc(12)} ساعة)</p>${auto.map(pauseRow).join('')}
+            ${auto.length > 1 ? '<button class="btn btn-outline btn-sm" onclick="resumeWhatsappAgent()">استئناف الرد على كل الأرقام المتوقفة مؤقتاً</button>' : ''}` : '');
         $id('diagMessages').innerHTML = r.messages.length ? `<p class="sub-heading">آخر رسائل العملاء التي وصلت من MazBot وما حدث لكل منها</p>
             ${r.messages.map((m) => `<div class="diag-msg"><span class="m-when">${esc(fmtWhen(m.at))}</span>
                 <span>${m.test ? '<span class="pill">تجربة من اللوحة</span> ' : ''}<strong>${esc(m.name || '')}</strong> <span dir="ltr">${m.phone ? '+' + esc(m.phone) : ''}</span>: ${esc(m.text || '')}
@@ -1566,6 +1570,18 @@ async function simulateWhatsapp() {
         runDiagnose();
     } catch (err) {
         $id('diagSimResult').innerHTML = `<div class="diag-check bad" style="margin-top:8px"><span class="d-icon">✕</span><div><div class="d-detail">${esc(err.message)}</div></div></div>`;
+    }
+}
+
+async function stopNumber() {
+    const body = { phone: $id('stopPhone').value.trim(), forever: $id('stopMode').value === 'forever', until: $id('stopUntil').value, reason: $id('stopReason').value.trim() };
+    try {
+        await api('POST', '/api/admin/mazbot/pauses', body);
+        setStatus('stopStatus', 'أُوقف الرد الآلي على هذا الرقم ✓', 'ok');
+        for (const id of ['stopPhone', 'stopReason', 'stopUntil']) $id(id).value = '';
+        runDiagnose();
+    } catch (err) {
+        setStatus('stopStatus', err.message, 'err');
     }
 }
 

@@ -12,21 +12,16 @@ const leads = require('./leads');
 const alerts = require('./alerts');
 const mediaLib = require('./media');
 
-const PAUSE_HOURS = 12; // after "talk to a person", the agent stays quiet for this customer
+const autoreply = require('./autoreply');
+
+const PAUSE_HOURS = autoreply.PAUSE_HOURS; // after "talk to a person", the agent stays quiet for this customer
+const isPaused = (db, phone) => autoreply.isStopped(db, phone);
+const pause = (db, phone) => autoreply.pauseAuto(db, phone);
+const unpause = (db, phone) => autoreply.resume(db, phone);
 
 function setStatus(db, eventId, status) {
     db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?').run(String(status).slice(0, 500), eventId);
 }
-
-const isPaused = (db, phone) => Boolean(db.prepare(
-    "SELECT 1 FROM agent_pauses WHERE phone = ? AND until > datetime('now')").get(phone));
-
-function pause(db, phone) {
-    db.prepare(`INSERT INTO agent_pauses (phone, until) VALUES (?, datetime('now', '+${PAUSE_HOURS} hours'))
-                ON CONFLICT(phone) DO UPDATE SET until = excluded.until`).run(phone);
-}
-
-const unpause = (db, phone) => db.prepare('DELETE FROM agent_pauses WHERE phone = ?').run(phone);
 
 /* The customer's text: a typed message, or the title of a button/list choice */
 function messageText(event) {
@@ -143,8 +138,13 @@ async function reply(db, eventId, event, { phone, contact, saveQuote, notifySale
             await send('أستطيع قراءة النصوص والصور والرسائل الصوتية 🙏 اكتب لي طلبك أو أرسله برسالة صوتية.');
             return setStatus(db, eventId, 'replied: unsupported message');
         }
+        const stopped = autoreply.stateOf(db, phone);
+        if (stopped && stopped.kind === 'manual') {
+            // Switched off by an employee: the customer's «جديد» does not switch it back on
+            return setStatus(db, eventId, `paused: auto-reply off for this number${stopped.forever ? '' : ' until ' + stopped.until.slice(0, 10)}`);
+        }
         if (/^\s*(جديد|ابدأ من جديد|reset|restart)\s*$/i.test(text)) unpause(db, phone);
-        else if (isPaused(db, phone)) return setStatus(db, eventId, 'paused: with sales team');
+        else if (stopped) return setStatus(db, eventId, 'paused: with sales team');
 
         const settings = getSettings(db);
         const result = await agent.chat({

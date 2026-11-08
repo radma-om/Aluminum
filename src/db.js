@@ -633,6 +633,8 @@ function migrate(db) {
     addColumns('motor_items', { section_id: 'INTEGER', profit_percent: 'REAL' });
     // Two-step sign-in: the confirmed secret, one waiting for its first code, and the last code step used
     addColumns('staff_users', { totp_secret: 'TEXT', totp_pending: 'TEXT', totp_last_step: 'INTEGER NOT NULL DEFAULT 0' });
+    // Who the assistant does not answer: an automatic short pause, or an employee's stop (for good / until a date)
+    addColumns('agent_pauses', { kind: "TEXT NOT NULL DEFAULT 'auto'", reason: 'TEXT', created_by: 'TEXT', created_at: 'TEXT' });
     // Email for password-reset links (set by a manager)
     addColumns('staff_users', { email: 'TEXT' });
     // How long a quote's price holds (filled for older quotes from their date)
