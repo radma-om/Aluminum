@@ -1069,7 +1069,14 @@ function createApp(db, { agentClient } = {}) {
             products: db.prepare("SELECT * FROM products WHERE active = 1 ORDER BY category, name").all()
                 .map((p) => { const w = withPrices(p, settings); return { id: w.id, category: w.category, name: w.name, type: w.type, unit: w.unit, unit_price: w.unit_price }; }),
             units: staffquotes.UNITS, vat_percent: settings.vat_percent, validity_days: settings.quote_validity_days,
-            discount_limit: staffquotes.limitFor(req.user, settings)
+            discount_limit: staffquotes.limitFor(req.user, settings),
+            // The customer calculators, so the employee prices gates and motors exactly as the customer would
+            locations: doors.locations(db),
+            calculators: {
+                rolling_shutter: doors.publicCatalog(db),
+                overhead: (({ gate_types, motors: m }) => ({ gate_types, motors: m }))(overhead.publicOverhead(db)),
+                motors: { sections: motors.publicMotors(db).sections }
+            }
         });
     });
     // Live totals while the employee builds the quote (nothing is saved)
@@ -1098,9 +1105,10 @@ function createApp(db, { agentClient } = {}) {
         if (!customer.name) throw httpError(400, 'اكتب اسم العميل');
         const priced = staffquotes.price(db, b, settings);
         staffquotes.checkLimit(req.user, settings, priced.pricing.discount_percent);
+        const region = b.region_id ? doors.getRegion(db, b.region_id) : null;
         const quote = saveQuote(db, {
-            customer_name: customer.name, customer_phone: customer.phone, customer_city: customer.city, notes: b.notes, source: 'staff',
-            priced, details: { staff_quote: true, created_by: staffName(req), ...priced.pricing }, lead_key: leads.phoneKey(customer.phone)
+            customer_name: customer.name, customer_phone: customer.phone, customer_city: customer.city || (region ? region.name : null), notes: b.notes, source: 'staff',
+            priced, details: staffDetails(req, priced, region), lead_key: leads.phoneKey(customer.phone)
         });
         const days = Number(b.validity_days);
         if (Number.isInteger(days) && days >= 1 && days <= 365) {
@@ -1110,6 +1118,13 @@ function createApp(db, { agentClient } = {}) {
         const { access_key, ...q } = parseQuote(db.prepare('SELECT * FROM quotes WHERE id = ?').get(quote.id));
         res.status(201).json(q);
     });
+    // What an employee quote keeps: who, the discounts, the wilayah and each gate / kit (to edit it later)
+    const staffDetails = (req, priced, region) => ({
+        staff_quote: true, created_by: staffName(req), ...priced.pricing,
+        ...(region ? { region_id: region.id, region: region.name } : {}),
+        ...(priced.groups.length ? { calc_groups: priced.groups } : {})
+    });
+
     /* Change the lines of an employee's quote (before it is invoiced) */
     admin.put('/quotes/:id', (req, res) => {
         const row = parseQuote(quoteFor(req, req.params.id));
@@ -1120,7 +1135,9 @@ function createApp(db, { agentClient } = {}) {
         const settings = getSettings(db);
         const priced = staffquotes.price(db, b, settings);
         staffquotes.checkLimit(req.user, settings, priced.pricing.discount_percent);
-        const details = { ...row.details, ...priced.pricing, quote_discount: priced.pricing.quote_discount, edited_by: staffName(req) };
+        const region = b.region_id ? doors.getRegion(db, b.region_id) : null;
+        const { calc_groups, region_id, region: oldRegion, ...kept } = row.details;
+        const details = { ...kept, ...staffDetails(req, priced, region), created_by: row.details.created_by, quote_discount: priced.pricing.quote_discount, edited_by: staffName(req) };
         db.prepare(`UPDATE quotes SET items_json = ?, details_json = ?, subtotal = ?, vat_percent = ?, vat = ?, total = ?, notes = ? WHERE id = ?`)
             .run(JSON.stringify(priced.items), JSON.stringify(details), priced.subtotal, priced.vat_percent, priced.vat, priced.total,
                 b.notes !== undefined ? (clip(b.notes, 1000) || null) : row.notes, row.id);

@@ -11,6 +11,7 @@
 const { unitSellPrice, round2 } = require('./pricing');
 
 const UNITS = ['meter', 'piece', 'm2', 'set', 'kg', 'service'];
+const CALCS = { rolling_shutter: 'بوابة رول شتر', overhead: 'بوابة أوفرهيد', motors: 'مكينة بوابة' };
 const err = (status, message) => Object.assign(new Error(message), { status });
 const clip = (v, n) => String(v ?? '').trim().slice(0, n);
 const num = (v) => (v === '' || v === null || v === undefined ? NaN : Number(v));
@@ -27,16 +28,78 @@ function discountOf(d, base, what) {
     return { type, value: round2(value), amount };
 }
 
+/* A calculator line (a whole gate or motor kit, as the customer calculators price it, with the
+   installation of the quote's wilayah) → its priced lines. Prices never come from the screen.
+   The customer promotion is not used here: the lines are the prices before it. */
+function calcLines(db, line, regionId, where) {
+    const pr = line.params || {};
+    const num = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
+    let priced;
+    let label;
+    if (line.calc === 'rolling_shutter') {
+        priced = require('./doors').finalPrice(db, {
+            widthCm: num(pr.width_cm), heightCm: num(pr.height_cm), count: Number(pr.count) || 1,
+            shutterTypeId: pr.shutter_type_id, variantId: pr.variant_id, colorId: pr.color_id,
+            optionIds: Array.isArray(pr.option_ids) ? pr.option_ids.filter(Boolean) : [], regionId
+        });
+        label = `${Number(pr.width_cm)}×${Number(pr.height_cm)} سم${Number(pr.count) > 1 ? ` × ${Number(pr.count)}` : ''}`;
+    } else if (line.calc === 'overhead') {
+        priced = require('./overhead').overheadPrice(db, { gateType: pr.gate_type, widthCm: num(pr.width_cm), heightCm: num(pr.height_cm), motorId: pr.motor_id, regionId });
+        label = `أوفرهيد ${pr.gate_type} ${Number(pr.width_cm)}×${Number(pr.height_cm)} سم`;
+    } else if (line.calc === 'motors') {
+        priced = require('./motors').motorPrice(db, {
+            sectionId: pr.section_id, kitId: pr.kit_id || null, kitCount: Number(pr.kit_count) || 1,
+            parts: Array.isArray(pr.parts) ? pr.parts : [], regionId, installation: pr.installation !== false
+        });
+        label = (priced.order && priced.order.section_label) || CALCS.motors;
+    } else {
+        throw err(400, `نوع البند غير معروف (${where})`);
+    }
+    const high = line.price_level === 'to';
+    return { label, items: priced.items.map(({ product_id, category, unit_price_to, line_total_to, ...i }) => ({
+        ...i,
+        unit_price: high && unit_price_to != null ? unit_price_to : i.unit_price,
+        line_total: high && line_total_to != null ? line_total_to : i.line_total
+    })) };
+}
+
+/* A discount on a whole gate / kit, spread over its lines (the last line takes the rounding) */
+function spreadDiscount(lines, d) {
+    const gross = round2(lines.reduce((s, l) => s + l.gross, 0));
+    if (!d.amount || !gross) return;
+    let left = d.amount;
+    lines.forEach((l, i) => {
+        const part = i === lines.length - 1 ? round2(left) : round2(d.amount * l.gross / gross);
+        left = round2(left - part);
+        l.discount = { type: d.type, value: d.value, amount: part, group: true };
+        l.line_total = round2(l.gross - part);
+    });
+}
+
 /**
- * input: { items: [{ product_id? | name, type?, unit?, quantity, unit_price?, discount: { type, value }? }], discount?: { type, value } }
+ * input: { region_id?, items: [{ calc, params, price_level?, discount? } | { product_id? | name, type?, unit?, quantity, unit_price?, discount? }], discount? }
  * Returns { items, subtotal, vat_percent, vat, total, pricing } — pricing = gross, discounts and the % for the limit.
  */
 function price(db, input, settings) {
     const lines = Array.isArray(input.items) ? input.items : [];
     if (!lines.length) throw err(400, 'أضف بنداً واحداً على الأقل');
     if (lines.length > 100) throw err(400, 'عدد البنود كبير جداً');
-    const items = lines.map((line, i) => {
+    const hasCalc = lines.some((l) => l && l.calc);
+    if (hasCalc && !input.region_id) throw err(400, 'اختر ولاية العميل — التركيب والتوصيل يُحسبان حسبها كما في حاسبة العملاء');
+    const groups = [];
+    const items = lines.flatMap((line, i) => {
         const where = `البند ${i + 1}`;
+        if (line && line.calc) {
+            const { label, items: calc } = calcLines(db, line, input.region_id, where);
+            const g = groups.length;
+            const priced = calc.map((it) => ({ ...it, gross: round2(it.line_total), group: g }));
+            const gross = round2(priced.reduce((s, l) => s + l.gross, 0));
+            spreadDiscount(priced, discountOf(line.discount, gross, where));
+            groups.push({ calc: line.calc, label: `${CALCS[line.calc]} — ${label}`, params: line.params || {}, price_level: line.price_level === 'to' ? 'to' : 'from',
+                ...(line.discount && Number(line.discount.value) ? { discount: { type: line.discount.type === 'percent' ? 'percent' : 'amount', value: Number(line.discount.value) } } : {}),
+                gross, total: round2(priced.reduce((s, l) => s + l.line_total, 0)) });
+            return priced;
+        }
         const quantity = Math.round(num(line.quantity) * 1000) / 1000;
         if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1e6) throw err(400, `الكمية غير صالحة (${where})`);
         let item;
@@ -53,12 +116,12 @@ function price(db, input, settings) {
         }
         const gross = round2(item.unit_price * quantity);
         const d = discountOf(line.discount, gross, where);
-        return {
+        return [{
             ...item, quantity,
             gross,
             ...(d.amount ? { discount: d } : {}),
             line_total: round2(gross - d.amount)
-        };
+        }];
     });
     const grossSubtotal = round2(items.reduce((s, i) => s + i.gross, 0));
     const linesTotal = round2(items.reduce((s, i) => s + i.line_total, 0));
@@ -69,6 +132,7 @@ function price(db, input, settings) {
     const discountTotal = round2(grossSubtotal - subtotal);
     return {
         items, subtotal, vat_percent: vatPercent, vat, total: round2(subtotal + vat),
+        groups,
         pricing: {
             gross_subtotal: grossSubtotal,
             lines_discount: round2(grossSubtotal - linesTotal),
@@ -94,4 +158,4 @@ function checkLimit(user, settings, percent) {
     return limit;
 }
 
-module.exports = { price, discountOf, limitFor, checkLimit, UNITS };
+module.exports = { price, discountOf, limitFor, checkLimit, UNITS, CALCS };

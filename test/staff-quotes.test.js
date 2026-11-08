@@ -151,3 +151,84 @@ test('permissions: building quotes needs the quotes section', async (t) => {
     assert.ok(cat.products.length >= 1);
     assert.equal(cat.discount_limit, null, 'the general manager');
 });
+
+test('gates and motors by section: priced like the customer calculators, with the wilayah installation', async (t) => {
+    const { db, call, login } = await start(t);
+    const doors = require('../src/doors');
+    const overhead = require('../src/overhead');
+    const motors = require('../src/motors');
+    const { body: cat } = await call('GET', '/api/admin/quotes/catalog');
+    const nizwa = cat.locations.flatMap((g) => g.wilayat).find((w) => w.name === 'نزوى');
+    assert.ok(nizwa && cat.calculators.overhead.gate_types.length && cat.calculators.motors.sections.length);
+    const og = cat.calculators.overhead;
+    const gate = { gate_type: og.gate_types[0].name, height_cm: og.gate_types[0].heights[0].height_cm, width_cm: og.gate_types[0].heights[0].widths[0], motor_id: og.motors[0].id };
+    const sec = cat.calculators.motors.sections.find((s) => s.kits.length);
+    const kit = { section_id: sec.id, kit_id: sec.kits[0].id, kit_count: 1, parts: [], installation: true };
+
+    // A wilayah is needed for gates and motors
+    const noRegion = await call('POST', '/api/admin/quotes/preview', { items: [{ calc: 'overhead', params: gate }] });
+    assert.equal(noRegion.status, 400);
+
+    const engineGate = overhead.overheadPrice(db, { gateType: gate.gate_type, heightCm: gate.height_cm, widthCm: gate.width_cm, motorId: gate.motor_id, regionId: nizwa.id });
+    const engineKit = motors.motorPrice(db, { sectionId: kit.section_id, kitId: kit.kit_id, kitCount: 1, parts: [], regionId: nizwa.id, installation: true });
+    const sum = (items, k = 'line_total') => Math.round(items.reduce((s, i) => s + (i[k] ?? i.line_total), 0) * 100) / 100;
+
+    const items = [
+        { calc: 'overhead', params: gate },
+        { calc: 'overhead', params: gate, price_level: 'to' },
+        { calc: 'motors', params: kit, discount: { type: 'percent', value: 5 } },
+        { name: 'إزالة بوابة قديمة', unit: 'service', quantity: 1, unit_price: 15 }
+    ];
+    const p = (await call('POST', '/api/admin/quotes/preview', { region_id: nizwa.id, items })).body;
+    assert.equal(p.groups.length, 3);
+    assert.equal(p.groups[0].gross, sum(engineGate.items));
+    assert.equal(p.groups[1].gross, sum(engineGate.items, 'line_total_to'));
+    assert.ok(p.groups[1].gross > p.groups[0].gross, 'the upper end of the overhead range');
+    assert.equal(p.groups[2].gross, sum(engineKit.items));
+    assert.equal(p.groups[2].total, Math.round(p.groups[2].gross * 0.95 * 100) / 100);
+    // The installation line of the wilayah is in each gate
+    assert.ok(p.items.filter((i) => i.group === 0).some((i) => /تركيب/.test(i.name)));
+    assert.equal(p.items.at(-1).group, undefined);
+    assert.equal(p.items.at(-1).line_total, 15);
+
+    // A roller shutter gate, if the catalog has one, with every accessory group chosen
+    const rs = cat.calculators.rolling_shutter;
+    if (rs.shutter_types.length) {
+        const ty = rs.shutter_types[0];
+        const v = ty.variants[0];
+        const params = { shutter_type_id: ty.id, variant_id: v.id, color_id: v.colors[0] ? v.colors[0].id : null, width_cm: 300, height_cm: 250, count: 2,
+            option_ids: rs.accessory_groups.filter((g) => !g.allow_none).map((g) => g.options[0].id) };
+        const door = doors.finalPrice(db, { widthCm: 300, heightCm: 250, count: 2, shutterTypeId: ty.id, variantId: v.id, colorId: params.color_id, optionIds: params.option_ids, regionId: nizwa.id });
+        const r = (await call('POST', '/api/admin/quotes/preview', { region_id: nizwa.id, items: [{ calc: 'rolling_shutter', params }] })).body;
+        assert.equal(r.groups[0].gross, sum(door.items));
+    }
+
+    // A promotion for customers does not change an employee quote
+    saveSettings(db, { promo_enabled: true, promo_percent: 20, promo_label: 'عرض', promo_scope: ['overhead', 'motors'] });
+    const again = (await call('POST', '/api/admin/quotes/preview', { region_id: nizwa.id, items })).body;
+    assert.equal(again.subtotal, p.subtotal);
+    saveSettings(db, { promo_enabled: false });
+
+    // Saved with the wilayah and each gate, so it can be edited later; the group discount counts towards the limit
+    staff.create(db, { username: 'emp', display_name: 'موظف', password: 'pass-12345', permissions: ['quotes'] });
+    const emp = await login('emp');
+    const over = await call('POST', '/api/admin/quotes', { customer_phone: '96891234567', customer_name: 'خالد', region_id: nizwa.id, items: [{ calc: 'motors', params: kit, discount: { type: 'percent', value: 15 } }] }, emp);
+    assert.match(over.body.error, /الحد المسموح/);
+    assert.equal(over.status, 400);
+    const ok = await call('POST', '/api/admin/quotes', { customer_phone: '96891234567', customer_name: 'خالد', region_id: nizwa.id, items }, OWNER);
+    assert.equal(ok.status, 201, JSON.stringify(ok.body));
+    const q = ok.body;
+    const d = q.details;
+    assert.equal(d.region_id, nizwa.id);
+    assert.equal(d.calc_groups.length, 3);
+    assert.equal(q.customer_city, 'نزوى');
+    assert.equal(q.total, p.total);
+    // Editing keeps the groups (here: drop the second gate)
+    const ed = await call('PUT', `/api/admin/quotes/${ok.body.id}`, { region_id: nizwa.id, items: [items[0], items[2], items[3]] });
+    assert.equal(ed.status, 200, JSON.stringify(ed.body));
+    assert.equal(ed.body.details.calc_groups.length, 2);
+    assert.equal(ed.body.details.created_by, q.details.created_by);
+    // The PDF prints a heading for each gate
+    const pdf = await call('GET', `/api/admin/quotes/${ok.body.id}/pdf`);
+    assert.equal(pdf.body.subarray(0, 4).toString(), '%PDF');
+});
