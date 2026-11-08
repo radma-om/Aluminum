@@ -16,7 +16,8 @@ const DEFAULT_SETTINGS = {
     sqm_to_linear: 13,       // 1 م² = 13 متر طولي من الشرائح
     // Employees who follow customers (names); they become accounts with permissions later
     staff_members: [],
-    quote_validity_days: 15,     // صلاحية عرض السعر بالأيام (تظهر في PDF، ويمكن تمديد كل عرض)
+    quote_validity_days: 15,
+    staff_max_discount_percent: 10, // أقصى خصم يعطيه الموظف (٪ من السعر قبل الخصم) — للمدير بلا حد، ولكل موظف حد خاص اختياري     // صلاحية عرض السعر بالأيام (تظهر في PDF، ويمكن تمديد كل عرض)
     follow_up_stale_days: 3,     // عميل مفتوح بلا متابعة من موظف لهذه المدة يظهر في «بحاجة متابعة»
     follow_up_emails: true,      // بريد يومي لكل موظف بعملائه المستحقين + تقرير أسبوعي للمديرين
     // Slat thicknesses of the in-house calculators (pricing and weight tabs): details, mm, kg per meter
@@ -652,6 +653,8 @@ function migrate(db) {
     addColumns('agent_pauses', { kind: "TEXT NOT NULL DEFAULT 'auto'", reason: 'TEXT', created_by: 'TEXT', created_at: 'TEXT' });
     // Email for password-reset links (set by a manager)
     addColumns('staff_users', { email: 'TEXT' });
+    // The employee's own discount limit in % (NULL = the general limit)
+    addColumns('staff_users', { max_discount_percent: 'REAL' });
     // How long a quote's price holds (filled for older quotes from their date)
     const hadValidity = db.prepare('PRAGMA table_info(quotes)').all().some((c) => c.name === 'valid_until');
     addColumns('quotes', { valid_until: 'TEXT' });
@@ -755,6 +758,9 @@ function saveSettings(db, patch) {
             : numeric ? Number(patch[key]) : String(patch[key]);
         if (numeric && !Number.isFinite(value)) {
             throw badValue(`قيمة غير صالحة للحقل ${key}`);
+        }
+        if (key === 'staff_max_discount_percent' && !(value >= 0 && value <= 100)) {
+            throw badValue('حد الخصم يجب أن يكون بين 0 و100%');
         }
         if (key === 'quote_validity_days' && !(Number.isInteger(value) && value >= 1 && value <= 365)) {
             throw badValue('صلاحية عرض السعر يجب أن تكون عدد أيام من 1 إلى 365');

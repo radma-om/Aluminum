@@ -33,6 +33,7 @@ const invoices = require('./invoices');
 const workorders = require('./workorders');
 const autoreply = require('./autoreply');
 const customers = require('./customers');
+const staffquotes = require('./staffquotes');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const audit = require('./audit');
@@ -46,6 +47,7 @@ const APP_VERSION = require('../package.json').version;
 const CATEGORIES = ['slat', 'accessory', 'machine'];
 const UNITS = ['meter', 'piece', 'm2', 'set', 'kg'];
 const QUOTE_STATUSES = ['new', 'contacted', 'accepted', 'rejected', 'done'];
+const clip = (v, n) => String(v ?? '').trim().slice(0, n);
 
 // expose: the message is written for the user (shown even for 5xx); other server errors stay generic
 const httpError = (status, message) => Object.assign(new Error(message), { status, expose: true });
@@ -1055,6 +1057,73 @@ function createApp(db, { agentClient } = {}) {
         res.json(quote);
     });
 
+    /* ---- Quotes made by an employee (catalog or free lines, discounts within their limit) ---- */
+
+    admin.get('/quotes/catalog', (req, res) => {
+        const settings = getSettings(db);
+        res.json({
+            products: db.prepare("SELECT * FROM products WHERE active = 1 ORDER BY category, name").all()
+                .map((p) => { const w = withPrices(p, settings); return { id: w.id, category: w.category, name: w.name, type: w.type, unit: w.unit, unit_price: w.unit_price }; }),
+            units: staffquotes.UNITS, vat_percent: settings.vat_percent, validity_days: settings.quote_validity_days,
+            discount_limit: staffquotes.limitFor(req.user, settings)
+        });
+    });
+    // Live totals while the employee builds the quote (nothing is saved)
+    admin.post('/quotes/preview', (req, res) => {
+        const settings = getSettings(db);
+        const priced = staffquotes.price(db, req.body || {}, settings);
+        const limit = staffquotes.limitFor(req.user, settings);
+        res.json({ ...priced, discount_limit: limit, over_limit: limit !== null && priced.pricing.discount_percent > limit + 0.005 });
+    });
+    const staffQuoteCustomer = (req, b) => {
+        if (b.customer_id) {
+            const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(Number(b.customer_id));
+            if (!c || !staff.seesQuote(db, req.user, { customer_phone: c.phone })) throw httpError(404, 'العميل غير موجود');
+            return { name: c.name || clip(b.customer_name, 120), phone: c.phone, city: c.city };
+        }
+        const phone = customers.normalizePhone(b.customer_phone);
+        const name = clip(b.customer_name, 120);
+        if (phone.length < 8) throw httpError(400, 'اكتب رقم جوال العميل');
+        if (!name) throw httpError(400, 'اكتب اسم العميل');
+        return { name, phone, city: clip(b.customer_city, 80) || null };
+    };
+    admin.post('/quotes', (req, res) => {
+        const b = req.body || {};
+        const settings = getSettings(db);
+        const customer = staffQuoteCustomer(req, b);
+        if (!customer.name) throw httpError(400, 'اكتب اسم العميل');
+        const priced = staffquotes.price(db, b, settings);
+        staffquotes.checkLimit(req.user, settings, priced.pricing.discount_percent);
+        const quote = saveQuote(db, {
+            customer_name: customer.name, customer_phone: customer.phone, customer_city: customer.city, notes: b.notes, source: 'staff',
+            priced, details: { staff_quote: true, created_by: staffName(req), ...priced.pricing }, lead_key: leads.phoneKey(customer.phone)
+        });
+        const days = Number(b.validity_days);
+        if (Number.isInteger(days) && days >= 1 && days <= 365) {
+            const until = new Date(Date.parse(leads.localToday() + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
+            db.prepare('UPDATE quotes SET valid_until = ? WHERE id = ?').run(until, quote.id);
+        }
+        const { access_key, ...q } = parseQuote(db.prepare('SELECT * FROM quotes WHERE id = ?').get(quote.id));
+        res.status(201).json(q);
+    });
+    /* Change the lines of an employee's quote (before it is invoiced) */
+    admin.put('/quotes/:id', (req, res) => {
+        const row = parseQuote(quoteFor(req, req.params.id));
+        if (!(row.details && row.details.staff_quote)) throw httpError(400, 'هذا العرض من حاسبة العملاء أو المساعد — لا تُعدَّل بنوده (أنشئ عرضاً جديداً)');
+        if (!['new', 'contacted'].includes(row.status)) throw httpError(400, 'لا تُعدَّل بنود عرض مقبول أو مرفوض أو مكتمل');
+        if (invoices.activeForQuote(db, row.id)) throw httpError(400, 'لهذا العرض فاتورة — ألغها أولاً لتعديل البنود');
+        const b = req.body || {};
+        const settings = getSettings(db);
+        const priced = staffquotes.price(db, b, settings);
+        staffquotes.checkLimit(req.user, settings, priced.pricing.discount_percent);
+        const details = { ...row.details, ...priced.pricing, quote_discount: priced.pricing.quote_discount, edited_by: staffName(req) };
+        db.prepare(`UPDATE quotes SET items_json = ?, details_json = ?, subtotal = ?, vat_percent = ?, vat = ?, total = ?, notes = ? WHERE id = ?`)
+            .run(JSON.stringify(priced.items), JSON.stringify(details), priced.subtotal, priced.vat_percent, priced.vat, priced.total,
+                b.notes !== undefined ? (clip(b.notes, 1000) || null) : row.notes, row.id);
+        const { access_key, ...q } = parseQuote(db.prepare('SELECT * FROM quotes WHERE id = ?').get(row.id));
+        res.json(q);
+    });
+
     /* ---- Invoices and payments ---- */
 
     // The customer scope applies to invoices as it does to quotes (by the customer's phone)
@@ -1065,6 +1134,15 @@ function createApp(db, { agentClient } = {}) {
     };
     admin.post('/quotes/:id/invoice', (req, res) => {
         const quote = parseQuote(quoteFor(req, req.params.id));
+        // A lower final amount is a discount too: the employee's limit counts from the price before any discount
+        const b = req.body || {};
+        if (b.final_subtotal !== undefined && b.final_subtotal !== null && b.final_subtotal !== '') {
+            const gross = Number((quote.details || {}).gross_subtotal ?? quote.subtotal);
+            const final = Number(b.final_subtotal);
+            if (gross > 0 && Number.isFinite(final) && final < gross) {
+                staffquotes.checkLimit(req.user, getSettings(db), Math.round(((gross - final) / gross) * 10000) / 100);
+            }
+        }
         const inv = invoices.createFromQuote(db, quote, req.body || {}, staffName(req));
         webhooks.emit(db, 'invoice.created', invoicePublic(inv));
         if (inv.payments.length) webhooks.emit(db, 'payment.created', { invoice: inv.number, payment: inv.payments[0] });

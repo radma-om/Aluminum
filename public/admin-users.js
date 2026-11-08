@@ -41,6 +41,7 @@ function resetUserForm() {
     $id('uDisplay').value = '';
     $id('uUsername').value = '';
     $id('uEmail').value = '';
+    $id('uMaxDisc').value = '';
     $id('uPassword').value = '';
     $id('uRole').value = 'staff';
     $id('uActive').checked = true;
@@ -59,6 +60,7 @@ function userRoleChanged() {
     $id('uPermsBox').hidden = $id('uRole').value !== 'staff';
     $id('uManagerNote').hidden = $id('uRole').value !== 'manager';
     $id('uTechNote').hidden = $id('uRole').value !== 'technician';
+    $id('uMaxDiscBox').hidden = $id('uRole').value !== 'staff';
 }
 
 function editUser(id) {
@@ -68,6 +70,7 @@ function editUser(id) {
     $id('uDisplay').value = u.display_name;
     $id('uUsername').value = u.username;
     $id('uEmail').value = u.email || '';
+    $id('uMaxDisc').value = u.max_discount_percent ?? '';
     $id('uPassword').value = '';
     $id('uRole').value = u.role;
     $id('uActive').checked = u.active;
@@ -88,6 +91,7 @@ async function saveUser() {
         display_name: $id('uDisplay').value,
         username: $id('uUsername').value,
         email: $id('uEmail').value.trim(),
+        max_discount_percent: $id('uMaxDisc').value === '' ? null : Number($id('uMaxDisc').value),
         role: $id('uRole').value,
         permissions: [...document.querySelectorAll('#uPerms input:checked')].map((c) => c.value),
         leads_scope: document.querySelector('input[name="uScope"]:checked').value,
