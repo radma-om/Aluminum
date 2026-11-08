@@ -7,6 +7,7 @@ const { createApp, saveQuote } = require('../src/server');
 const staffquotes = require('../src/staffquotes');
 const staff = require('../src/staff');
 const customers = require('../src/customers');
+const webhooks = require('../src/webhooks');
 
 const OWNER = 'test-token-long-enough-1234';
 process.env.ADMIN_TOKEN = OWNER;
@@ -64,6 +65,13 @@ test('the calculation: catalog price (cannot be typed over), free lines, line an
 
 test('an employee creates a quote for a customer within their limit; over it is refused; managers have no limit', async (t) => {
     const { db, call, login } = await start(t);
+    const emitted = [];
+    const originalEmit = webhooks.emit;
+    webhooks.emit = (hookDb, event, data) => {
+        emitted.push({ db: hookDb, event, data });
+        return Promise.resolve([]);
+    };
+    t.after(() => { webhooks.emit = originalEmit; });
     staff.create(db, { username: 'sales', display_name: 'سالم', password: 'pass-12345', permissions: ['quotes', 'customers'] });
     const tok = await login('sales');
     const lines = (pct) => ({ customer_phone: '91234567', customer_name: 'خالد', customer_city: 'السيب', items: [{ name: 'بوابة خاصة', unit: 'piece', quantity: 1, unit_price: 1000 }], discount: { type: 'percent', value: pct } });
@@ -88,6 +96,11 @@ test('an employee creates a quote for a customer within their limit; over it is 
     assert.equal(q.details.discount_percent, 10);
     const in7 = new Date(Date.parse(require('../src/leads').localToday() + 'T00:00:00Z') + 7 * 86400000).toISOString().slice(0, 10);
     assert.equal(q.valid_until, in7);
+    assert.equal(db.prepare('SELECT valid_until FROM quotes WHERE id = ?').get(q.id).valid_until, in7);
+    const createdEvent = emitted.find((e) => e.event === 'quote.created' && e.data.id === q.id);
+    assert.ok(createdEvent, 'the quote.created webhook was emitted');
+    assert.equal(createdEvent.db, db);
+    assert.equal(createdEvent.data.valid_until, in7, 'the webhook sees the selected validity before delivery');
     assert.ok(customers.byPhone(db, '96891234567'), 'the customer record exists');
     assert.ok(db.prepare("SELECT 1 FROM leads WHERE phone = '96891234567'").get(), 'and their follow-up');
     const pdf = await call('GET', `/api/admin/quotes/${q.id}/pdf`, null, tok);

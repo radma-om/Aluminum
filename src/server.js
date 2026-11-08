@@ -242,8 +242,12 @@ const parseQuote = ({ items_json, details_json, ...q }) => ({
 const pdfPath = (quote) => `/quotes/${quote.ref}.pdf?k=${quote.access_key}`;
 
 /* Persist a priced quote (from the web calculator or the AI agent) and notify integrations */
-function saveQuote(db, { customer_name, customer_phone, customer_city, notes, source, priced, details = null, lead_key = null }) {
+function saveQuote(db, { customer_name, customer_phone, customer_city, notes, source, priced, details = null, lead_key = null, validity_days = null }) {
     if (priced && priced.promo) details = { ...(details || {}), ...promotions.quoteDetails(priced.promo) };
+    const requestedValidityDays = Number(validity_days);
+    const defaultValidityDays = Number(getSettings(db).quote_validity_days) || 15;
+    const quoteValidityDays = Number.isInteger(requestedValidityDays) && requestedValidityDays >= 1 && requestedValidityDays <= 365
+        ? requestedValidityDays : defaultValidityDays;
     const quote = {
         ref: makeRef(),
         access_key: crypto.randomBytes(16).toString('hex'),
@@ -260,7 +264,7 @@ function saveQuote(db, { customer_name, customer_phone, customer_city, notes, so
         status: 'new',
         source,
         // The price holds for quote_validity_days (Muscat dates), then the quote shows as expired
-        valid_until: new Date(Date.parse(leads.localToday() + 'T00:00:00Z') + (Number(getSettings(db).quote_validity_days) || 15) * 86400000)
+        valid_until: new Date(Date.parse(leads.localToday() + 'T00:00:00Z') + quoteValidityDays * 86400000)
             .toISOString().slice(0, 10)
     };
     const info = db.prepare(`INSERT INTO quotes (ref, access_key, customer_name, customer_phone, customer_city, notes,
@@ -1108,13 +1112,9 @@ function createApp(db, { agentClient } = {}) {
         const region = b.region_id ? doors.getRegion(db, b.region_id) : null;
         const quote = saveQuote(db, {
             customer_name: customer.name, customer_phone: customer.phone, customer_city: customer.city || (region ? region.name : null), notes: b.notes, source: 'staff',
-            priced, details: staffDetails(req, priced, region), lead_key: leads.phoneKey(customer.phone)
+            priced, details: staffDetails(req, priced, region), lead_key: leads.phoneKey(customer.phone),
+            validity_days: b.validity_days
         });
-        const days = Number(b.validity_days);
-        if (Number.isInteger(days) && days >= 1 && days <= 365) {
-            const until = new Date(Date.parse(leads.localToday() + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
-            db.prepare('UPDATE quotes SET valid_until = ? WHERE id = ?').run(until, quote.id);
-        }
         const { access_key, ...q } = parseQuote(db.prepare('SELECT * FROM quotes WHERE id = ?').get(quote.id));
         res.status(201).json(q);
     });
