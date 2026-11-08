@@ -10,6 +10,7 @@ const agent = require('./agent');
 const mazbot = require('./mazbot');
 const leads = require('./leads');
 const alerts = require('./alerts');
+const mediaLib = require('./media');
 
 const PAUSE_HOURS = 12; // after "talk to a person", the agent stays quiet for this customer
 
@@ -65,22 +66,35 @@ function handleEvent(db, eventId, event, ctx) {
     db.prepare('UPDATE inbound_events SET event_key = ? WHERE id = ?').run(key, eventId);
     if (dup) { setStatus(db, eventId, 'duplicate'); return null; }
 
-    // Every customer message is kept for the follow-up, even when the agent does not answer
+    // Every customer message is kept for the follow-up, even when the agent does not answer.
+    // A voice note is logged once it is turned into text (in reply); without the agent, as a link.
     const text = messageText(event);
-    try {
-        leads.customerMessage(db, { key: leads.phoneKey(phone), channel: 'whatsapp', name: contact.name, phone, text: text || '[رسالة غير نصية]' });
-    } catch (err) { console.error('[leads]', err.message); }
+    const media = text ? null : mediaLib.mediaOf(event);
+    const logCustomer = (body) => {
+        try {
+            leads.customerMessage(db, { key: leads.phoneKey(phone), channel: 'whatsapp', name: contact.name, phone, text: body });
+        } catch (err) { console.error('[leads]', err.message); }
+    };
+    if (!media) logCustomer(text || '[رسالة غير نصية]');
 
     const settings = getSettings(db);
-    if (!settings.mazbot_agent_enabled) { setStatus(db, eventId, 'agent_off'); return null; }
-    if (!agent.isConfigured()) { setStatus(db, eventId, 'agent_not_configured (OPENAI_API_KEY / ANTHROPIC_API_KEY)'); return null; }
+    const notAnswered = (status) => { if (media) logCustomer(mediaLabel(media)); setStatus(db, eventId, status); return null; };
+    if (!settings.mazbot_agent_enabled) return notAnswered('agent_off');
+    if (!agent.isConfigured()) return notAnswered('agent_not_configured (OPENAI_API_KEY / ANTHROPIC_API_KEY)');
 
     setStatus(db, eventId, 'queued');
-    return enqueue(phone, () => reply(db, eventId, event, { ...ctx, phone, contact }));
+    return enqueue(phone, () => reply(db, eventId, event, { ...ctx, phone, contact, media, logCustomer }));
 }
 
-async function reply(db, eventId, event, { phone, contact, saveQuote, notifySales, baseUrl, client }) {
-    const text = messageText(event);
+/* How a photo / voice note shows in the customer follow-up (with the link, so staff can open it) */
+function mediaLabel(m, extra = '') {
+    const kinds = { image: '📷 صورة', audio: '🎤 رسالة صوتية', video: '🎬 فيديو', document: '📎 ملف' };
+    return [`${kinds[m.kind] || '📎 مرفق'}${m.caption ? ': ' + m.caption : ''}${extra}`, m.url].filter(Boolean).join('\n');
+}
+
+async function reply(db, eventId, event, { phone, contact, saveQuote, notifySales, baseUrl, client, media = null, logCustomer = () => {}, mediaTools = mediaLib }) {
+    let text = messageText(event);
+    let images = [];
     // MazBot's answer to each send is kept with the request: "accepted by MazBot" is not "delivered on WhatsApp",
     // and its message id / status is what MazBot support needs to trace a reply that never arrived
     const sends = [];
@@ -95,16 +109,46 @@ async function reply(db, eventId, event, { phone, contact, saveQuote, notifySale
         alerts.ok(db, 'mazbot_reply');
     };
     try {
-        if (!text) {
-            await send('أستطيع قراءة الرسائل النصية فقط حالياً 🙏 اكتب لي طلبك من فضلك.');
-            return setStatus(db, eventId, 'replied: non-text');
+        // A voice note becomes text; a photo is shown to the AI with its caption
+        if (!text && media && media.kind === 'audio' && media.url) {
+            try {
+                text = await mediaTools.transcribe(await mediaTools.download(media.url, 'audio'), media.url);
+                alerts.ok(db, 'media');
+            } catch (err) {
+                alerts.fail(db, 'media', err);
+                logCustomer(mediaLabel(media, ' (تعذر تحويلها إلى نص)'));
+                await send('عذراً، لم أتمكن من سماع رسالتك الصوتية 🙏 هل يمكنك كتابة طلبك؟');
+                return setStatus(db, eventId, 'replied: audio failed — ' + err.message);
+            }
+            if (!text) {
+                logCustomer(mediaLabel(media, ' (غير واضحة)'));
+                await send('لم تتضح الرسالة الصوتية 🙏 هل يمكنك إعادتها أو كتابة طلبك؟');
+                return setStatus(db, eventId, 'replied: audio unclear');
+            }
+            logCustomer(mediaLabel(media, `: «${text}»`));
+        } else if (!text && media && media.kind === 'image' && media.url) {
+            try {
+                images = [mediaTools.imagePart(await mediaTools.download(media.url, 'image'), media.url)];
+                text = media.caption || '';
+                alerts.ok(db, 'media');
+            } catch (err) {
+                alerts.fail(db, 'media', err);
+                logCustomer(mediaLabel(media, ' (تعذر فتحها)'));
+                await send('عذراً، لم أتمكن من فتح الصورة 🙏 هل يمكنك إرسالها مرة أخرى أو وصف طلبك؟');
+                return setStatus(db, eventId, 'replied: image failed — ' + err.message);
+            }
+            logCustomer(mediaLabel(media));
+        } else if (!text) {
+            if (media) logCustomer(mediaLabel(media));
+            await send('أستطيع قراءة النصوص والصور والرسائل الصوتية 🙏 اكتب لي طلبك أو أرسله برسالة صوتية.');
+            return setStatus(db, eventId, 'replied: unsupported message');
         }
         if (/^\s*(جديد|ابدأ من جديد|reset|restart)\s*$/i.test(text)) unpause(db, phone);
         else if (isPaused(db, phone)) return setStatus(db, eventId, 'paused: with sales team');
 
         const settings = getSettings(db);
         const result = await agent.chat({
-            db, key: 'mz:' + phone, channel: 'mazbot', phone, text,
+            db, key: 'mz:' + phone, channel: 'mazbot', phone, text, images,
             createQuote: saveQuote,
             ...(client ? { client } : {}),
             notifyHuman: async (summary) => {

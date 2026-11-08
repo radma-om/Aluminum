@@ -532,22 +532,32 @@ async function chat(opts) {
     }
 }
 
-async function runChat({ db, key, channel, phone, text, createQuote, notifyHuman, client }) {
-    if (/^\s*(جديد|ابدأ من جديد|reset|restart)\s*$/i.test(text)) {
+/* A customer photo: the model sees it this turn; the stored history keeps a note instead (no image data) */
+const IMAGE_NOTE = '[أرسل العميل صورة]';
+const userText = (text, images) => (images && images.length ? `${text ? text + '\n' : ''}${IMAGE_NOTE}` : text);
+
+async function runChat({ db, key, channel, phone, text, images = [], createQuote, notifyHuman, client }) {
+    if (!images.length && /^\s*(جديد|ابدأ من جديد|reset|restart)\s*$/i.test(text)) {
         resetConversation(db, key);
         return { reply: 'تم بدء محادثة جديدة 👋 كيف أقدر أساعدك؟', events: [] };
     }
-    const args = { db, key: storeKey(key), channel, phone, text, createQuote, notifyHuman };
+    const args = { db, key: storeKey(key), channel, phone, text, images, createQuote, notifyHuman };
     return provider() === 'openai'
         ? chatOpenAI({ ...args, client: client || defaultOpenAIClient() })
         : chatAnthropic({ ...args, client: client || defaultClient() });
 }
 
-async function chatAnthropic({ db, key, channel, phone, text, createQuote, notifyHuman, client }) {
+async function chatAnthropic({ db, key, channel, phone, text, images = [], createQuote, notifyHuman, client }) {
     const settings = getSettings(db);
     const messages = loadConversation(db, key);
     const startLength = messages.length;
-    messages.push({ role: 'user', content: text });
+    messages.push({
+        role: 'user',
+        content: images.length
+            ? [...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: im.media_type, data: im.data } })),
+                { type: 'text', text: text || 'أرسل العميل هذه الصورة دون تعليق.' }]
+            : text
+    });
     const ctx = { db, phone, channel, createQuote, notifyHuman, events: [] };
 
     let reply = '';
@@ -597,6 +607,9 @@ async function chatAnthropic({ db, key, channel, phone, text, createQuote, notif
         messages.length = startLength;
         reply = reply || 'عذراً، حدث خطأ. سيتواصل معك فريقنا قريباً.';
     }
+    if (images.length && messages[startLength] && messages[startLength].role === 'user') {
+        messages[startLength] = { role: 'user', content: userText(text, images) };
+    }
     saveConversation(db, key, channel, messages);
     return { reply: reply || '…', events: ctx.events };
 }
@@ -630,11 +643,17 @@ const OPENAI_TOOLS = TOOLS.map((t) => ({
     function: { name: t.name, description: t.description, parameters: t.input_schema, strict: true }
 }));
 
-async function chatOpenAI({ db, key, channel, phone, text, createQuote, notifyHuman, client }) {
+async function chatOpenAI({ db, key, channel, phone, text, images = [], createQuote, notifyHuman, client }) {
     const settings = getSettings(db);
     const messages = loadConversation(db, key);
     const startLength = messages.length;
-    messages.push({ role: 'user', content: text });
+    messages.push({
+        role: 'user',
+        content: images.length
+            ? [{ type: 'text', text: text || 'أرسل العميل هذه الصورة دون تعليق.' },
+                ...images.map((im) => ({ type: 'image_url', image_url: { url: `data:${im.media_type};base64,${im.data}` } }))]
+            : text
+    });
     const ctx = { db, phone, channel, createQuote, notifyHuman, events: [] };
 
     let reply = '';
@@ -673,6 +692,9 @@ async function chatOpenAI({ db, key, channel, phone, text, createQuote, notifyHu
     if (messages.length && messages[messages.length - 1].role === 'tool') {
         messages.length = startLength;
         reply = reply || 'عذراً، حدث خطأ. سيتواصل معك فريقنا قريباً.';
+    }
+    if (images.length && messages[startLength] && messages[startLength].role === 'user') {
+        messages[startLength] = { role: 'user', content: userText(text, images) };
     }
     saveConversation(db, key, channel, messages);
     return { reply: reply || '…', events: ctx.events };
