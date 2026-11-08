@@ -677,6 +677,7 @@
             <div class="nav-group">الرئيسية</div>
             <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')" title="لوحة المؤشرات"><i class="fas fa-chart-line"></i><span class="t-label">لوحة المؤشرات</span></button>
             <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')" title="متابعة العملاء"><i class="fas fa-headset"></i><span class="t-label">متابعة العملاء</span><span class="count" id="leadsBadge" hidden></span></button>
+            <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')" title="العملاء"><i class="fas fa-address-book"></i><span class="t-label">العملاء</span></button>
             <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')" title="طلبات العروض"><i class="fas fa-file-invoice-dollar"></i><span class="t-label">طلبات العروض</span></button>
             <button class="tab-btn" data-tab="invoices" onclick="switchTab('invoices')" title="الفواتير والمدفوعات"><i class="fas fa-receipt"></i><span class="t-label">الفواتير والمدفوعات</span></button>
             <button class="tab-btn" data-tab="work_orders" onclick="switchTab('work_orders')" title="أوامر العمل"><i class="fas fa-screwdriver-wrench"></i><span class="t-label">أوامر العمل</span></button>
@@ -1743,6 +1744,24 @@
             </div>
         </div>
 
+        <!-- ==================== TAB: Customers ==================== -->
+        <div id="tab-customers" class="tab-content">
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-address-book"></i></span> العملاء</div>
+                <p class="status-text" style="margin:0 0 10px">سجل واحد لكل عميل: بياناته، ومحادثاته ومتابعته، وعروضه، وفواتيره (المدفوع والمتبقي)، وأوامر العمل. يُضاف العميل تلقائياً عند أول تواصل (واتساب، الحاسبة، أمر عمل)، ويمكنك إضافته يدوياً.</p>
+                <div class="filter-row">
+                    <input type="search" id="custSearch" placeholder="بحث: الاسم، الرقم، المنطقة، البريد" style="flex:1; min-width:180px; padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-family:inherit" oninput="debouncedCustomers()">
+                    <label class="status-text" style="display:flex; gap:6px; align-items:center"><input type="checkbox" id="custOwes" onchange="loadCustomers()"> عليهم مبالغ فقط</label>
+                    <button class="btn btn-primary btn-sm" onclick="editCustomer(null)">عميل جديد</button>
+                </div>
+                <div class="table-wrapper"><table class="stack-table">
+                    <thead><tr><th>العميل</th><th>الجوال</th><th>المنطقة</th><th>العروض</th><th>الفواتير</th><th>المتبقي</th><th>أعمال مفتوحة</th><th>آخر نشاط</th><th></th></tr></thead>
+                    <tbody id="custBody"></tbody>
+                </table></div>
+                <span id="custStatus" class="status-text"></span>
+            </div>
+        </div>
+
         <!-- ==================== TAB: Invoices & payments ==================== -->
         <div id="tab-invoices" class="tab-content">
             <div class="card">
@@ -2115,6 +2134,37 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
                 </div>
             </form>
         </div>
+    </div>
+
+    <!-- One customer: details and everything linked to them -->
+    <div id="custSheet" class="sheet" hidden>
+        <div class="sheet-card" style="max-width:760px">
+            <button type="button" class="sheet-close" onclick="closeSheet('custSheet')" aria-label="إغلاق">×</button>
+            <div id="custDetail"></div>
+        </div>
+    </div>
+
+    <!-- Add / edit a customer -->
+    <div id="custEditSheet" class="sheet" hidden>
+        <form class="sheet-card" onsubmit="event.preventDefault(); submitCustomer();">
+            <button type="button" class="sheet-close" onclick="closeSheet('custEditSheet')" aria-label="إغلاق">×</button>
+            <h3><i class="fas fa-address-book"></i> <span id="custEditTitle">عميل جديد</span></h3>
+            <div class="form-grid">
+                <div class="form-group"><label>الاسم</label><input type="text" id="cuName" maxlength="120" required></div>
+                <div class="form-group"><label>الجوال <span class="unit" id="cuPhoneNote"></span></label><input type="tel" id="cuPhone" dir="ltr" maxlength="20" placeholder="9XXXXXXX"></div>
+                <div class="form-group"><label>رقم ثانٍ <span class="unit">(اختياري)</span></label><input type="tel" id="cuPhone2" dir="ltr" maxlength="20"></div>
+                <div class="form-group"><label>البريد <span class="unit">(اختياري)</span></label><input type="email" id="cuEmail" dir="ltr" maxlength="120"></div>
+                <div class="form-group"><label>المنطقة / الولاية</label><input type="text" id="cuCity" maxlength="120"></div>
+                <div class="form-group"><label>العنوان التفصيلي</label><input type="text" id="cuAddress" maxlength="200"></div>
+                <div class="form-group"><label>رابط الموقع على الخريطة</label><input type="url" id="cuMap" dir="ltr" placeholder="https://maps.app.goo.gl/..."></div>
+            </div>
+            <div class="form-group"><label>ملاحظات</label><textarea id="cuNotes" rows="3" maxlength="2000"></textarea></div>
+            <div class="form-buttons">
+                <button class="btn btn-primary" type="submit">حفظ</button>
+                <button class="btn btn-outline" type="button" onclick="closeSheet('custEditSheet')">إلغاء</button>
+                <span id="custEditStatus" class="status-text"></span>
+            </div>
+        </form>
     </div>
 
     <!-- Create / schedule a work order -->
@@ -2653,5 +2703,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-security.js"></script>
     <script src="admin-invoices.js"></script>
     <script src="admin-workorders.js"></script>
+    <script src="admin-customers.js"></script>
 </body>
 </html>

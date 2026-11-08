@@ -58,6 +58,7 @@ function touch(db, { key, channel, name = null, phone = null }) {
         const info = db.prepare(`INSERT INTO leads (contact_key, channel, name, phone, status, created_at, last_activity_at)
                                  VALUES (?, ?, ?, ?, 'new', ?, ?)`)
             .run(key, CHANNELS[channel] ? channel : 'calculator', clip(name, 120) || null, clip(phone, 20) || null, now(), now());
+        if (phone) require('./customers').ensure(db, { phone, name });
         return db.prepare('SELECT * FROM leads WHERE id = ?').get(Number(info.lastInsertRowid));
     }
     const fill = {};
@@ -67,6 +68,7 @@ function touch(db, { key, channel, name = null, phone = null }) {
         db.prepare(`UPDATE leads SET ${Object.keys(fill).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(fill), lead.id);
         lead = { ...lead, ...fill };
     }
+    if (lead.phone) require('./customers').ensure(db, { phone: lead.phone, name: lead.name });
     return lead;
 }
 

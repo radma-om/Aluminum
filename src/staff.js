@@ -16,6 +16,7 @@ const totp = require('./totp');
 const SECTIONS = {
     dashboard: 'لوحة المؤشرات',
     leads: 'متابعة العملاء',
+    customers: 'العملاء (السجل والملفات)',
     quotes: 'طلبات العروض',
     invoices: 'الفواتير والمدفوعات',
     work_orders: 'أوامر العمل (التركيب والصيانة)',
@@ -296,6 +297,8 @@ function sectionsFor(method, path) {
         [/^\/invoices\/\d+\/(payments\/\d+|cancel)$/, method === 'GET' ? ['invoices'] : 'manager'],
         [/^\/invoices(\/|$)/, ['invoices']],
         [/^\/work-orders(\/|$)/, ['work_orders']],
+        [/^\/customers\/\d+$/, method === 'DELETE' ? 'manager' : ['customers']],
+        [/^\/customers(\/|$)/, ['customers']],
         [/^\/quotes(\/|$)/, ['quotes']],
         [/^\/products$/, method === 'GET' ? ['products', 'purchases'] : ['products']],
         [/^\/(products|price-list\.txt)(\/|$)/, ['products']],

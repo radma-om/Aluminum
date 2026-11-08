@@ -149,6 +149,7 @@ async function newWorkOrder(source = null) {
     woSourceRef = source;
     fillWoSelects(null);
     const inv = source && source.invoice;
+    const cust = source && source.customer;
     $id('woSheetTitle').textContent = 'أمر عمل جديد';
     $id('woSource').textContent = inv ? `من الفاتورة ${inv.number} — ${inv.customer_name} (+${inv.customer_phone}). المطلوب يُكتب تلقائياً من بنود الفاتورة (بدون أسعار) — عدّله إن أردت.` : 'زيارة صيانة أو معاينة لعميل: اكتب بياناته.';
     document.querySelectorAll('.wo-manual').forEach((el) => { el.hidden = Boolean(inv); });
@@ -156,6 +157,15 @@ async function newWorkOrder(source = null) {
     for (const id of ['woName', 'woPhone', 'woAddress', 'woMap', 'woDate', 'woTime', 'woDesc']) $id(id).value = '';
     $id('woLocation').value = inv ? (inv.customer_city || '') : '';
     $id('woAddress').value = inv ? (inv.customer_address || '') : '';
+    if (cust) {
+        $id('woSource').textContent = `زيارة صيانة أو معاينة لـ ${cust.name || ''} (+${cust.phone}).`;
+        $id('woName').value = cust.name || '';
+        $id('woPhone').value = cust.phone;
+        $id('woLocation').value = cust.city || '';
+        $id('woAddress').value = cust.address || '';
+        $id('woMap').value = cust.map_url || '';
+        $id('woKind').value = 'maintenance';
+    }
     $id('woTechSel').value = '';
     $id('woSubmit').textContent = 'إنشاء أمر العمل';
     setStatus('woSheetStatus', '');

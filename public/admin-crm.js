@@ -459,7 +459,7 @@ async function openLead(id, { keepScroll = false } = {}) {
     renderLeadDetail(data, keepScroll);
 }
 
-function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: pausedUntil, agent_stop: stop }, keepScroll) {
+function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: pausedUntil, agent_stop: stop, customer_id: customerId }, keepScroll) {
     const el = $id('leadDetail');
     const oldTimeline = el.querySelector('.timeline');
     const atBottom = !oldTimeline || oldTimeline.scrollHeight - oldTimeline.scrollTop - oldTimeline.clientHeight < 40;
@@ -485,6 +485,7 @@ function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: p
                     <span><i class="${CH_ICONS[lead.channel] || 'fas fa-user'}"></i> ${esc(leadMeta.channels[lead.channel] || lead.channel)}</span>
                     <span><i class="far fa-clock"></i> أول تواصل ${esc(parseUtc(lead.created_at).toLocaleDateString('ar-OM'))}</span>
                     <span><i class="far fa-comment"></i> ${lead.message_count} رسالة</span>
+                    ${customerId && canSee('customers') ? `<button class="link-btn" style="margin:0" onclick="openCustomer(${customerId})"><i class="fas fa-address-book"></i> ملف العميل</button>` : ''}
                 </div>
             </div>
         </div>
