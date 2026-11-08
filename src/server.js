@@ -1089,7 +1089,7 @@ function createApp(db, { agentClient } = {}) {
     const staffQuoteCustomer = (req, b) => {
         if (b.customer_id) {
             const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(Number(b.customer_id));
-            if (!c || !staff.seesQuote(db, req.user, { customer_phone: c.phone })) throw httpError(404, 'العميل غير موجود');
+            if (!c || !staff.seesCustomer(db, req.user, c)) throw httpError(404, 'العميل غير موجود');
             return { name: c.name || clip(b.customer_name, 120), phone: c.phone, city: c.city };
         }
         const phone = customers.normalizePhone(b.customer_phone);
@@ -1200,12 +1200,12 @@ function createApp(db, { agentClient } = {}) {
     /* ---- Customers: one record per customer, and their profile ---- */
     const customerFor = (req, id) => {
         const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(Number(id));
-        if (!c || !staff.seesQuote(db, req.user, { customer_phone: c.phone })) throw httpError(404, 'العميل غير موجود');
+        if (!c || !staff.seesCustomer(db, req.user, c)) throw httpError(404, 'العميل غير موجود');
         return c;
     };
     admin.get('/customers', (req, res) => res.json({
         customers: customers.list(db, { q: String(req.query.q || '').trim(), owes: req.query.owes === '1' })
-            .filter((c) => staff.seesQuote(db, req.user, { customer_phone: c.phone }))
+            .filter((c) => staff.seesCustomer(db, req.user, c))
     }));
     admin.get('/customers/:id', (req, res) => {
         customerFor(req, req.params.id);
@@ -1221,7 +1221,7 @@ function createApp(db, { agentClient } = {}) {
     admin.post('/customers/:id/merge', (req, res) => {
         customerFor(req, req.params.id);
         const other = customers.byPhone(db, (req.body || {}).phone);
-        if (other && !staff.seesQuote(db, req.user, { customer_phone: other.phone })) throw httpError(400, 'لا يوجد عميل آخر بهذا الرقم');
+        if (other && !staff.seesCustomer(db, req.user, other)) throw httpError(400, 'لا يوجد عميل آخر بهذا الرقم');
         res.json(customers.merge(db, req.params.id, (req.body || {}).phone));
     });
     admin.delete('/customers/:id', (req, res) => {
