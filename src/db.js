@@ -489,6 +489,21 @@ CREATE TABLE IF NOT EXISTS work_order_events (
 );
 CREATE INDEX IF NOT EXISTS work_order_events_order ON work_order_events (order_id, id);
 
+-- Customers: one record per phone (the key that links follow-up, quotes, invoices and work orders)
+CREATE TABLE IF NOT EXISTS customers (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone       TEXT NOT NULL UNIQUE,
+    phone2      TEXT,
+    name        TEXT,
+    email       TEXT,
+    city        TEXT,
+    address     TEXT,
+    map_url     TEXT,
+    notes       TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Jobs that run once a day / week (follow-up reminders, weekly report): the last day they ran
 CREATE TABLE IF NOT EXISTS scheduled_runs (
     name      TEXT PRIMARY KEY,
@@ -690,6 +705,7 @@ function openDatabase(file = process.env.DB_FILE || path.join(__dirname, '..', '
     seedConfigurator(db);
     require('./motors').ensureSections(db);
     require('./leads').backfill(db);
+    require('./customers').backfill(db);
     return db;
 }
 

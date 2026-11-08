@@ -136,6 +136,7 @@ function create(db, input, author, { source = null } = {}) {
                 clip(input.address, 200) || null, cleanMapUrl(input.map_url), sched.scheduled_date || null, sched.scheduled_time || null,
                 techId, description, status, clip(author, 80) || null);
         const orderId = Number(info.lastInsertRowid);
+        require('./customers').ensure(db, { phone: base.customer_phone, name: base.customer_name, city: base.location });
         event(db, orderId, `أُنشئ أمر ${KINDS[kind]}${techId ? ` وأُسند إلى ${techName(db, techId)}` : ''}`, author);
         const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(base.customer_phone);
         if (lead) leads.addMessage(db, lead, 'system', `🔧 أمر ${KINDS[kind]} ${number}${sched.scheduled_date ? ` — موعد ${sched.scheduled_date}` : ''}`);

@@ -27,6 +27,7 @@ const RECORDS = [
     [/^\/quotes\/(\d+)$/, 'quotes'],
     [/^\/invoices\/(\d+)$/, 'invoices'],
     [/^\/work-orders\/(\d+)$/, 'work_orders'],
+    [/^\/customers\/(\d+)$/, 'customers'],
     [/^\/invoices\/\d+\/payments\/(\d+)$/, 'payments'],
     [/^\/leads\/(\d+)$/, 'leads']
 ];
@@ -51,6 +52,7 @@ const LABELS = [
     ['POST', /^\/invoices\/\d+\/payments$/, 'تسجيل دفعة'],
     ['DELETE', /^\/invoices\/\d+\/payments\/\d+$/, 'حذف دفعة'],
     ['POST', /^\/invoices\/\d+\/cancel$/, 'إلغاء فاتورة'],
+    ['POST', /^\/customers$/, 'إضافة عميل'], ['PATCH', /^\/customers\/\d+$/, 'تعديل بيانات عميل (السجل)'], ['DELETE', /^\/customers\/\d+$/, 'حذف عميل'], ['POST', /^\/customers\/\d+\/merge$/, 'دمج عميلين (رقمان لنفس العميل)'],
     ['POST', /^\/work-orders$/, 'إنشاء أمر عمل'], ['PATCH', /^\/work-orders\/\d+$/, 'تعديل / جدولة أمر عمل'],
     ['POST', /^\/work-orders\/\d+\/status$/, 'تغيير حالة أمر عمل'], ['POST', /^\/work-orders\/\d+\/notes$/, 'ملاحظة على أمر عمل'],
     ['POST', /^\/work-orders\/\d+\/cancel$/, 'إلغاء أمر عمل'],

@@ -32,6 +32,7 @@ const followup = require('./followup');
 const invoices = require('./invoices');
 const workorders = require('./workorders');
 const autoreply = require('./autoreply');
+const customers = require('./customers');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const audit = require('./audit');
@@ -265,6 +266,7 @@ function saveQuote(db, { customer_name, customer_phone, customer_city, notes, so
             JSON.stringify(quote.items), details ? JSON.stringify(details) : null,
             quote.subtotal, quote.vat_percent, quote.vat, quote.total, quote.source, quote.valid_until);
     quote.id = Number(info.lastInsertRowid);
+    if (source !== 'agent-test') customers.ensure(db, { phone: quote.customer_phone, name: quote.customer_name, city: quote.customer_city || (details && details.region) });
     quote.created_at = new Date().toISOString().replace('T', ' ').slice(0, 19);
     quote.pdf_url = pdfPath(quote);
 
@@ -1096,6 +1098,39 @@ function createApp(db, { agentClient } = {}) {
         res.json(invoicePublic(inv));
     });
 
+    /* ---- Customers: one record per customer, and their profile ---- */
+    const customerFor = (req, id) => {
+        const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(Number(id));
+        if (!c || !staff.seesQuote(db, req.user, { customer_phone: c.phone })) throw httpError(404, 'العميل غير موجود');
+        return c;
+    };
+    admin.get('/customers', (req, res) => res.json({
+        customers: customers.list(db, { q: String(req.query.q || '').trim(), owes: req.query.owes === '1' })
+            .filter((c) => staff.seesQuote(db, req.user, { customer_phone: c.phone }))
+    }));
+    admin.get('/customers/:id', (req, res) => {
+        customerFor(req, req.params.id);
+        const p = customers.profile(db, req.params.id, { invoicesLib: invoices, workordersLib: workorders });
+        const stop = autoreply.stateOf(db, p.customer.phone);
+        res.json({ ...p, agent_stop: stop ? { kind: stop.kind, forever: stop.forever, until: stop.until } : null });
+    });
+    admin.post('/customers', (req, res) => res.status(201).json(customers.create(db, req.body || {})));
+    admin.patch('/customers/:id', (req, res) => {
+        customerFor(req, req.params.id);
+        res.json(customers.update(db, req.params.id, req.body || {}));
+    });
+    admin.post('/customers/:id/merge', (req, res) => {
+        customerFor(req, req.params.id);
+        const other = customers.byPhone(db, (req.body || {}).phone);
+        if (other && !staff.seesQuote(db, req.user, { customer_phone: other.phone })) throw httpError(400, 'لا يوجد عميل آخر بهذا الرقم');
+        res.json(customers.merge(db, req.params.id, (req.body || {}).phone));
+    });
+    admin.delete('/customers/:id', (req, res) => {
+        customerFor(req, req.params.id);
+        customers.remove(db, req.params.id);
+        res.status(204).end();
+    });
+
     /* ---- Work orders (installation / maintenance team) ----
        Technicians: only their own orders, status and notes. The office: everything. */
     const officeOnly = (req) => { if (req.user.role === 'technician') throw httpError(403, 'هذا الإجراء للمكتب — راجع المدير'); };
@@ -1198,8 +1233,10 @@ function createApp(db, { agentClient } = {}) {
 
     const withPause = (data) => {
         const p = autoreply.stateOf(db, data.lead.phone);
+        const c = customers.byPhone(db, data.lead.phone);
         return {
             ...data,
+            customer_id: c ? c.id : null,
             agent_paused_until: p ? p.until : null,
             agent_stop: p ? { kind: p.kind, until: p.until, forever: p.forever, reason: p.reason, by: p.created_by, at: p.created_at } : null
         };
