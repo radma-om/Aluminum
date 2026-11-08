@@ -354,17 +354,23 @@ function allowedRegionFields(user, body) {
 /* Follow-up limited to one's own customers: assigned to them, or not assigned yet */
 const seesLead = (user, lead) => user.leads_scope !== 'mine' || !lead.assigned_to || lead.assigned_to === user.display_name;
 
-/* The same scope covers the customer's quotes, in every section (follow-up, quote requests, PDFs):
-   a quote belongs to the customer(s) with its phone; with no such customer it counts as unassigned.
-   Conflicting ownership fails closed: an unassigned duplicate must never unlock another employee’s quote */
-function seesQuote(db, user, quote) {
+/* The same scope covers every record linked by phone. With no matching follow-up it counts as
+   unassigned. Conflicting ownership fails closed: one unassigned or owned phone must never unlock
+   another phone assigned to a different employee. */
+function seesPhones(db, user, values) {
     if (user.leads_scope !== 'mine') return true;
-    const owners = db.prepare('SELECT assigned_to FROM leads WHERE phone = ?').all(String(quote.customer_phone || ''));
+    const phones = [...new Set((values || []).map((v) => String(v || '').replace(/\D/g, '')).filter(Boolean))];
+    if (!phones.length) return true;
+    const placeholders = phones.map(() => '?').join(', ');
+    const owners = db.prepare(`SELECT assigned_to FROM leads WHERE phone IN (${placeholders})`).all(...phones);
     return !owners.length || owners.every((l) => seesLead(user, l));
 }
+
+const seesQuote = (db, user, quote) => seesPhones(db, user, [quote && quote.customer_phone]);
+const seesCustomer = (db, user, customer) => seesPhones(db, user, [customer && customer.phone, customer && customer.phone2]);
 
 module.exports = {
     setup2fa, enable2fa, disable2fa, SETUP_2FA_PATHS, sha256, requestReset, resetPassword, RESET_MINUTES,
     SECTIONS, ROLES, SCOPES, OWNER, hashPassword, checkPassword, list, create, update, remove, changeOwnPassword,
-    login, fromToken, logout, can, sectionsFor, allowedSettings, allowedRegionFields, seesLead, seesQuote
+    login, fromToken, logout, can, sectionsFor, allowedSettings, allowedRegionFields, seesLead, seesQuote, seesCustomer
 };
