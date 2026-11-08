@@ -95,6 +95,30 @@ test('the profile gathers follow-up, quotes, invoices (paid / owed) and work ord
     assert.equal((await call('GET', `/api/admin/leads/${lead}`)).body.customer_id, c.id);
 });
 
+test('the customer list uses one aggregate query instead of queries per customer', () => {
+    const db = openDatabase(':memory:');
+    for (let i = 0; i < 40; i++) {
+        const phone = '9689' + String(i).padStart(7, '0');
+        quote(db, phone, 'عميل ' + i, 100 + i);
+    }
+
+    let prepareCount = 0;
+    const countedDb = new Proxy(db, {
+        get(target, property) {
+            if (property === 'prepare') return (...args) => {
+                prepareCount++;
+                return target.prepare(...args);
+            };
+            const value = target[property];
+            return typeof value === 'function' ? value.bind(target) : value;
+        }
+    });
+    const rows = customers.list(countedDb, { limit: 100 });
+    assert.equal(rows.length, 40);
+    assert.ok(rows.every((c) => c.quote_count === 1 && c.invoiced === 0 && c.balance === 0));
+    assert.equal(prepareCount, 1, 'the query count stays constant as the customer count grows');
+});
+
 test('adding by hand: phone and name required, no duplicates; deleting only an empty record (managers)', async (t) => {
     const { db, call } = await start(t);
     assert.equal((await call('POST', '/api/admin/customers', { name: 'x', phone: '12' })).status, 400);
