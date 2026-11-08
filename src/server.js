@@ -31,6 +31,7 @@ const alerts = require('./alerts');
 const followup = require('./followup');
 const invoices = require('./invoices');
 const workorders = require('./workorders');
+const autoreply = require('./autoreply');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const audit = require('./audit');
@@ -1196,11 +1197,23 @@ function createApp(db, { agentClient } = {}) {
     });
 
     const withPause = (data) => {
-        const phone = String(data.lead.phone || '').replace(/\D/g, '');
-        const p = phone ? db.prepare("SELECT until FROM agent_pauses WHERE phone = ? AND until > datetime('now')").get(phone) : null;
-        return { ...data, agent_paused_until: p ? p.until : null };
+        const p = autoreply.stateOf(db, data.lead.phone);
+        return {
+            ...data,
+            agent_paused_until: p ? p.until : null,
+            agent_stop: p ? { kind: p.kind, until: p.until, forever: p.forever, reason: p.reason, by: p.created_by, at: p.created_at } : null
+        };
     };
     admin.get('/leads/:id', (req, res) => res.json(withPause(leadFor(req, req.params.id))));
+    /* An employee switches the assistant off for this customer: for good, or until a date */
+    admin.put('/leads/:id/pause', (req, res) => {
+        const { lead } = leadFor(req, req.params.id);
+        if (!lead.phone) throw httpError(400, 'لا يوجد رقم واتساب لهذا العميل');
+        const b = req.body || {};
+        autoreply.stop(db, lead.phone, { until: b.forever ? null : b.until, reason: b.reason, by: staffName(req) });
+        leads.addNote(db, lead.id, { kind: 'note', text: `⏸ أُوقف الرد الآلي لهذا العميل ${b.forever ? 'دائماً' : 'حتى ' + String(b.until).slice(0, 10)}${b.reason ? ' — ' + String(b.reason).slice(0, 200) : ''}` }, staffName(req), { system: true });
+        res.json(withPause(leads.detail(db, lead.id)));
+    });
     admin.delete('/leads/:id/pause', (req, res) => {
         const { lead } = leadFor(req, req.params.id);
         if (lead.phone) mazbotInbox.unpause(db, String(lead.phone).replace(/\D/g, ''));
@@ -1749,11 +1762,21 @@ function createApp(db, { agentClient } = {}) {
         }));
     }));
 
-    // Let the assistant answer again a number it stepped back from (all numbers without a phone)
+    // Let the assistant answer again a number it stepped back from; without a phone: every automatic
+    // pause (numbers an employee switched off stay off)
     admin.delete('/mazbot/pauses', (req, res) => {
         const phone = String((req.body || {}).phone || req.query.phone || '').replace(/\D/g, '');
-        const info = phone ? mazbotInbox.unpause(db, phone) : db.prepare('DELETE FROM agent_pauses').run();
+        const info = phone ? autoreply.resume(db, phone) : autoreply.resumeAllAuto(db);
         res.json({ resumed: Number(info.changes) });
+    });
+    /* Numbers the assistant does not answer, and switching it off for any number (supplier, colleague…) */
+    admin.get('/mazbot/pauses', (req, res) => res.json({ pauses: autoreply.list(db) }));
+    admin.post('/mazbot/pauses', (req, res) => {
+        const b = req.body || {};
+        let phone = String(b.phone || '').replace(/\D/g, '');
+        if (phone.length === 8) phone = '968' + phone; // Omani number written without the country code
+        const p = autoreply.stop(db, phone, { until: b.forever ? null : b.until, reason: b.reason, by: staffName(req) });
+        res.status(201).json(p);
     });
 
     admin.put('/mazbot/agent', (req, res) => {

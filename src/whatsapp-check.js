@@ -185,7 +185,7 @@ async function run(db, { live = true } = {}) {
         add('last', lastCustomer.level === 'ok' ? 'ok' : 'warn', 'آخر رسالة من عميل', lastCustomer.note);
     }
 
-    const pauses = db.prepare("SELECT phone, until FROM agent_pauses WHERE until > datetime('now') ORDER BY until DESC").all();
+    const pauses = require('./autoreply').list(db);
     const firstBad = checks.find((c) => c.level === 'bad');
     return {
         ok: !firstBad,

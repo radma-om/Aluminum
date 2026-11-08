@@ -1834,6 +1834,17 @@
                 <div id="diagSummary" class="diag-summary" hidden></div>
                 <div id="diagChecks" class="diag-checks"></div>
                 <div id="diagPauses"></div>
+                <div class="diag-sim" id="stopNumberBox">
+                    <p class="sub-heading"><i class="fas fa-circle-pause"></i> إيقاف الرد الآلي لرقم</p>
+                    <p class="status-text" style="margin:0 0 8px">المساعد الذكي لا يرد على هذا الرقم (عميل تتابعه بنفسك، مورّد، زميل…). رسائله تبقى محفوظة في «متابعة العملاء». لعميل موجود يمكنك أيضاً الإيقاف من صفحته في «متابعة العملاء». (ردود MazBot الجاهزة «Bot Auto-Reply» تُضبط من إعدادات MazBot نفسها.)</p>
+                    <div class="form-grid">
+                        <div class="form-group"><label>رقم الجوال</label><input type="tel" id="stopPhone" dir="ltr" placeholder="9XXXXXXX أو 9689XXXXXXX"></div>
+                        <div class="form-group"><label>المدة</label><select id="stopMode" onchange="$id('stopUntilBox').hidden = this.value !== 'until'"><option value="forever">دائماً (حتى أعيد تشغيله)</option><option value="until">حتى تاريخ…</option></select></div>
+                        <div class="form-group" id="stopUntilBox" hidden><label>حتى نهاية يوم</label><input type="date" id="stopUntil"></div>
+                        <div class="form-group"><label>السبب <span class="unit">(اختياري)</span></label><input type="text" id="stopReason" maxlength="200" placeholder="مثلاً: عميل كبير يتابعه المدير"></div>
+                    </div>
+                    <div class="form-buttons" style="margin-top:6px"><button class="btn btn-primary btn-sm" onclick="stopNumber()">إيقاف الرد الآلي</button><span id="stopStatus" class="status-text"></span></div>
+                </div>
                 <div class="diag-sim">
                     <p class="sub-heading"><i class="fas fa-vial"></i> تجربة كاملة على رقمك</p>
                     <p class="status-text" style="margin:0 0 8px">يرسل النظام رسالة كأنها من هذا الرقم، فيكتب المساعد الرد ويُرسله لك على واتساب عبر MazBot. إذا وصلك الرد فكل شيء بعد MazBot يعمل، والمشكلة (إن بقيت) في وصول رسائل MazBot إلى النظام. يجب أن يكون الرقم قد راسل رقم الشركة خلال آخر 24 ساعة.</p>

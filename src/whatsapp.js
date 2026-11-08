@@ -159,6 +159,13 @@ async function agentReply(db, message, saveQuote) {
 }
 
 async function handleIncomingMessage(db, message, saveQuote) {
+    // Auto-reply switched off for this number (or a short pause after a person stepped in): keep, do not answer
+    if (require('./autoreply').isStopped(db, message.from)) {
+        const leads = require('./leads');
+        leads.customerMessage(db, { key: leads.phoneKey(message.from), channel: 'whatsapp', phone: message.from,
+            text: message.type === 'text' ? message.text.body : '[رسالة غير نصية]' });
+        return;
+    }
     if (message.type !== 'text') {
         await sendText(message.from, 'أستطيع قراءة الرسائل النصية فقط حالياً 🙏 اكتب لي طلبك من فضلك.');
         return;

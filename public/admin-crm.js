@@ -437,6 +437,7 @@ function renderLeadItems() {
                     ${l.assigned_to ? `<span class="pill"><i class="fas fa-user"></i>${esc(l.assigned_to)}</span>` : ''}
                     ${l.quote_count ? `<span class="pill"><i class="fas fa-file-invoice"></i>${l.quote_count}</span>` : ''}
                     ${attention}
+                    ${l.agent_stop === 'manual' ? '<span class="pill" title="الرد الآلي متوقف لهذا العميل"><i class="fas fa-circle-pause"></i>بلا رد آلي</span>' : ''}
                 </div>
             </div></div>`;
     }).join('');
@@ -458,7 +459,7 @@ async function openLead(id, { keepScroll = false } = {}) {
     renderLeadDetail(data, keepScroll);
 }
 
-function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: pausedUntil }, keepScroll) {
+function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: pausedUntil, agent_stop: stop }, keepScroll) {
     const el = $id('leadDetail');
     const oldTimeline = el.querySelector('.timeline');
     const atBottom = !oldTimeline || oldTimeline.scrollHeight - oldTimeline.scrollTop - oldTimeline.clientHeight < 40;
@@ -487,7 +488,10 @@ function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: p
                 </div>
             </div>
         </div>
-        ${pausedUntil ? `<div class="lead-paused"><i class="fas fa-circle-pause"></i> المساعد الذكي لا يرد على هذا العميل حتى ${esc(parseUtc(pausedUntil).toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' }))} (طلب موظفاً أو ردّ عليه موظف).
+        ${stop && stop.kind === 'manual'
+            ? `<div class="lead-paused"><i class="fas fa-circle-pause"></i> الرد الآلي متوقف لهذا العميل ${stop.forever ? '<strong>دائماً</strong>' : 'حتى ' + esc(parseUtc(stop.until).toLocaleDateString('ar-OM', { dateStyle: 'medium' }))}${stop.reason ? ' — ' + esc(stop.reason) : ''}${stop.by ? ` (${esc(stop.by)})` : ''}. رسائله تصل هنا ويرد عليه الموظفون.
+                <button class="btn btn-outline btn-sm" id="ldResume">تشغيل الرد الآلي</button></div>`
+            : pausedUntil ? `<div class="lead-paused"><i class="fas fa-circle-pause"></i> المساعد الذكي لا يرد على هذا العميل حتى ${esc(parseUtc(pausedUntil).toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' }))} (طلب موظفاً أو ردّ عليه موظف).
             <button class="btn btn-outline btn-sm" id="ldResume">ليرد المساعد عليه الآن</button></div>` : ''}
         <div class="lead-controls">
             <label>الحالة
@@ -498,6 +502,12 @@ function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: p
                 <input type="date" id="ldNext" value="${esc(lead.next_follow_up || '')}"></label>
             <label>اسم العميل
                 <input type="text" id="ldName" value="${esc(lead.name || '')}" placeholder="اكتب اسم العميل"></label>
+            ${lead.phone ? `<label>الرد الآلي (المساعد الذكي)
+                <select id="ldAutoReply">
+                    <option value="on" ${!stop || stop.kind !== 'manual' ? 'selected' : ''}>يعمل</option>
+                    <option value="forever" ${stop && stop.kind === 'manual' && stop.forever ? 'selected' : ''}>متوقف دائماً</option>
+                    <option value="until" ${stop && stop.kind === 'manual' && !stop.forever ? 'selected' : ''}>متوقف حتى تاريخ…</option>
+                </select></label>` : ''}
         </div>
         ${quotes.length ? `<div class="panel-title"><i class="fas fa-file-invoice-dollar"></i> عروض الأسعار</div>
             <div class="quote-chips">${quotes.map((q) => `<button type="button" class="quote-chip" onclick="openQuotePdf(${q.id})" title="تحميل PDF">
@@ -541,6 +551,28 @@ function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: p
     if (pausedUntil) {
         $id('ldResume').addEventListener('click', async () => {
             try { renderLeadDetail(await api('DELETE', `/api/admin/leads/${lead.id}/pause`), true); } catch (err) { alert(err.message); }
+        });
+    }
+    if ($id('ldAutoReply')) {
+        $id('ldAutoReply').addEventListener('change', async (e) => {
+            const mode = e.target.value;
+            try {
+                if (mode === 'on') {
+                    renderLeadDetail(await api('DELETE', `/api/admin/leads/${lead.id}/pause`), true);
+                } else {
+                    let until = null;
+                    if (mode === 'until') {
+                        until = prompt('أوقف الرد الآلي حتى نهاية يوم (YYYY-MM-DD):', new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
+                        if (!until) return renderLeadDetail(await api('GET', `/api/admin/leads/${lead.id}`), true);
+                    }
+                    const reason = prompt('السبب (اختياري) — مثلاً: عميل كبير يتابعه المدير:', '') || '';
+                    renderLeadDetail(await api('PUT', `/api/admin/leads/${lead.id}/pause`, { forever: mode === 'forever', until, reason }), true);
+                }
+                loadLeads();
+            } catch (err) {
+                alert(err.message);
+                renderLeadDetail(await api('GET', `/api/admin/leads/${lead.id}`), true);
+            }
         });
     }
     $id('ldStatus').addEventListener('change', (e) => patch({ status: e.target.value }));
