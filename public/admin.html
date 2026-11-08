@@ -1709,6 +1709,22 @@
 
         <!-- ==================== TAB 5: Quote requests ==================== -->
         <div id="tab-quotes" class="tab-content">
+            <div class="card manager-only">
+                <div class="card-title"><span class="icon"><i class="fas fa-tags"></i></span> خصم العملاء (عرض موسمي)</div>
+                <p class="status-text" style="margin:0 0 10px">نسبة تُخصم من السعر قبل الضريبة في الحاسبات المختارة: يراها العميل في الحاسبة، وتظهر في عرض السعر وملف PDF، ويذكرها المساعد الذكي ويحسب بها. ينتهي العرض تلقائياً بعد آخر يوم. عروض الموظفين لا تتأثر (لها خصمها الخاص).</p>
+                <div class="form-grid">
+                    <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="promoEnabled"> تفعيل الخصم</label></div>
+                    <div class="form-group"><label>اسم العرض</label><input type="text" id="promoLabel" maxlength="60" placeholder="مثلاً: عرض الشتاء"></div>
+                    <div class="form-group"><label>النسبة <span class="unit">(% حتى 50)</span></label><input type="number" id="promoPercent" min="0" max="50" step="0.5"></div>
+                    <div class="form-group"><label>آخر يوم <span class="unit">(اختياري)</span></label><input type="date" id="promoUntil"></div>
+                </div>
+                <div class="check-row" id="promoScope">
+                    <label><input type="checkbox" value="rolling_shutter"> بوابات الرول شتر</label>
+                    <label><input type="checkbox" value="overhead"> بوابات الأوفرهيد</label>
+                    <label><input type="checkbox" value="motors"> مكائن البوابات</label>
+                </div>
+                <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="savePromo()">حفظ</button><span id="promoStatus" class="status-text"></span></div>
+            </div>
             <div class="card">
                 <div class="card-title">
                     <span class="icon">Q</span>

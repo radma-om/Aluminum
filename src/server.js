@@ -34,6 +34,7 @@ const workorders = require('./workorders');
 const autoreply = require('./autoreply');
 const customers = require('./customers');
 const staffquotes = require('./staffquotes');
+const promotions = require('./promotions');
 const mazbotInbox = require('./mazbot-inbox');
 const staff = require('./staff');
 const audit = require('./audit');
@@ -242,6 +243,7 @@ const pdfPath = (quote) => `/quotes/${quote.ref}.pdf?k=${quote.access_key}`;
 
 /* Persist a priced quote (from the web calculator or the AI agent) and notify integrations */
 function saveQuote(db, { customer_name, customer_phone, customer_city, notes, source, priced, details = null, lead_key = null }) {
+    if (priced && priced.promo) details = { ...(details || {}), ...promotions.quoteDetails(priced.promo) };
     const quote = {
         ref: makeRef(),
         access_key: crypto.randomBytes(16).toString('hex'),
@@ -514,7 +516,7 @@ function createApp(db, { agentClient } = {}) {
         const settings = getSettings(db);
         const keys = ['company_name', 'company_whatsapp', 'company_tagline', 'company_phone', 'company_address',
             'company_website', 'calculator_notice', 'calculator_notes', 'vat_percent'];
-        return Object.fromEntries(keys.map((k) => [k, settings[k]]));
+        return { ...Object.fromEntries(keys.map((k) => [k, settings[k]])), promotion: promotions.publicInfo(settings) };
     };
 
     app.get('/api/public/configurator', (req, res) => {
@@ -530,7 +532,7 @@ function createApp(db, { agentClient } = {}) {
     const publicPrice = (p) => ({
         items: p.items.map(({ product_id, category, ...i }) => i),
         subtotal: p.subtotal, vat_percent: p.vat_percent, vat: p.vat, total: p.total,
-        spec: p.spec, delivery_installation: p.delivery_installation
+        spec: p.spec, delivery_installation: p.delivery_installation, promo: p.promo || null
     });
 
     /* Live price while the customer is choosing (same code that prices the saved quote) */
@@ -542,6 +544,8 @@ function createApp(db, { agentClient } = {}) {
        sales numbers on WhatsApp. Pressing it again with the same data returns the same quote
        (no duplicate message); any change is a new request. */
     const saveOrRepeat = (res, customer, priced, details) => {
+        // The promotion is part of what is saved: compare like with like (no duplicate on a second press)
+        details = { ...details, ...promotions.quoteDetails(priced.promo) };
         const same = db.prepare(`SELECT * FROM quotes WHERE customer_phone = ? AND customer_name = ? AND details_json = ?
                                  AND total = ? AND IFNULL(notes, '') = ? AND created_at >= datetime('now', '-30 minutes')
                                  ORDER BY id DESC LIMIT 1`)

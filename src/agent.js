@@ -55,7 +55,17 @@ function knowledgeSection(db) {
         : '';
 }
 
+function promoLine(settings) {
+    const p = require('./promotions').publicInfo(settings);
+    if (!p) return '';
+    return `\n\nعرض حالي للعملاء: «${p.label}» خصم ${p.percent}% على ${p.applies_to.map((a) => a.name).join(' و')}${p.until ? ` حتى ${p.until}` : ''}. الأسعار التي تعطيك إياها الأدوات تشمل هذا الخصم مسبقاً — لا تخصمه مرة ثانية. اذكر العرض للعميل عند إعطاء السعر لتشجيعه.`;
+}
+
 function systemPrompt(settings, db = null) {
+    return promoLine(settings) ? basePrompt(settings, db) + promoLine(settings) : basePrompt(settings, db);
+}
+
+function basePrompt(settings, db = null) {
     return `أنت مساعد المبيعات في ${settings.company_name} في سلطنة عُمان، وتتحدث مع العملاء عبر واتساب.
 الشركة تركّب نوعين من البوابات، وتبيع مكائن البوابات:
 - بوابات الرول شتر (الأبواب الألمنيوم الملفوفة) بأنواع مختلفة، مع إكسسوارات بفئات مختلفة.

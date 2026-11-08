@@ -331,7 +331,8 @@ const SETTING_SECTIONS = {
     staff_members: 'manager',
     // Where customers and sales alerts are sent: an employee changing these could divert both to their own number
     company_whatsapp: 'manager', mazbot_recipients: 'manager', public_base_url: 'manager',
-    follow_up_stale_days: 'manager', follow_up_emails: 'manager', quote_validity_days: 'manager', staff_max_discount_percent: 'manager'
+    follow_up_stale_days: 'manager', follow_up_emails: 'manager', quote_validity_days: 'manager', staff_max_discount_percent: 'manager',
+    promo_enabled: 'manager', promo_percent: 'manager', promo_label: 'manager', promo_until: 'manager', promo_scope: 'manager'
 };
 function allowedSettings(user, body) {
     const out = {};

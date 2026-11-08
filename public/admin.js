@@ -479,7 +479,7 @@ async function loadQuotes() {
                 ${q.details && q.details.staff_quote && !q.invoice && ['new', 'contacted'].includes(q.status) ? `<br><button class="link-btn" style="margin:4px 0 0" onclick="openQuoteBuilder({ quote: quotesCache.find((x) => x.id === ${q.id}) })">تعديل البنود</button>` : ''}</td>
         </tr>`).join('');
     quotesCache = rows;
-    if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; }).catch(() => {});
+    if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; fillPromo(st); }).catch(() => {});
     $id('quotesEmpty').style.display = rows.length ? 'none' : 'block';
 }
 
@@ -504,6 +504,28 @@ async function extendQuote(id, current) {
     const next = prompt('تاريخ الصلاحية الجديد (YYYY-MM-DD):', current);
     if (!next) return;
     try { await api('PATCH', `/api/admin/quotes/${id}`, { valid_until: next.trim() }); await loadQuotes(); } catch (err) { alert(err.message); }
+}
+
+/* The customer discount (promotion) */
+function fillPromo(st) {
+    $id('promoEnabled').checked = Boolean(st.promo_enabled);
+    $id('promoLabel').value = st.promo_label || '';
+    $id('promoPercent').value = st.promo_percent || '';
+    $id('promoUntil').value = st.promo_until || '';
+    $id('promoScope').querySelectorAll('input').forEach((c) => { c.checked = (st.promo_scope || []).includes(c.value); });
+    const today = new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
+    const ended = st.promo_enabled && st.promo_until && st.promo_until < today;
+    setStatus('promoStatus', !st.promo_enabled ? 'متوقف' : ended ? 'انتهى (مرّ آخر يوم)' : `يعمل الآن: خصم ${st.promo_percent}%`, st.promo_enabled && !ended ? 'ok' : '');
+}
+
+async function savePromo() {
+    const body = {
+        promo_enabled: $id('promoEnabled').checked, promo_label: $id('promoLabel').value.trim(),
+        promo_percent: Number($id('promoPercent').value) || 0, promo_until: $id('promoUntil').value,
+        promo_scope: [...$id('promoScope').querySelectorAll('input:checked')].map((c) => c.value)
+    };
+    if (body.promo_enabled && (!body.promo_percent || !body.promo_scope.length)) return setStatus('promoStatus', 'اكتب النسبة واختر حاسبة واحدة على الأقل', 'err');
+    try { fillPromo(await api('PUT', '/api/admin/settings', body)); } catch (err) { setStatus('promoStatus', err.message, 'err'); }
 }
 
 async function saveQuoteValidity() {

@@ -17,7 +17,12 @@ const DEFAULT_SETTINGS = {
     // Employees who follow customers (names); they become accounts with permissions later
     staff_members: [],
     quote_validity_days: 15,
-    staff_max_discount_percent: 10, // أقصى خصم يعطيه الموظف (٪ من السعر قبل الخصم) — للمدير بلا حد، ولكل موظف حد خاص اختياري     // صلاحية عرض السعر بالأيام (تظهر في PDF، ويمكن تمديد كل عرض)
+    staff_max_discount_percent: 10,
+    promo_enabled: false,           // خصم للعملاء يفعّله المدير (عرض موسمي) — يظهر في الحاسبات وعند المساعد الذكي
+    promo_percent: 0,               // نسبة الخصم من السعر قبل الضريبة (حتى 50%)
+    promo_label: '',                // اسم العرض، مثل «عرض الشتاء»
+    promo_until: '',                // آخر يوم (YYYY-MM-DD) — فارغ: حتى يُوقف
+    promo_scope: ['rolling_shutter', 'overhead', 'motors'], // أقصى خصم يعطيه الموظف (٪ من السعر قبل الخصم) — للمدير بلا حد، ولكل موظف حد خاص اختياري     // صلاحية عرض السعر بالأيام (تظهر في PDF، ويمكن تمديد كل عرض)
     follow_up_stale_days: 3,     // عميل مفتوح بلا متابعة من موظف لهذه المدة يظهر في «بحاجة متابعة»
     follow_up_emails: true,      // بريد يومي لكل موظف بعملائه المستحقين + تقرير أسبوعي للمديرين
     // Slat thicknesses of the in-house calculators (pricing and weight tabs): details, mm, kg per meter
@@ -748,6 +753,12 @@ function saveSettings(db, patch) {
             upsert.run(key, JSON.stringify(names));
             continue;
         }
+        if (key === 'promo_scope') {
+            const allowed = ['rolling_shutter', 'overhead', 'motors'];
+            if (!Array.isArray(patch[key]) || patch[key].some((k) => !allowed.includes(k))) throw badValue('اختيار الحاسبات للعرض غير صالح');
+            upsert.run(key, JSON.stringify([...new Set(patch[key])]));
+            continue;
+        }
         if (key === 'slat_thicknesses') {
             upsert.run(key, JSON.stringify(cleanSlatThicknesses(patch[key])));
             continue;
@@ -759,6 +770,11 @@ function saveSettings(db, patch) {
         if (numeric && !Number.isFinite(value)) {
             throw badValue(`قيمة غير صالحة للحقل ${key}`);
         }
+        if (key === 'promo_percent' && !(value >= 0 && value <= 50)) throw badValue('نسبة خصم العملاء بين 0 و50%');
+        if (key === 'promo_until' && value && !(/^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z')))) {
+            throw badValue('تاريخ نهاية العرض غير صالح');
+        }
+        if (key === 'promo_label' && String(value).length > 60) throw badValue('اسم العرض طويل (60 حرفاً كحد أقصى)');
         if (key === 'staff_max_discount_percent' && !(value >= 0 && value <= 100)) {
             throw badValue('حد الخصم يجب أن يكون بين 0 و100%');
         }

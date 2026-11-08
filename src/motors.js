@@ -14,6 +14,7 @@
    ============================================================= */
 const { getSettings } = require('./db');
 const { round2 } = require('./pricing');
+const promotions = require('./promotions');
 const { getRegion, locations } = require('./doors');
 
 const KINDS = { kit: 'طقم مكينة', part: 'إكسسوار / قطعة' };
@@ -217,7 +218,7 @@ function motorPrice(db, { sectionId, kitId, kitCount = 1, parts = [], regionId, 
     if (kit) spec.push(['المكينة', `${kit.name}${count > 1 ? ` × ${count}` : ''}`]);
     // Possible extra fees only concern an installation
     const extraFees = kit && installation ? sectionFees(loadExtraFees(db), section.id) : [];
-    return {
+    return promotions.apply(settings, {
         items: lines, subtotal, vat_percent: vatPercent, vat, total: round2(subtotal + vat),
         spec, delivery_installation: installNote, region,
         extra_fees: extraFees, extra_fees_note: extraFeesNote(extraFees),
@@ -226,7 +227,7 @@ function motorPrice(db, { sectionId, kitId, kitCount = 1, parts = [], regionId, 
             kit: kit ? kit.name : null, kit_count: kit ? count : 0, parts: partNames,
             region: region.name, governorate: region.governorate
         }
-    };
+    }, 'motors');
 }
 
 module.exports = {

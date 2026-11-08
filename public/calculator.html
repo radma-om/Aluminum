@@ -148,6 +148,7 @@
             const res = await fetch('/api/public/configurator');
             if (!res.ok) throw new Error();
             conf = await res.json();
+            showPromoBanner(conf, 'rolling_shutter');
         } catch {
             $('calcForm').innerHTML = '<div class="submit-status status-error">تعذر تحميل الحاسبة. يرجى المحاولة لاحقاً.</div>';
             return;
@@ -291,7 +292,8 @@
         $('result').innerHTML = `السعر الإجمالي: <span style="font-size:1.2em">${money(lastPrice.total)} ريال عماني</span>`;
         $('breakdown').innerHTML = lastPrice.items.map((i) =>
             `<div><span>${parts(i.name, i.type)}</span><span>${money(i.line_total)}</span></div>`).join('') +
-            `<div><span>المجموع</span><span>${money(lastPrice.subtotal)}</span></div>` +
+            promoRows(lastPrice) +
+            `<div><span>المجموع قبل الضريبة</span><span>${money(lastPrice.subtotal)}</span></div>` +
             `<div><span>ضريبة القيمة المضافة ${lastPrice.vat_percent}%</span><span>${money(lastPrice.vat)}</span></div>` +
             `<div class="total-row"><span>الإجمالي (ر.ع)</span><span>${money(lastPrice.total)}</span></div>`;
         $('feesNote').textContent = (lastPrice.details && lastPrice.details.fees_note) || '';
