@@ -75,7 +75,10 @@ function withFigures(db, c) {
     return { ...c, quote_count: f.quote_count, invoiced: round2(f.invoiced), paid: round2(f.paid), balance: round2(f.invoiced - f.paid), open_jobs: f.open_jobs, last_activity: last || c.created_at };
 }
 
-function list(db, { q = '', owes = false, limit = 300 } = {}) {
+/* The list is one aggregate query, regardless of the number of customers. Earlier versions loaded
+   up to 2,000 rows and ran two extra queries for every row, blocking the Node.js event loop as the
+   customer base grew. mineOf applies the same fail-closed ownership rule before LIMIT is applied. */
+function list(db, { q = '', owes = false, limit = 300, mineOf = null } = {}) {
     const where = [];
     const args = [];
     if (q) {
@@ -84,11 +87,83 @@ function list(db, { q = '', owes = false, limit = 300 } = {}) {
         where.push(`(IFNULL(name, '') LIKE ? OR IFNULL(city, '') LIKE ? OR IFNULL(email, '') LIKE ?${digits ? ' OR phone LIKE ? OR IFNULL(phone2, \'\') LIKE ?' : ''})`);
         args.push(like, like, like, ...(digits ? [`%${digits}%`, `%${digits}%`] : []));
     }
-    const rows = db.prepare(`SELECT * FROM customers ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY updated_at DESC, id DESC LIMIT 2000`).all(...args)
-        .map((c) => withFigures(db, c))
-        .filter((c) => !owes || c.balance > 0.0005)
-        .sort((a, b) => String(b.last_activity).localeCompare(String(a.last_activity)));
-    return rows.slice(0, limit);
+    if (mineOf) {
+        where.push(`NOT EXISTS (
+            SELECT 1 FROM leads ownership
+            WHERE ownership.phone IN (customers.phone, customers.phone2)
+              AND IFNULL(ownership.assigned_to, '') NOT IN ('', ?)
+        )`);
+        args.push(String(mineOf));
+    }
+    const safeLimit = Math.min(Math.max(Number(limit) || 300, 1), 1000);
+    const rows = db.prepare(`
+        WITH selected_customers AS (
+            SELECT * FROM customers
+            ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+        ),
+        customer_phones AS (
+            SELECT id AS customer_id, phone FROM selected_customers
+            UNION
+            SELECT id AS customer_id, phone2 AS phone FROM selected_customers
+            WHERE phone2 IS NOT NULL AND phone2 != ''
+        ),
+        quote_stats AS (
+            SELECT cp.customer_id, COUNT(q.id) AS quote_count, MAX(q.created_at) AS last_at
+            FROM customer_phones cp LEFT JOIN quotes q ON q.customer_phone = cp.phone
+            GROUP BY cp.customer_id
+        ),
+        invoice_stats AS (
+            SELECT cp.customer_id,
+                   SUM(CASE WHEN i.status = 'issued' THEN i.total ELSE 0 END) AS invoiced,
+                   MAX(i.created_at) AS last_at
+            FROM customer_phones cp LEFT JOIN invoices i ON i.customer_phone = cp.phone
+            GROUP BY cp.customer_id
+        ),
+        payment_stats AS (
+            SELECT cp.customer_id, SUM(p.amount) AS paid
+            FROM customer_phones cp
+            LEFT JOIN invoices i ON i.customer_phone = cp.phone AND i.status = 'issued'
+            LEFT JOIN payments p ON p.invoice_id = i.id
+            GROUP BY cp.customer_id
+        ),
+        work_stats AS (
+            SELECT cp.customer_id,
+                   SUM(CASE WHEN w.status IN ('new', 'scheduled', 'in_progress') THEN 1 ELSE 0 END) AS open_jobs,
+                   MAX(w.updated_at) AS last_at
+            FROM customer_phones cp LEFT JOIN work_orders w ON w.customer_phone = cp.phone
+            GROUP BY cp.customer_id
+        ),
+        lead_stats AS (
+            SELECT cp.customer_id, MAX(l.last_activity_at) AS last_at
+            FROM customer_phones cp LEFT JOIN leads l ON l.phone = cp.phone
+            GROUP BY cp.customer_id
+        ),
+        figures AS (
+            SELECT c.*,
+                   COALESCE(q.quote_count, 0) AS quote_count,
+                   ROUND(COALESCE(i.invoiced, 0), 2) AS invoiced,
+                   ROUND(COALESCE(p.paid, 0), 2) AS paid,
+                   ROUND(COALESCE(i.invoiced, 0) - COALESCE(p.paid, 0), 2) AS balance,
+                   COALESCE(w.open_jobs, 0) AS open_jobs,
+                   MAX(COALESCE(q.last_at, ''), COALESCE(i.last_at, ''), COALESCE(w.last_at, ''),
+                       COALESCE(l.last_at, ''), c.created_at) AS last_activity
+            FROM selected_customers c
+            LEFT JOIN quote_stats q ON q.customer_id = c.id
+            LEFT JOIN invoice_stats i ON i.customer_id = c.id
+            LEFT JOIN payment_stats p ON p.customer_id = c.id
+            LEFT JOIN work_stats w ON w.customer_id = c.id
+            LEFT JOIN lead_stats l ON l.customer_id = c.id
+        )
+        SELECT * FROM figures
+        ${owes ? 'WHERE balance > 0.0005' : ''}
+        ORDER BY last_activity DESC, id DESC
+        LIMIT ?
+    `).all(...args, safeLimit);
+    return rows.map((c) => ({
+        ...c,
+        quote_count: Number(c.quote_count), invoiced: round2(c.invoiced), paid: round2(c.paid),
+        balance: round2(c.balance), open_jobs: Number(c.open_jobs)
+    }));
 }
 
 /* Everything about one customer */

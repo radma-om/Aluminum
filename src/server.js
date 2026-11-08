@@ -1204,8 +1204,11 @@ function createApp(db, { agentClient } = {}) {
         return c;
     };
     admin.get('/customers', (req, res) => res.json({
-        customers: customers.list(db, { q: String(req.query.q || '').trim(), owes: req.query.owes === '1' })
-            .filter((c) => staff.seesCustomer(db, req.user, c))
+        customers: customers.list(db, {
+            q: String(req.query.q || '').trim(),
+            owes: req.query.owes === '1',
+            mineOf: req.user.leads_scope === 'mine' ? req.user.display_name : null
+        })
     }));
     admin.get('/customers/:id', (req, res) => {
         customerFor(req, req.params.id);
