@@ -1,9 +1,13 @@
 /* =============================================================
-   «عرض سعر جديد» by an employee: lines from the catalog (price from the
-   list) or free lines, a discount per line and on the total (amount or
-   %), live totals from the server (the same calculation that is saved),
-   and the employee's discount limit. Uses api(), $id(), esc(),
-   setStatus(), canSee(), closeSheet(), openQuotePdf(), loadQuotes().
+   «عرض سعر جديد» by an employee. The section is chosen first:
+   - a roller shutter gate, an overhead gate or a gate motor: the same
+     choices as the customer calculator, priced by the server with the
+     installation and delivery of the customer's wilayah;
+   - a part from the product list (price from the list) or a free line.
+   A discount per line / gate and on the total (amount or %), live totals
+   from the server (the same calculation that is saved), and the
+   employee's discount limit. Uses api(), $id(), esc(), setStatus(),
+   canSee(), closeSheet(), openQuotePdf(), loadQuotes().
    ============================================================= */
 
 let qbCatalog = null;
@@ -16,6 +20,8 @@ let qbLastPreview = null;
 const QB_UNITS = { meter: 'متر', piece: 'قطعة', m2: 'متر مربع', set: 'طقم', kg: 'كجم', service: 'خدمة' };
 const QB_CATS = { slat: 'الشرائح', accessory: 'الإكسسوارات', machine: 'المكائن' };
 const qbMoney = (n) => Number(n || 0).toFixed(2);
+const QB_CALCS = { rolling_shutter: 'بوابة رول شتر', overhead: 'بوابة أوفرهيد', motors: 'مكينة بوابة' };
+const QB_ICONS = { rolling_shutter: 'fa-warehouse', overhead: 'fa-door-closed', motors: 'fa-cogs' };
 
 async function openQuoteBuilder({ customer = null, quote = null } = {}) {
     try {
@@ -35,34 +41,179 @@ async function openQuoteBuilder({ customer = null, quote = null } = {}) {
     $id('qbValidity').disabled = Boolean(quote);
     if (quote) {
         const d = quote.details || {};
-        qbLines = quote.items.map((i) => ({
-            product_id: i.product_id || '', name: i.name, type: i.type || '', unit: i.unit, quantity: i.quantity,
-            unit_price: i.unit_price, disc_type: i.discount ? i.discount.type : '', disc_value: i.discount ? i.discount.value : ''
-        }));
+        const groups = Array.isArray(d.calc_groups) ? d.calc_groups : [];
+        const seen = new Set();
+        qbLines = [];
+        for (const i of quote.items) {
+            if (i.group !== undefined && groups[i.group]) {
+                if (seen.has(i.group)) continue;
+                seen.add(i.group);
+                const g = groups[i.group];
+                qbLines.push({ calc: g.calc, params: qbScreenParams(g.calc, g.params || {}), price_level: g.price_level || 'from',
+                    disc_type: g.discount ? g.discount.type : '', disc_value: g.discount ? g.discount.value : '' });
+                continue;
+            }
+            qbLines.push({
+                product_id: i.product_id || '', name: i.name, type: i.type || '', unit: i.unit, quantity: i.quantity,
+                unit_price: i.unit_price, disc_type: i.discount ? i.discount.type : '', disc_value: i.discount ? i.discount.value : '',
+                catalog: Boolean(i.product_id)
+            });
+        }
         if (d.quote_discount) { $id('qbDiscType').value = d.quote_discount.type; $id('qbDiscValue').value = d.quote_discount.value; }
         $id('qbNotes').value = quote.notes || '';
     } else {
-        qbLines = [qbBlankLine()];
+        qbLines = [];
     }
+    qbFillRegions(quote ? (quote.details || {}).region_id : null, quote ? null : (customer && customer.city));
+    qbFillAddButtons();
     renderQbLines();
     setStatus('qbStatus', '');
     $id('qbSheet').hidden = false;
     qbPreview();
 }
 
-const qbBlankLine = () => ({ product_id: '', name: '', type: '', unit: 'piece', quantity: 1, unit_price: '', disc_type: '', disc_value: '' });
-function qbAddLine() { qbLines.push(qbBlankLine()); renderQbLines(); }
-function qbRemoveLine(i) { qbLines.splice(i, 1); if (!qbLines.length) qbLines.push(qbBlankLine()); renderQbLines(); qbSchedule(); }
+/* A saved gate / motor (as the server keeps it) → the screen's form: one accessory per group, parts by id */
+function qbScreenParams(calc, saved) {
+    const p = structuredClone(saved);
+    if (calc === 'rolling_shutter') {
+        const ids = (p.option_ids || []).map(String);
+        p.option_ids = qbCatalog.calculators.rolling_shutter.accessory_groups.map((g) => {
+            const o = g.options.find((x) => ids.includes(String(x.id)));
+            return o ? o.id : '';
+        });
+        p.color_id = p.color_id || '';
+    }
+    if (calc === 'motors') {
+        p.parts = Object.fromEntries((Array.isArray(p.parts) ? p.parts : []).map((x) => [x.id, x.qty]));
+        p.kit_id = p.kit_id || '';
+        p.installation = p.installation !== false;
+    }
+    return p;
+}
+
+const qbBlankLine = (catalog) => ({ product_id: '', name: '', type: '', unit: 'piece', quantity: 1, unit_price: '', disc_type: '', disc_value: '', catalog });
+
+/* The wilayah list (as in the customer calculators); a customer's city picks it when the name matches */
+function qbFillRegions(regionId, city) {
+    const sel = $id('qbRegion');
+    sel.innerHTML = '<option value="">— اختر الولاية —</option>' + (qbCatalog.locations || []).map((g) =>
+        `<optgroup label="${esc(g.name)}">${g.wilayat.map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('')}</optgroup>`).join('');
+    let id = regionId || '';
+    if (!id && city) {
+        const c = String(city).trim();
+        for (const g of qbCatalog.locations || []) for (const w of g.wilayat) if (w.name === c || c.includes(w.name)) id = id || w.id;
+    }
+    sel.value = id ? String(id) : '';
+}
+
+/* One add button per section; a calculator with nothing set up yet is left out */
+function qbFillAddButtons() {
+    const c = qbCatalog.calculators || {};
+    const has = {
+        rolling_shutter: c.rolling_shutter && c.rolling_shutter.shutter_types.length,
+        overhead: c.overhead && c.overhead.gate_types.length && c.overhead.motors.length,
+        motors: c.motors && c.motors.sections.length
+    };
+    $id('qbAdd').innerHTML = Object.entries(QB_CALCS).filter(([k]) => has[k]).map(([k, label]) =>
+        `<button type="button" class="btn btn-outline btn-sm" onclick="qbAddCalc('${k}')"><i class="fas ${QB_ICONS[k]}"></i> ${label}</button>`).join('')
+        + (qbCatalog.products.length ? `<button type="button" class="btn btn-outline btn-sm" onclick="qbAddLine(true)"><i class="fas fa-puzzle-piece"></i> قطعة من المنتجات</button>` : '')
+        + `<button type="button" class="btn btn-outline btn-sm" onclick="qbAddLine(false)"><i class="fas fa-pen"></i> بند حر</button>`;
+}
+
+function qbAddLine(catalog) { qbLines.push(qbBlankLine(catalog)); renderQbLines(); qbSchedule(); }
+function qbRemoveLine(i) { qbLines.splice(i, 1); renderQbLines(); qbSchedule(); }
+
+/* A new gate / motor with the first choices filled in, as the customer calculators start */
+function qbAddCalc(calc) {
+    const c = qbCatalog.calculators;
+    let params = {};
+    if (calc === 'rolling_shutter') {
+        const t = c.rolling_shutter.shutter_types[0];
+        const v = t.variants[0];
+        params = { shutter_type_id: t.id, variant_id: v.id, color_id: v.colors[0] ? v.colors[0].id : '', width_cm: '', height_cm: '', count: 1,
+            option_ids: c.rolling_shutter.accessory_groups.map((g) => (g.allow_none ? '' : g.options[0].id)) };
+    } else if (calc === 'overhead') {
+        const t = c.overhead.gate_types[0];
+        params = { gate_type: t.name, height_cm: t.heights[0].height_cm, width_cm: t.heights[0].widths[0], motor_id: c.overhead.motors[0].id };
+    } else {
+        const sec = c.motors.sections[0];
+        params = { section_id: sec.id, kit_id: sec.kits[0] ? sec.kits[0].id : '', kit_count: 1, parts: {}, installation: true };
+    }
+    qbLines.push({ calc, params, price_level: 'from', disc_type: '', disc_value: '' });
+    renderQbLines();
+    qbSchedule();
+}
+
+const qbOpts = (list, value, label = (x) => x.name, id = (x) => x.id) =>
+    list.map((x) => `<option value="${esc(id(x))}" ${String(id(x)) === String(value) ? 'selected' : ''}>${esc(label(x))}</option>`).join('');
+const qbField = (label, html, cls = '') => `<div class="${cls}"><label>${label}</label>${html}</div>`;
+
+/* The choices of one gate / motor, like the customer calculator */
+function qbCalcFields(l) {
+    const c = qbCatalog.calculators;
+    const p = l.params;
+    if (l.calc === 'rolling_shutter') {
+        const types = c.rolling_shutter.shutter_types;
+        const t = types.find((x) => String(x.id) === String(p.shutter_type_id)) || types[0];
+        const v = t.variants.find((x) => String(x.id) === String(p.variant_id)) || t.variants[0];
+        return qbField('نوع البوابة', `<select data-p="shutter_type_id">${qbOpts(types, t.id)}</select>`)
+            + qbField('السماكة', `<select data-p="variant_id">${qbOpts(t.variants, v.id, (x) => x.label)}</select>`)
+            + (v.colors.length ? qbField('اللون', `<select data-p="color_id">${qbOpts(v.colors, p.color_id)}</select>`) : '')
+            + qbField('العرض (سم)', `<input type="number" data-p="width_cm" min="1" step="1" value="${esc(p.width_cm)}">`)
+            + qbField('الارتفاع (سم)', `<input type="number" data-p="height_cm" min="1" step="1" value="${esc(p.height_cm)}">`)
+            + qbField('العدد', `<input type="number" data-p="count" min="1" max="50" step="1" value="${esc(p.count)}">`)
+            + c.rolling_shutter.accessory_groups.map((g, gi) => qbField(esc(g.name), `<select data-acc="${gi}">
+                ${g.allow_none ? `<option value="">${esc(g.none_label || 'بدون')}</option>` : ''}
+                ${qbOpts(g.options, p.option_ids[gi], (o) => `${o.label} (${qbMoney(o.unit_price)})`)}</select>`)).join('');
+    }
+    if (l.calc === 'overhead') {
+        const types = c.overhead.gate_types;
+        const t = types.find((x) => x.name === p.gate_type) || types[0];
+        const h = t.heights.find((x) => String(x.height_cm) === String(p.height_cm)) || t.heights[0];
+        return qbField('نوع البوابة', `<select data-p="gate_type">${qbOpts(types, t.name, (x) => x.name, (x) => x.name)}</select>`)
+            + qbField('الارتفاع (سم)', `<select data-p="height_cm">${qbOpts(t.heights, h.height_cm, (x) => x.height_cm, (x) => x.height_cm)}</select>`)
+            + qbField('العرض (سم)', `<select data-p="width_cm">${qbOpts(h.widths, p.width_cm, (x) => x, (x) => x)}</select>`)
+            + qbField('المحرك', `<select data-p="motor_id">${qbOpts(c.overhead.motors, p.motor_id)}</select>`)
+            + qbField('السعر', `<select data-k="price_level"><option value="from" ${l.price_level !== 'to' ? 'selected' : ''}>بداية النطاق (من)</option><option value="to" ${l.price_level === 'to' ? 'selected' : ''}>نهاية النطاق (إلى)</option></select>`);
+    }
+    const secs = c.motors.sections;
+    const sec = secs.find((x) => String(x.id) === String(p.section_id)) || secs[0];
+    return qbField('نوع البوابة', `<select data-p="section_id">${qbOpts(secs, sec.id)}</select>`)
+        + (sec.kits.length ? qbField('الطقم', `<select data-p="kit_id"><option value="">بدون طقم</option>${qbOpts(sec.kits, p.kit_id)}</select>`)
+            + qbField('عدد الأطقم', `<input type="number" data-p="kit_count" min="1" max="20" step="1" value="${esc(p.kit_count)}" ${p.kit_id ? '' : 'disabled'}>`) : '')
+        + sec.parts.map((x) => qbField(`${esc(x.name)} <span class="unit">(${esc(x.unit)})</span>`,
+            `<input type="number" data-part="${x.id}" min="0" max="100" step="1" value="${esc(p.parts[x.id] || '')}" placeholder="0">`)).join('')
+        + qbField('التركيب', `<select data-p="installation"><option value="1" ${p.installation ? 'selected' : ''}>مع التركيب</option><option value="0" ${p.installation ? '' : 'selected'}>بدون تركيب (توريد فقط)</option></select>`);
+}
+
+function renderQbCalc(l, i) {
+    return `<div class="qb-group" data-i="${i}">
+        <div class="qb-group-head"><strong><i class="fas ${QB_ICONS[l.calc]}"></i> ${QB_CALCS[l.calc]}</strong>
+            <span class="qb-total" id="qbLineTotal${i}">—</span>
+            <button type="button" class="btn btn-outline btn-sm" onclick="qbRemoveLine(${i})" title="حذف">×</button></div>
+        <div class="qb-group-fields">${qbCalcFields(l)}
+            ${qbField('خصم', `<select data-k="disc_type"><option value="">بدون</option><option value="amount" ${l.disc_type === 'amount' ? 'selected' : ''}>مبلغ</option><option value="percent" ${l.disc_type === 'percent' ? 'selected' : ''}>%</option></select>`)}
+            ${qbField('قيمته', `<input type="number" data-k="disc_value" min="0" step="0.01" value="${esc(l.disc_value)}" ${l.disc_type ? '' : 'disabled'}>`)}
+        </div>
+        <div class="qb-group-items" id="qbGroupItems${i}"></div>
+    </div>`;
+}
 
 function renderQbLines() {
+    if (!qbLines.length) {
+        $id('qbLines').innerHTML = '<p class="status-text">اختر القسم أولاً من الأزرار بالأسفل لإضافة بوابة أو مكينة أو قطعة.</p>';
+        return;
+    }
     const groups = {};
     for (const p of qbCatalog.products) (groups[p.category] = groups[p.category] || []).push(p);
     const productOptions = Object.entries(groups).map(([cat, list]) => `<optgroup label="${esc(QB_CATS[cat] || cat)}">${list.map((p) =>
         `<option value="${p.id}">${esc(p.name)}${p.type ? ' — ' + esc(p.type) : ''} (${qbMoney(p.unit_price)} / ${esc(QB_UNITS[p.unit] || p.unit)})</option>`).join('')}</optgroup>`).join('');
     $id('qbLines').innerHTML = qbLines.map((l, i) => {
-        const free = !l.product_id;
+        if (l.calc) return renderQbCalc(l, i);
+        const free = !l.product_id && !l.catalog;
         return `<div class="qb-line" data-i="${i}">
-            <div class="qb-prod"><label>البند ${i + 1}</label><select data-k="product_id"><option value="">— بند حر —</option>${productOptions}</select></div>
+            ${free ? `<div class="qb-prod"><label>بند حر</label><input type="text" data-k="name" maxlength="200" placeholder="اسم البند (مثلاً: صيانة محرك، قطعة خاصة)" value="${esc(l.name)}"></div>`
+                : `<div class="qb-prod"><label>قطعة من المنتجات</label><select data-k="product_id"><option value="">— اختر —</option>${productOptions}</select></div>`}
             <div><label>الكمية</label><input type="number" data-k="quantity" min="0" step="0.01" value="${esc(l.quantity)}"></div>
             <div><label>الوحدة</label><select data-k="unit" ${free ? '' : 'disabled'}>${Object.entries(QB_UNITS).map(([k, v]) => `<option value="${k}" ${k === l.unit ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
             <div><label>سعر الوحدة</label><input type="number" data-k="unit_price" min="0" step="0.01" value="${esc(l.unit_price)}" ${free ? '' : 'readonly title="السعر من قائمة المنتجات — للتخفيض استخدم الخصم"'}></div>
@@ -70,12 +221,11 @@ function renderQbLines() {
             <div><label>قيمته</label><input type="number" data-k="disc_value" min="0" step="0.01" value="${esc(l.disc_value)}" ${l.disc_type ? '' : 'disabled'}></div>
             <div><label>المجموع</label><div class="qb-total" id="qbLineTotal${i}">—</div></div>
             <div><button type="button" class="btn btn-outline btn-sm" onclick="qbRemoveLine(${i})" title="حذف البند">×</button></div>
-            ${free ? `<div class="qb-free"><input type="text" data-k="name" maxlength="200" placeholder="اسم البند (مثلاً: تركيب، صيانة محرك، قطعة خاصة)" value="${esc(l.name)}"></div>` : ''}
         </div>`;
     }).join('');
     $id('qbLines').querySelectorAll('.qb-line').forEach((row) => {
-        const i = Number(row.dataset.i);
-        row.querySelector('[data-k="product_id"]').value = qbLines[i].product_id || '';
+        const sel = row.querySelector('[data-k="product_id"]');
+        if (sel) sel.value = qbLines[Number(row.dataset.i)].product_id || '';
     });
 }
 
@@ -83,6 +233,8 @@ function renderQbLines() {
 $id('qbLines').addEventListener('input', qbOnChange);
 $id('qbLines').addEventListener('change', qbOnChange);
 function qbOnChange(e) {
+    const card = e.target.closest('.qb-group');
+    if (card) return qbOnCalcChange(e, qbLines[Number(card.dataset.i)]);
     const row = e.target.closest('.qb-line');
     const k = e.target.dataset.k;
     if (!row || !k) return;
@@ -97,31 +249,116 @@ function qbOnChange(e) {
     qbSchedule();
 }
 for (const id of ['qbDiscType', 'qbDiscValue']) $id(id).addEventListener('input', () => qbSchedule());
+$id('qbRegion').addEventListener('change', () => qbSchedule());
 
-function qbPayload() {
-    const items = qbLines.filter((l) => l.product_id || String(l.name).trim() || l.unit_price !== '').map((l) => ({
-        ...(l.product_id ? { product_id: Number(l.product_id) } : { name: l.name, unit: l.unit, unit_price: l.unit_price === '' ? '' : Number(l.unit_price) }),
-        quantity: Number(l.quantity),
+/* A choice changed in a gate / motor card; a parent choice (type, thickness, height, section) resets what depends on it */
+function qbOnCalcChange(e, l) {
+    const t = e.target;
+    const p = l.params;
+    const c = qbCatalog.calculators;
+    let redraw = false;
+    if (t.dataset.k) {
+        l[t.dataset.k] = t.value;
+        if (t.dataset.k === 'disc_type' && e.type === 'change') { if (!l.disc_type) l.disc_value = ''; redraw = true; }
+    } else if (t.dataset.acc !== undefined) {
+        p.option_ids[Number(t.dataset.acc)] = t.value ? Number(t.value) : '';
+    } else if (t.dataset.part !== undefined) {
+        p.parts[t.dataset.part] = t.value;
+    } else if (t.dataset.p) {
+        const k = t.dataset.p;
+        p[k] = k === 'installation' ? t.value === '1' : t.value;
+        if (e.type !== 'change') return qbSchedule();
+        if (l.calc === 'rolling_shutter' && (k === 'shutter_type_id' || k === 'variant_id')) {
+            const type = c.rolling_shutter.shutter_types.find((x) => String(x.id) === String(p.shutter_type_id));
+            if (k === 'shutter_type_id') p.variant_id = type.variants[0].id;
+            const v = type.variants.find((x) => String(x.id) === String(p.variant_id)) || type.variants[0];
+            if (!v.colors.some((x) => String(x.id) === String(p.color_id))) p.color_id = v.colors[0] ? v.colors[0].id : '';
+            redraw = true;
+        }
+        if (l.calc === 'overhead' && (k === 'gate_type' || k === 'height_cm')) {
+            const type = c.overhead.gate_types.find((x) => x.name === p.gate_type);
+            if (k === 'gate_type') p.height_cm = type.heights[0].height_cm;
+            const h = type.heights.find((x) => String(x.height_cm) === String(p.height_cm)) || type.heights[0];
+            if (!h.widths.some((w) => String(w) === String(p.width_cm))) p.width_cm = h.widths[0];
+            redraw = true;
+        }
+        if (l.calc === 'motors' && k === 'section_id') {
+            const sec = c.motors.sections.find((x) => String(x.id) === String(p.section_id));
+            Object.assign(p, { kit_id: sec.kits[0] ? sec.kits[0].id : '', kit_count: 1, parts: {} });
+            redraw = true;
+        }
+        if (l.calc === 'motors' && k === 'kit_id') redraw = true;
+    }
+    if (redraw) renderQbLines();
+    qbSchedule();
+}
+
+/* What the server gets for a gate / motor */
+function qbCalcParams(l) {
+    const p = l.params;
+    if (l.calc === 'rolling_shutter') {
+        return { shutter_type_id: Number(p.shutter_type_id), variant_id: Number(p.variant_id), color_id: p.color_id ? Number(p.color_id) : null,
+            width_cm: p.width_cm === '' ? '' : Number(p.width_cm), height_cm: p.height_cm === '' ? '' : Number(p.height_cm),
+            count: Number(p.count) || 1, option_ids: p.option_ids.filter(Boolean).map(Number) };
+    }
+    if (l.calc === 'overhead') return { gate_type: p.gate_type, height_cm: Number(p.height_cm), width_cm: Number(p.width_cm), motor_id: Number(p.motor_id) };
+    return { section_id: Number(p.section_id), kit_id: p.kit_id ? Number(p.kit_id) : null, kit_count: Number(p.kit_count) || 1,
+        parts: Object.entries(p.parts).filter(([, q]) => Number(q) > 0).map(([id, q]) => ({ id: Number(id), qty: Number(q) })),
+        installation: p.installation !== false };
+}
+
+/* Still being filled in: left out of the live total (saving shows what is missing) */
+function qbCalcMissing(l) {
+    const p = qbCalcParams(l);
+    if (l.calc === 'rolling_shutter' && !(p.width_cm > 0 && p.height_cm > 0)) return 'اكتب العرض والارتفاع';
+    if (l.calc === 'motors' && !p.kit_id && !p.parts.length) return 'اختر طقماً أو قطعاً';
+    return '';
+}
+const qbUsed = (l) => (l.calc ? !qbCalcMissing(l) : l.product_id || String(l.name).trim() || l.unit_price !== '');
+
+function qbPayload(all = false) {
+    const items = qbLines.filter((l) => (all && l.calc) || qbUsed(l)).map((l) => ({
+        ...(l.calc ? { calc: l.calc, params: qbCalcParams(l), price_level: l.price_level === 'to' ? 'to' : 'from' }
+            : l.product_id ? { product_id: Number(l.product_id), quantity: Number(l.quantity) }
+                : { name: l.name, unit: l.unit, unit_price: l.unit_price === '' ? '' : Number(l.unit_price), quantity: Number(l.quantity) }),
         ...(l.disc_type && l.disc_value !== '' ? { discount: { type: l.disc_type, value: Number(l.disc_value) } } : {})
     }));
     const t = $id('qbDiscType').value;
-    return { items, ...(t && $id('qbDiscValue').value !== '' ? { discount: { type: t, value: Number($id('qbDiscValue').value) } } : {}) };
+    const region = $id('qbRegion').value;
+    return { items, ...(region ? { region_id: Number(region) } : {}),
+        ...(t && $id('qbDiscValue').value !== '' ? { discount: { type: t, value: Number($id('qbDiscValue').value) } } : {}) };
 }
 
 function qbSchedule() { clearTimeout(qbTimer); qbTimer = setTimeout(qbPreview, 300); }
 
 async function qbPreview() {
     const body = qbPayload();
+    qbLines.forEach((l, i) => {
+        if (!l.calc) return;
+        const miss = qbCalcMissing(l);
+        if (miss) { $id('qbLineTotal' + i).textContent = '—'; $id('qbGroupItems' + i).innerHTML = `<span class="status-text">${miss}</span>`; }
+    });
     if (!body.items.length) { $id('qbTotals').innerHTML = '<span class="status-text">أضف بنداً لحساب الإجمالي.</span>'; qbLastPreview = null; return; }
     try {
         const r = await api('POST', '/api/admin/quotes/preview', body);
         qbLastPreview = r;
+        // Walk the priced lines in order: a gate / motor takes all its lines (the same group), a part takes one
         let n = 0;
+        let g = 0;
         qbLines.forEach((l, i) => {
-            const used = l.product_id || String(l.name).trim() || l.unit_price !== '';
+            if (!qbUsed(l)) return;
             const el = $id('qbLineTotal' + i);
-            if (el) el.textContent = used && r.items[n] ? qbMoney(r.items[n].line_total) : '—';
-            if (used) n++;
+            if (l.calc) {
+                const lines = [];
+                while (r.items[n] && r.items[n].group === g) lines.push(r.items[n++]);
+                if (el) el.textContent = r.groups[g] ? qbMoney(r.groups[g].total) : '—';
+                const box = $id('qbGroupItems' + i);
+                if (box) box.innerHTML = lines.map((it) => `<div class="row"><span>${esc(it.name)}${it.type ? ' — ' + esc(it.type) : ''}${it.quantity !== 1 ? ` × ${esc(it.quantity)}` : ''}</span><span>${qbMoney(it.gross)}</span></div>`).join('');
+                g++;
+            } else {
+                if (el) el.textContent = r.items[n] ? qbMoney(r.items[n].line_total) : '—';
+                n++;
+            }
         });
         const p = r.pricing;
         const limit = r.discount_limit;
@@ -141,7 +378,7 @@ async function qbPreview() {
 }
 
 async function saveBuiltQuote() {
-    const body = { ...qbPayload(), notes: $id('qbNotes').value.trim() };
+    const body = { ...qbPayload(true), notes: $id('qbNotes').value.trim() };
     try {
         let q;
         if (qbEditing) {
@@ -181,6 +418,9 @@ for (const id of ['qbPhone', 'qbName']) {
     $id(id).addEventListener('change', () => {
         const v = $id(id).value.trim();
         const c = qbCustResults.find((x) => x.phone === v.replace(/\D/g, '') || x.name === v);
-        if (c) { $id('qbPhone').value = c.phone; $id('qbName').value = c.name || ''; $id('qbCity').value = c.city || ''; }
+        if (c) {
+            $id('qbPhone').value = c.phone; $id('qbName').value = c.name || ''; $id('qbCity').value = c.city || '';
+            if (!$id('qbRegion').value && c.city) { qbFillRegions(null, c.city); qbSchedule(); }
+        }
     });
 }

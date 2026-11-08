@@ -227,13 +227,22 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
         y += 24;
     };
     header();
+    const groups = Array.isArray(details.calc_groups) ? details.calc_groups : [];
+    let lastGroup = null;
     quote.items.forEach((item, i) => {
         if (y > doc.page.height - 190) { doc.addPage(); y = 40; header(); }
+        if (item.group !== undefined && item.group !== lastGroup && groups[item.group]) {
+            lastGroup = item.group;
+            const g = groups[item.group];
+            doc.rect(left, y, width, 22).fill('#e8eef8');
+            w.line(g.label + (g.discount ? ` — خصم ${g.discount.type === 'percent' ? g.discount.value + '%' : money(g.discount.value)}` : ''), left + 6, y + 5, width - 12, { size: 9.5, bold: true, color: COLORS.primary, fit: true });
+            y += 22;
+        }
         if (i % 2 === 1) doc.rect(left, y, width, 24).fill(COLORS.band);
         const cells = {
             idx: String(i + 1),
             name: item.name + (item.type ? ' — ' + item.type : '') + (item.optional ? ' (إضافة)' : '')
-                + (item.discount && item.discount.amount ? ` (خصم ${item.discount.type === 'percent' ? item.discount.value + '%' : money(item.discount.amount)})` : ''),
+                + (item.discount && item.discount.amount && !item.discount.group ? ` (خصم ${item.discount.type === 'percent' ? item.discount.value + '%' : money(item.discount.amount)})` : ''),
             qty: qty(item.quantity),
             unit: UNIT_LABELS[item.unit] || item.unit,
             price: amount(item.unit_price, item.unit_price_to),

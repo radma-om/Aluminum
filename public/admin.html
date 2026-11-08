@@ -594,6 +594,16 @@
         .qb-line input, .qb-line select { width: 100%; padding: 7px 8px; border: 2px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 0.88rem; }
         .qb-line .qb-total { font-weight: 700; padding: 8px 4px; white-space: nowrap; }
         .qb-line .qb-free { grid-column: 1 / -1; }
+        .qb-add { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .qb-group { border: 2px solid var(--border); border-radius: 10px; padding: 10px; margin: 8px 0; background: var(--bg, #fafbfd); }
+        .qb-group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+        .qb-group-head strong { flex: 1; color: var(--primary); }
+        .qb-group-head .qb-total { font-weight: 700; white-space: nowrap; }
+        .qb-group-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; align-items: end; }
+        .qb-group label { font-size: 0.75rem; color: var(--text-light); display: block; }
+        .qb-group input, .qb-group select { width: 100%; padding: 7px 8px; border: 2px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 0.88rem; }
+        .qb-group-items { margin-top: 6px; font-size: 0.82rem; color: var(--text-light); }
+        .qb-group-items .row { display: flex; justify-content: space-between; gap: 8px; border-top: 1px dotted var(--border); padding: 3px 0; }
         .qb-totals { background: var(--bg); border-radius: 10px; padding: 10px 14px; margin-top: 12px; line-height: 1.9; }
         .qb-totals .row { display: flex; justify-content: space-between; gap: 10px; }
         .qb-totals .grand { font-size: 1.1rem; font-weight: 800; color: var(--primary); border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
@@ -2176,9 +2186,12 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
                 <div class="form-group"><label>المنطقة / الولاية</label><input type="text" id="qbCity" maxlength="80"></div>
             </div>
             <datalist id="qbCustList"></datalist><datalist id="qbCustNames"></datalist>
-            <p class="sub-heading">البنود <span class="status-text">— من المنتجات (السعر من القائمة) أو بند حر (خدمة، تركيب، قطعة خاصة)</span></p>
+            <div class="form-grid">
+                <div class="form-group"><label>ولاية التركيب <span class="unit">(التركيب والتوصيل حسبها كما في حاسبة العملاء)</span></label><select id="qbRegion"></select></div>
+            </div>
+            <p class="sub-heading">البنود <span class="status-text">— اختر القسم: بوابة أو مكينة (أسعار الحاسبة)، قطعة من المنتجات، أو بند حر</span></p>
             <div id="qbLines"></div>
-            <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px" onclick="qbAddLine()"><i class="fas fa-plus"></i> إضافة بند</button>
+            <div class="qb-add" id="qbAdd"></div>
             <div class="form-grid" style="margin-top:10px">
                 <div class="form-group"><label>خصم على الإجمالي</label><select id="qbDiscType"><option value="">بدون</option><option value="amount">مبلغ (ر.ع)</option><option value="percent">نسبة %</option></select></div>
                 <div class="form-group"><label>قيمة الخصم</label><input type="number" id="qbDiscValue" min="0" step="0.01"></div>
