@@ -48,6 +48,7 @@ const LABELS = [
     ['DELETE', /^\/mazbot\/pauses$/, 'إعادة تشغيل المساعد (رقم / التوقفات المؤقتة)'], ['POST', /^\/agent\/reset$/, 'مسح محادثة تجربة المساعد'],
     ['PATCH', /^\/quotes\/\d+$/, 'تعديل عرض سعر (الحالة / الصلاحية)'],
     ['POST', /^\/quotes\/\d+\/invoice$/, 'إصدار فاتورة'],
+    ['POST', /^\/quotes$/, 'إنشاء عرض سعر (موظف)'], ['PUT', /^\/quotes\/\d+$/, 'تعديل بنود عرض سعر'],
     ['PATCH', /^\/invoices\/\d+$/, 'تعديل فاتورة'],
     ['POST', /^\/invoices\/\d+\/payments$/, 'تسجيل دفعة'],
     ['DELETE', /^\/invoices\/\d+\/payments\/\d+$/, 'حذف دفعة'],
@@ -71,7 +72,7 @@ const LABELS = [
 ];
 
 /* Not changes: tests and previews that write nothing that matters */
-const SKIP = [/^\/agent\/chat$/, /^\/mazbot\/diagnose\/simulate$/, /^\/me\/2fa\/setup$/];
+const SKIP = [/^\/quotes\/preview$/, /^\/agent\/chat$/, /^\/mazbot\/diagnose\/simulate$/, /^\/me\/2fa\/setup$/];
 
 const labelFor = (method, path) => (LABELS.find(([m, re]) => m === method && re.test(path)) || [])[2] || null;
 

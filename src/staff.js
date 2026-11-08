@@ -69,6 +69,7 @@ const toUser = (row) => (row ? {
     leads_scope: row.role === 'manager' ? 'all' : (SCOPES[row.leads_scope] ? row.leads_scope : 'all'),
     active: Boolean(row.active), created_at: row.created_at, last_login_at: row.last_login_at,
     email: row.email || '',
+    max_discount_percent: row.role === 'manager' ? null : (row.max_discount_percent ?? null),
     totp_enabled: Boolean(row.totp_secret),
     // Managers must turn on two-step sign-in before they can use the panel
     must_setup_2fa: row.role === 'manager' && !row.totp_secret
@@ -95,15 +96,21 @@ function clean(db, input, { existing = null } = {}) {
     if (email && db.prepare('SELECT id FROM staff_users WHERE lower(email) = ? AND id != ?').get(email, existing ? existing.id : 0)) {
         throw err(400, 'هذا البريد مستخدم لحساب آخر');
     }
-    return { username, display_name: display, role, permissions_json: JSON.stringify(permissions), leads_scope: leadsScope, active, email: email || null };
+    let maxDiscount = input.max_discount_percent === undefined ? (existing ? existing.max_discount_percent : null) : input.max_discount_percent;
+    if (maxDiscount === '' || maxDiscount === null) maxDiscount = null;
+    else {
+        maxDiscount = Number(maxDiscount);
+        if (!(maxDiscount >= 0 && maxDiscount <= 100)) throw err(400, 'حد الخصم يجب أن يكون بين 0 و100%');
+    }
+    return { username, display_name: display, role, permissions_json: JSON.stringify(permissions), leads_scope: leadsScope, active, email: email || null, max_discount_percent: maxDiscount };
 }
 
 function create(db, input) {
     const u = clean(db, input);
     validatePassword(input.password);
-    const info = db.prepare(`INSERT INTO staff_users (username, display_name, role, permissions_json, leads_scope, active, email, password_hash)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, u.email, hashPassword(input.password));
+    const info = db.prepare(`INSERT INTO staff_users (username, display_name, role, permissions_json, leads_scope, active, email, max_discount_percent, password_hash)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, u.email, u.max_discount_percent, hashPassword(input.password));
     return toUser(db.prepare('SELECT * FROM staff_users WHERE id = ?').get(Number(info.lastInsertRowid)));
 }
 
@@ -128,8 +135,8 @@ function update(db, id, input) {
     if (input.password) validatePassword(input.password);
     const hash = input.password ? hashPassword(input.password) : null;
     tx(db, () => {
-        db.prepare(`UPDATE staff_users SET username = ?, display_name = ?, role = ?, permissions_json = ?, leads_scope = ?, active = ?, email = ? WHERE id = ?`)
-            .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, u.email, existing.id);
+        db.prepare(`UPDATE staff_users SET username = ?, display_name = ?, role = ?, permissions_json = ?, leads_scope = ?, active = ?, email = ?, max_discount_percent = ? WHERE id = ?`)
+            .run(u.username, u.display_name, u.role, u.permissions_json, u.leads_scope, u.active, u.email, u.max_discount_percent, existing.id);
         if (hash) db.prepare('UPDATE staff_users SET password_hash = ? WHERE id = ?').run(hash, existing.id);
         // A new password (or a changed email) makes earlier reset links useless
         if (hash || (u.email || '') !== (existing.email || '')) db.prepare('DELETE FROM password_resets WHERE user_id = ?').run(existing.id);
@@ -324,7 +331,7 @@ const SETTING_SECTIONS = {
     staff_members: 'manager',
     // Where customers and sales alerts are sent: an employee changing these could divert both to their own number
     company_whatsapp: 'manager', mazbot_recipients: 'manager', public_base_url: 'manager',
-    follow_up_stale_days: 'manager', follow_up_emails: 'manager', quote_validity_days: 'manager'
+    follow_up_stale_days: 'manager', follow_up_emails: 'manager', quote_validity_days: 'manager', staff_max_discount_percent: 'manager'
 };
 function allowedSettings(user, body) {
     const out = {};

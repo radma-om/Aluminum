@@ -72,6 +72,7 @@ function renderCustomer({ customer: c, leads, quotes, invoices, work_orders: ord
         <div class="form-buttons" style="margin-top:0">
             <button class="btn btn-outline btn-sm" onclick="editCustomer(custCurrent.customer)">تعديل البيانات</button>
             ${!c.phone2 ? `<button class="btn btn-outline btn-sm" onclick="mergeCustomer()" title="نفس العميل مسجّل برقم آخر">دمج مع رقم آخر…</button>` : ''}
+            ${canSee('quotes') ? `<button class="btn btn-primary btn-sm" onclick="closeSheet('custSheet'); openQuoteBuilder({ customer: custCurrent.customer })"><i class="fas fa-plus"></i> عرض سعر جديد</button>` : ''}
             ${canSee('work_orders') && ME.role !== 'technician' ? `<button class="btn btn-outline btn-sm" onclick="closeSheet('custSheet'); newWorkOrder({ customer: custCurrent.customer })"><i class="fas fa-screwdriver-wrench"></i> أمر صيانة / معاينة</button>` : ''}
             ${ME.role === 'manager' && !c.quote_count && !invoices.length && !orders.length ? `<button class="btn btn-outline btn-sm" style="color:#a93226" onclick="deleteCustomer()">حذف</button>` : ''}
         </div>

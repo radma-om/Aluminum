@@ -232,7 +232,8 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
         if (i % 2 === 1) doc.rect(left, y, width, 24).fill(COLORS.band);
         const cells = {
             idx: String(i + 1),
-            name: item.name + (item.type ? ' — ' + item.type : '') + (item.optional ? ' (إضافة)' : ''),
+            name: item.name + (item.type ? ' — ' + item.type : '') + (item.optional ? ' (إضافة)' : '')
+                + (item.discount && item.discount.amount ? ` (خصم ${item.discount.type === 'percent' ? item.discount.value + '%' : money(item.discount.amount)})` : ''),
             qty: qty(item.quantity),
             unit: UNIT_LABELS[item.unit] || item.unit,
             price: amount(item.unit_price, item.unit_price_to),
@@ -256,6 +257,7 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
     const valW = range.total_to != null ? 130 : 80;
     const totals = inv
         ? [
+            ...(details.discount_total > 0.004 ? [['المجموع قبل الخصم', money(details.gross_subtotal)], ['الخصم', money(details.discount_total)]] : []),
             ...(Math.abs(inv.adjustment) >= 0.005 ? [
                 ['مجموع البنود', amount(inv.quote_subtotal, range.subtotal_to)],
                 [range.total_to != null ? 'السعر النهائي المتفق عليه' : inv.adjustment < 0 ? 'خصم' : 'تعديل السعر', money(inv.adjustment)]
@@ -264,6 +266,12 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
             ...(inv.vat_percent ? [[`ضريبة القيمة المضافة ${inv.vat_percent}%`, money(inv.vat)]] : [])
         ]
         : [
+            // An employee's quote with discounts: the price before them, then the discount
+            ...(details.discount_total > 0.004 ? [
+                ['المجموع قبل الخصم', money(details.gross_subtotal)],
+                [details.quote_discount && details.quote_discount.type === 'percent' && !details.lines_discount
+                    ? `الخصم ${details.quote_discount.value}%` : 'الخصم', money(details.discount_total)]
+            ] : []),
             ['المجموع قبل الضريبة', amount(quote.subtotal, range.subtotal_to)],
             [`ضريبة القيمة المضافة ${quote.vat_percent}%`, amount(quote.vat, range.vat_to)]
         ];

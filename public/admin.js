@@ -7,7 +7,7 @@
 const CATEGORY_NAMES = { slat: 'شرائح', accessory: 'إكسسوارات', machine: 'مكائن' };
 const UNIT_NAMES = { meter: 'متر', piece: 'قطعة', m2: 'م²', set: 'طقم', kg: 'كجم' };
 const STATUS_NAMES = { new: 'جديد', contacted: 'تم التواصل', accepted: 'مقبول', rejected: 'مرفوض', done: 'مكتمل' };
-const SOURCE_NAMES = { web: 'الحاسبة', whatsapp: 'واتساب (AI)', mazbot: 'واتساب MazBot (AI)', website: 'مساعد الموقع (AI)', 'agent-test': 'تجربة المساعد' };
+const SOURCE_NAMES = { staff: 'موظف', web: 'الحاسبة', whatsapp: 'واتساب (AI)', mazbot: 'واتساب MazBot (AI)', website: 'مساعد الموقع (AI)', 'agent-test': 'تجربة المساعد' };
 const BASIS_NAMES = { fixed: 'ثابت', width: '× العرض', height: '× الارتفاع', area: '× المساحة' };
 const FIELD_NAMES = { purchase_price: 'سعر الشراء', sell_price: 'سعر البيع الثابت', profit_percent: 'نسبة الربح' };
 // Approximate OMR per unit of currency — a starting suggestion, always editable
@@ -475,7 +475,8 @@ async function loadQuotes() {
             <td style="white-space:nowrap">${q.invoice
                 ? `<button class="btn btn-outline btn-sm" onclick="openInvoice(${q.invoice.id})">${esc(q.invoice.number)}</button>`
                 : canSee('invoices') && !['rejected'].includes(q.status) ? `<button class="btn btn-primary btn-sm" onclick="newInvoice(${q.id})">إصدار فاتورة</button>` : '—'}</td>
-            <td><button class="btn btn-outline btn-sm" onclick="openQuotePdf(${q.id})">PDF</button></td>
+            <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="openQuotePdf(${q.id})">PDF</button>
+                ${q.details && q.details.staff_quote && !q.invoice && ['new', 'contacted'].includes(q.status) ? `<br><button class="link-btn" style="margin:4px 0 0" onclick="openQuoteBuilder({ quote: quotesCache.find((x) => x.id === ${q.id}) })">تعديل البنود</button>` : ''}</td>
         </tr>`).join('');
     quotesCache = rows;
     if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; }).catch(() => {});
