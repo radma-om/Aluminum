@@ -137,6 +137,30 @@ test('permissions and scope: the customers section, and «عملاؤه فقط» 
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM customers').get().n, 2);
 });
 
+test('a limited employee cannot open a customer when the second phone belongs to another employee', async (t) => {
+    const { db, call } = await start(t);
+    quote(db, '96891111111', 'عميل برقمين');
+    quote(db, '96892222222', 'عميل برقمين — العمل');
+    db.prepare("UPDATE leads SET assigned_to = 'سالم' WHERE phone = '96891111111'").run();
+    db.prepare("UPDATE leads SET assigned_to = 'مريم' WHERE phone = '96892222222'").run();
+
+    const main = customers.byPhone(db, '96891111111');
+    const merged = (await call('POST', `/api/admin/customers/${main.id}/merge`, { phone: '96892222222' })).body;
+    assert.equal(merged.phone2, '96892222222');
+    assert.equal((await call('GET', `/api/admin/customers/${main.id}`)).status, 200, 'the manager still sees the full customer');
+
+    staff.create(db, {
+        username: 'salem2', display_name: 'سالم', password: 'pass-12345',
+        permissions: ['customers', 'quotes'], leads_scope: 'mine'
+    });
+    const token = (await call('POST', '/api/auth/login', { username: 'salem2', password: 'pass-12345' }, null)).body.token;
+
+    assert.deepEqual((await call('GET', '/api/admin/customers', null, token)).body.customers, []);
+    assert.equal((await call('GET', `/api/admin/customers/${main.id}`, null, token)).status, 404);
+    assert.equal((await call('PATCH', `/api/admin/customers/${main.id}`, { notes: 'غير مسموح' }, token)).status, 404);
+    assert.equal((await call('POST', '/api/admin/quotes', { customer_id: main.id, items: [] }, token)).status, 404);
+});
+
 test('the same customer on two numbers: merging joins the history under one record', async (t) => {
     const { db, call } = await start(t);
     quote(db, '96891111111', 'خالد', 1000);
