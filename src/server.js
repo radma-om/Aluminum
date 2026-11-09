@@ -1075,6 +1075,7 @@ function createApp(db, { agentClient } = {}) {
                 .map((p) => { const w = withPrices(p, settings); return { id: w.id, category: w.category, name: w.name, type: w.type, unit: w.unit, unit_price: w.unit_price }; }),
             units: staffquotes.UNITS, vat_percent: settings.vat_percent, validity_days: settings.quote_validity_days,
             discount_limit: staffquotes.limitFor(req.user, settings),
+            promotion: promotions.publicInfo(settings),
             // The customer calculators, so the employee prices gates and motors exactly as the customer would
             locations: doors.locations(db),
             calculators: {
@@ -1159,10 +1160,11 @@ function createApp(db, { agentClient } = {}) {
         // A lower final amount is a discount too: the employee's limit counts from the price before any discount
         const b = req.body || {};
         if (b.final_subtotal !== undefined && b.final_subtotal !== null && b.final_subtotal !== '') {
-            const gross = Number((quote.details || {}).gross_subtotal ?? quote.subtotal);
+            // Measured from the price after the customer promotion: the promotion is not the employee's discount
+            const base = staffquotes.limitBase(quote);
             const final = Number(b.final_subtotal);
-            if (gross > 0 && Number.isFinite(final) && final < gross) {
-                staffquotes.checkLimit(req.user, getSettings(db), Math.round(((gross - final) / gross) * 10000) / 100);
+            if (base > 0 && Number.isFinite(final) && final < base) {
+                staffquotes.checkLimit(req.user, getSettings(db), Math.round(((base - final) / base) * 10000) / 100);
             }
         }
         const inv = invoices.createFromQuote(db, quote, req.body || {}, staffName(req));
