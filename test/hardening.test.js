@@ -154,7 +154,8 @@ test('logs older than 90 days are removed; business data never is', () => {
     assert.equal(db.prepare('SELECT action FROM audit_log').get().action, 'new'); // the activity log is kept a year
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM webhook_deliveries').get().n, 1);
     assert.equal(db.prepare("SELECT conversation_key FROM agent_conversations").get().conversation_key, 'new');
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM leads').get().n, 1); // customers are kept\n    assert.equal(db.prepare('SELECT public_id FROM phone_verification_challenges').get().public_id, 'new');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM leads').get().n, 1); // customers are kept
+    assert.equal(db.prepare('SELECT public_id FROM phone_verification_challenges').get().public_id, 'new');
 });
 
 /* ---------------- 5–6. Page security headers, password strength ---------------- */
