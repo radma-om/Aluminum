@@ -188,6 +188,7 @@
 
     async function load() {
         try {
+            const verificationProof = await window.RadmaPhoneVerification.proofFor($('custPhone').value);
             const res = await fetch('/api/public/catalog');
             if (!res.ok) throw new Error();
             catalog = await res.json();
