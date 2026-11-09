@@ -127,3 +127,10 @@ test('only managers set the offer; values are checked', async (t) => {
     assert.equal((await call('PUT', '/api/admin/settings', { promo_percent: 40 }, tok)).status, 403);
     assert.equal(getSettings(db).promo_percent, 10);
 });
+
+test('the PDF drops symbols its fonts cannot draw (an emoji or a flag in the promotion name)', () => {
+    const { drawable, tokenize } = require('../src/pdf');
+    assert.equal(drawable('عرض اليوم الوطني 🇴🇲 — خصم 20% ✨'), 'عرض اليوم الوطني — خصم 20%');
+    assert.equal(drawable('Type A — 1.5 ملم (×2) «جديد»'), 'Type A — 1.5 ملم (×2) «جديد»');
+    assert.ok(!tokenize('عرض 🎉 الشتاء').join('').includes('🎉'));
+});

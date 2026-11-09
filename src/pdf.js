@@ -25,9 +25,14 @@ const ARABIC_RANGE = '؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿';
 const PIECE = new RegExp(`[${ARABIC_RANGE}]+|\\s+|[^\\s${ARABIC_RANGE}]+`, 'g');
 const EDGES = /^([^A-Za-z0-9À-ɏ]*)(.*?)([^A-Za-z0-9À-ɏ%]*)$/;
 
+/* What the two fonts can draw: Arabic (Noto Naskh) and Latin-1 with common punctuation (Helvetica).
+   Anything else (an emoji, a flag 🇴🇲 in a promotion name) would print as garbled marks: dropped. */
+const DRAWABLE = new RegExp(`[^${ARABIC_RANGE}\\u0020-\\u007E\\u00A0-\\u00FF\\u2013\\u2014\\u2018-\\u201D\\u2022\\u2026\\u20AC\\u2122\\n]`, 'gu');
+const drawable = (text) => String(text ?? '').replace(DRAWABLE, '').replace(/[ \t]{2,}/g, ' ').trim();
+
 function tokenize(text) {
     const out = [];
-    for (const t of String(text ?? '').match(PIECE) || []) {
+    for (const t of drawable(text).match(PIECE) || []) {
         const m = !ARABIC.test(t) && STRONG_LTR.test(t) && t.match(EDGES);
         if (!m) { out.push(t); continue; }
         out.push(...m[1], m[2], ...m[3]);
@@ -261,7 +266,7 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
     y += 14;
     // A range quote (overhead gates: the price depends on the color) shows "from – to" amounts
     const range = details.range || {};
-    const tW = range.total_to != null ? 290 : 230;
+    const tW = range.total_to != null ? 340 : 300;
     const tX = left;
     const valW = range.total_to != null ? 130 : 80;
     const totals = inv
@@ -287,7 +292,7 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
             [`ضريبة القيمة المضافة ${quote.vat_percent}%`, amount(quote.vat, range.vat_to)]
         ];
     totals.forEach(([label, value]) => {
-        w.line(label, tX + valW + 10, y, tW - valW - 10, { size: 10 });
+        w.line(label, tX + valW + 10, y, tW - valW - 10, { size: 10, fit: true });
         doc.font('Helvetica').fontSize(10).fillColor(COLORS.text).text(value, tX, y + 3, { width: valW, align: 'left', lineBreak: false });
         y += 20;
     });
@@ -358,4 +363,4 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
     return doc;
 }
 
-module.exports = { renderQuotePdf, visualOrder, tokenize };
+module.exports = { renderQuotePdf, visualOrder, tokenize, drawable };
