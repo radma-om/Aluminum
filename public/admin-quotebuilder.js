@@ -16,6 +16,7 @@ let qbCustomer = null;   // a customer record chosen (from the profile or the su
 let qbEditing = null;    // the quote whose lines are being changed
 let qbTimer = null;
 let qbLastPreview = null;
+let qbCostOnly = false;  // «حاسبة التكلفة والربح»: no customer, nothing saved
 
 const QB_UNITS = { meter: 'متر', piece: 'قطعة', m2: 'متر مربع', set: 'طقم', kg: 'كجم', service: 'خدمة' };
 const QB_CATS = { slat: 'الشرائح', accessory: 'الإكسسوارات', machine: 'المكائن' };
@@ -23,13 +24,16 @@ const qbMoney = (n) => Number(n || 0).toFixed(2);
 const QB_CALCS = { rolling_shutter: 'بوابة رول شتر', overhead: 'بوابة أوفرهيد', motors: 'مكينة بوابة' };
 const QB_ICONS = { rolling_shutter: 'fa-warehouse', overhead: 'fa-door-closed', motors: 'fa-cogs' };
 
-async function openQuoteBuilder({ customer = null, quote = null } = {}) {
+async function openQuoteBuilder({ customer = null, quote = null, costOnly = false } = {}) {
     try {
         qbCatalog = await api('GET', '/api/admin/quotes/catalog');
     } catch (err) { return alert(err.message); }
     qbEditing = quote;
     qbCustomer = customer;
-    $id('qbTitle').textContent = quote ? `تعديل بنود العرض ${quote.ref}` : 'عرض سعر جديد';
+    qbCostOnly = costOnly && qbCatalog.sees_cost;
+    $id('qbTitle').textContent = qbCostOnly ? 'حاسبة التكلفة والربح' : quote ? `تعديل بنود العرض ${quote.ref}` : 'عرض سعر جديد';
+    qbApplyMode();
+    $id('qbExtraCost').value = '';
     const fixed = quote || customer;
     $id('qbCustFields').hidden = Boolean(fixed);
     $id('qbCustFixed').hidden = !fixed;
@@ -72,6 +76,7 @@ async function openQuoteBuilder({ customer = null, quote = null } = {}) {
     if (pr) $id('qbPromo').textContent = `🎁 ${pr.label}: خصم ${pr.percent}% يُطبَّق تلقائياً على ${pr.applies_to.map((a) => a.name).join('، ')}${pr.until ? ` حتى ${pr.until}` : ''} — ولا يُحسب من حد خصمك.`;
     renderQbLines();
     setStatus('qbStatus', '');
+    qbApplyMode();
     $id('qbSheet').hidden = false;
     qbPreview();
 }
@@ -93,6 +98,26 @@ function qbScreenParams(calc, saved) {
         p.installation = p.installation !== false;
     }
     return p;
+}
+
+/* The cost calculator hides what only a quote needs (the customer, validity, notes, saving) */
+function qbApplyMode() {
+    document.querySelectorAll('#qbSheet .qb-quote-only').forEach((el) => { el.hidden = qbCostOnly; });
+    $id('qbCostIntro').hidden = !qbCostOnly;
+    $id('qbSave').hidden = qbCostOnly;
+    $id('qbToQuote').hidden = !qbCostOnly;
+    $id('qbCostBox').hidden = !qbCatalog.sees_cost;
+    if (qbCostOnly) { $id('qbCustFields').hidden = true; $id('qbCustFixed').hidden = true; }
+}
+
+/* From the cost calculator to a quote with the same gates: only the customer is left to fill in */
+function qbConvertToQuote() {
+    qbCostOnly = false;
+    $id('qbTitle').textContent = 'عرض سعر جديد';
+    $id('qbCustFields').hidden = Boolean(qbCustomer);
+    $id('qbCustFixed').hidden = !qbCustomer;
+    qbApplyMode();
+    $id('qbPhone').focus();
 }
 
 const qbBlankLine = (catalog) => ({ product_id: '', name: '', type: '', unit: 'piece', quantity: 1, unit_price: '', disc_type: '', disc_value: '', catalog });
@@ -252,7 +277,7 @@ function qbOnChange(e) {
     if (k === 'disc_type' && e.type === 'change') { if (!l.disc_type) l.disc_value = ''; renderQbLines(); }
     qbSchedule();
 }
-for (const id of ['qbDiscType', 'qbDiscValue']) $id(id).addEventListener('input', () => qbSchedule());
+for (const id of ['qbDiscType', 'qbDiscValue', 'qbExtraCost']) $id(id).addEventListener('input', () => qbSchedule());
 $id('qbRegion').addEventListener('change', () => qbSchedule());
 
 /* A choice changed in a gate / motor card; a parent choice (type, thickness, height, section) resets what depends on it */
@@ -336,7 +361,7 @@ function qbPayload(all = false) {
 function qbSchedule() { clearTimeout(qbTimer); qbTimer = setTimeout(qbPreview, 300); }
 
 async function qbPreview() {
-    const body = qbPayload();
+    const body = { ...qbPayload(), ...(qbCatalog.sees_cost ? { extra_cost: Number($id('qbExtraCost').value) || 0 } : {}) };
     qbLines.forEach((l, i) => {
         if (!l.calc) return;
         const miss = qbCalcMissing(l);
@@ -375,11 +400,33 @@ async function qbPreview() {
             <div class="row grand"><span>الإجمالي (ر.ع)</span><span>${qbMoney(r.total)}</span></div>
             ${limit !== null ? `<div class="status-text" style="color:${r.over_limit ? '#a93226' : 'inherit'}">${r.over_limit ? '⚠️ ' : ''}حد الخصم المسموح لك: ${esc(limit)}%${p.promo_amount ? ' (فوق العرض الترويجي)' : ''}${r.over_limit ? ' — قلّل الخصم أو اطلب من المدير' : ''}</div>` : ''}`;
         $id('qbSave').disabled = Boolean(r.over_limit);
+        renderQbCost(r.cost);
         setStatus('qbStatus', '');
     } catch (err) {
         qbLastPreview = null;
         $id('qbTotals').innerHTML = `<span style="color:#a93226">${esc(err.message)}</span>`;
+        renderQbCost(null);
     }
+}
+
+/* Cost, selling price (before VAT, after every discount) and profit — per gate / line and in total */
+function renderQbCost(c) {
+    if (!c) { $id('qbCost').innerHTML = ''; return; }
+    const cls = (n) => (n < 0 ? 'neg' : 'pos');
+    const pctTxt = (n) => (n === null || n === undefined ? '—' : `${n}%`);
+    const rows = c.lines.map((l) => `<tr><td>${esc(l.label)}${l.missing.length ? ' <span title="بدون تكلفة مسجلة" style="color:#a93226">⚠️</span>' : ''}</td>
+        <td>${qbMoney(l.cost)}</td><td>${qbMoney(l.revenue)}</td><td class="${cls(l.profit)}">${qbMoney(l.profit)}</td><td class="${cls(l.profit)}">${pctTxt(l.margin_percent)}</td></tr>`).join('');
+    const quoteDisc = qbLastPreview && qbLastPreview.pricing.quote_discount ? qbLastPreview.pricing.quote_discount.amount : 0;
+    $id('qbCost').innerHTML = `<div style="overflow-x:auto"><table>
+        <thead><tr><th>البند</th><th>التكلفة</th><th>البيع</th><th>الربح</th><th>هامش الربح</th></tr></thead>
+        <tbody>${rows}
+            ${quoteDisc ? `<tr><td>خصم على الإجمالي</td><td>—</td><td class="neg">-${qbMoney(quoteDisc)}</td><td class="neg">-${qbMoney(quoteDisc)}</td><td></td></tr>` : ''}
+            ${c.extra_cost ? `<tr><td>تكلفة التركيب والنقل</td><td>${qbMoney(c.extra_cost)}</td><td>—</td><td class="neg">-${qbMoney(c.extra_cost)}</td><td></td></tr>` : ''}
+            <tr class="sum"><td>الإجمالي (قبل الضريبة)</td><td>${qbMoney(c.total_cost)}</td><td>${qbMoney(c.revenue)}</td><td class="${cls(c.profit)}">${qbMoney(c.profit)}</td><td class="${cls(c.profit)}">${pctTxt(c.margin_percent)}</td></tr>
+        </tbody></table></div>
+        <div class="status-text" style="margin-top:6px">هامش الربح = الربح ÷ سعر البيع. نسبة الربح على التكلفة: <b>${pctTxt(c.markup_percent)}</b>. البيع بعد العرض الترويجي وكل الخصومات، وقبل الضريبة.</div>
+        ${c.missing.length ? `<div class="status-text" style="color:#a93226;margin-top:4px">⚠️ بدون تكلفة مسجلة (حُسبت صفراً، فالربح الفعلي أقل): ${c.missing.map(esc).join('، ')}</div>` : ''}
+        <div class="status-text" style="margin-top:4px">التركيب والتوصيل ورسوم الألوان تُحسب في البيع بلا تكلفة — اكتب تكلفتها الفعلية في الحقل أعلاه.</div>`;
 }
 
 async function saveBuiltQuote() {

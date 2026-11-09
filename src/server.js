@@ -32,6 +32,7 @@ const followup = require('./followup');
 const invoices = require('./invoices');
 const workorders = require('./workorders');
 const servicerequests = require('./servicerequests');
+const costs = require('./costs');
 const autoreply = require('./autoreply');
 const customers = require('./customers');
 const staffquotes = require('./staffquotes');
@@ -1068,6 +1069,9 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Quotes made by an employee (catalog or free lines, discounts within their limit) ---- */
 
+    // Costs are shown only to whoever may see purchase prices (managers and the «أسعار الشراء» section)
+    const seesCost = (user) => user.role === 'manager' || staff.can(user, 'purchases');
+    const hideCost = (rows, user) => (seesCost(user) ? rows : rows.map(({ cost, ...r }) => r));
     admin.get('/quotes/catalog', (req, res) => {
         const settings = getSettings(db);
         res.json({
@@ -1076,6 +1080,7 @@ function createApp(db, { agentClient } = {}) {
             units: staffquotes.UNITS, vat_percent: settings.vat_percent, validity_days: settings.quote_validity_days,
             discount_limit: staffquotes.limitFor(req.user, settings),
             promotion: promotions.publicInfo(settings),
+            sees_cost: seesCost(req.user),
             // The customer calculators, so the employee prices gates and motors exactly as the customer would
             locations: doors.locations(db),
             calculators: {
@@ -1090,7 +1095,11 @@ function createApp(db, { agentClient } = {}) {
         const settings = getSettings(db);
         const priced = staffquotes.price(db, req.body || {}, settings);
         const limit = staffquotes.limitFor(req.user, settings);
-        res.json({ ...priced, discount_limit: limit, over_limit: limit !== null && priced.pricing.discount_percent > limit + 0.005 });
+        res.json({
+            ...priced, discount_limit: limit, over_limit: limit !== null && priced.pricing.discount_percent > limit + 0.005,
+            // Cost and profit: only for whoever may see purchase prices
+            ...(seesCost(req.user) ? { cost: costs.quoteCost(db, req.body || {}, priced, settings) } : {})
+        });
     });
     const staffQuoteCustomer = (req, b) => {
         if (b.customer_id) {
@@ -1604,7 +1613,7 @@ function createApp(db, { agentClient } = {}) {
     admin.get('/overhead', (req, res) => {
         const { sizes, motors } = overhead.loadOverhead(db, { includeInactive: true });
         res.json({
-            sizes, motors,
+            sizes: hideCost(sizes, req.user), motors: hideCost(motors, req.user), sees_cost: seesCost(req.user),
             regions: db.prepare(`SELECT id, name, governorate, active, overhead_installation_fee FROM regions
                                  ORDER BY governorate, name`).all()
         });
@@ -1617,11 +1626,18 @@ function createApp(db, { agentClient } = {}) {
             if (v === '' || v == null || !Number.isFinite(n) || n < 0) throw httpError(400, `قيمة غير صالحة: ${label}`);
             return n;
         };
+        // An editor who may not see costs keeps the saved ones (matched by type and size / motor name)
+        const old = overhead.loadOverhead(db, { includeInactive: true });
+        const keepCost = !seesCost(req.user);
+        const cost = (v, label) => (v === '' || v == null ? null : num(v, label));
         const sizes = (Array.isArray(b.sizes) ? b.sizes : []).map((s) => {
             const row = {
                 gate_type: text(s.gate_type, 60), height_cm: num(s.height_cm, 'الارتفاع'), width_cm: num(s.width_cm, 'العرض'),
                 price_from: num(s.price_from, 'السعر من'), price_to: num(s.price_to, 'السعر إلى'), active: s.active === false || s.active === 0 ? 0 : 1
             };
+            row.cost = keepCost
+                ? (old.sizes.find((o) => o.gate_type === row.gate_type && o.height_cm === row.height_cm && o.width_cm === row.width_cm) || {}).cost ?? null
+                : cost(s.cost, `تكلفة ${row.gate_type} ${row.width_cm}×${row.height_cm}`);
             if (!row.gate_type) throw httpError(400, 'نوع البوابة مطلوب لكل مقاس');
             if (row.price_to < row.price_from) throw httpError(400, `السعر "إلى" أقل من "من" في ${row.gate_type} ${row.width_cm}×${row.height_cm}`);
             return row;
@@ -1635,19 +1651,20 @@ function createApp(db, { agentClient } = {}) {
         const motors = (Array.isArray(b.motors) ? b.motors : []).map((m) => {
             const row = { name: text(m.name, 120), price: num(m.price, 'سعر المحرك'), active: m.active === false || m.active === 0 ? 0 : 1 };
             if (!row.name) throw httpError(400, 'اسم المحرك مطلوب');
+            row.cost = keepCost ? (old.motors.find((o) => o.name === row.name) || {}).cost ?? null : cost(m.cost, `تكلفة ${row.name}`);
             return row;
         });
         tx(() => {
             db.prepare('DELETE FROM overhead_sizes').run();
             db.prepare('DELETE FROM overhead_motors').run();
-            const insSize = db.prepare(`INSERT INTO overhead_sizes (gate_type, height_cm, width_cm, price_from, price_to, active, sort_order)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?)`);
-            sizes.forEach((r, i) => insSize.run(r.gate_type, r.height_cm, r.width_cm, r.price_from, r.price_to, r.active, i));
-            const insMotor = db.prepare('INSERT INTO overhead_motors (name, price, active, sort_order) VALUES (?, ?, ?, ?)');
-            motors.forEach((r, i) => insMotor.run(r.name, r.price, r.active, i));
+            const insSize = db.prepare(`INSERT INTO overhead_sizes (gate_type, height_cm, width_cm, price_from, price_to, cost, active, sort_order)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+            sizes.forEach((r, i) => insSize.run(r.gate_type, r.height_cm, r.width_cm, r.price_from, r.price_to, r.cost, r.active, i));
+            const insMotor = db.prepare('INSERT INTO overhead_motors (name, price, cost, active, sort_order) VALUES (?, ?, ?, ?, ?)');
+            motors.forEach((r, i) => insMotor.run(r.name, r.price, r.cost, r.active, i));
         });
         const { sizes: savedSizes, motors: savedMotors } = overhead.loadOverhead(db, { includeInactive: true });
-        res.json({ sizes: savedSizes, motors: savedMotors });
+        res.json({ sizes: hideCost(savedSizes, req.user), motors: hideCost(savedMotors, req.user) });
     });
 
     /* ---- Gate motors: sections, items (profit % each), extra fees, installation fee per wilayah ---- */
