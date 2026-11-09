@@ -86,6 +86,17 @@ test('download refuses any address outside MazBot storage, before sending a requ
     await assert.rejects(media.download('https://evil.example.com/x.ogg', 'audio'), /ليس من خوادم MazBot/);
 });
 
+test('image limit accounts for base64 expansion before an Anthropic request', () => {
+    const encodedSize = (bytes) => 4 * Math.ceil(bytes / 3);
+    assert.equal(media.LIMITS.image, 7.5 * 1024 * 1024);
+    assert.equal(encodedSize(media.LIMITS.image), media.ANTHROPIC_IMAGE_BASE64_LIMIT);
+    assert.ok(encodedSize(media.LIMITS.image + 1) > media.ANTHROPIC_IMAGE_BASE64_LIMIT);
+    assert.throws(
+        () => media.imagePart({ buffer: Buffer.alloc(media.LIMITS.image + 1), contentType: 'image/jpeg' }, 'photo.jpg'),
+        /أكبر من الحد المسموح بعد الترميز/
+    );
+});
+
 test('a photo is shown to the AI with the conversation; the history and the follow-up keep a note and the link', async (t) => {
     const sent = await fakeMazbot(t);
     const db = setup();
