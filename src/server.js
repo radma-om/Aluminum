@@ -411,7 +411,7 @@ function pruneOldLogs(db) {
 
 function createApp(db, { agentClient, phoneVerificationProvider } = {}) {
     const app = express();
-    const phoneVerification = phoneVerificationModule.create({ db, provider: phoneVerificationProvider });
+    const phoneVerification = phoneVerificationModule.create({ db, provider: phoneVerificationProvider });\n    if (phoneVerification.isMisconfigured()) alerts.fail(db, 'phone_verification', 'verification_misconfigured');\n    else alerts.ok(db, 'phone_verification');
     pruneOldLogs(db);
     setInterval(() => { try { pruneOldLogs(db); } catch (err) { console.error('[prune]', err.message); } }, 24 * 3600_000).unref();
     // Customer address: only from the proxies listed in TRUSTED_PROXIES (default: none). An invalid
