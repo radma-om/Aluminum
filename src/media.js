@@ -11,7 +11,12 @@
      answered like a typed message; an image is shown to the AI model.
    ============================================================= */
 
-const LIMITS = { image: 8 * 1024 * 1024, audio: 12 * 1024 * 1024 };
+// Anthropic accepts at most 10 MiB of base64 image data. Base64 expands
+// every 3 raw bytes into 4 encoded bytes, so the download limit must be
+// derived from the encoded limit rather than rounded to 8 MiB.
+const ANTHROPIC_IMAGE_BASE64_LIMIT = 10 * 1024 * 1024;
+const IMAGE_RAW_LIMIT = Math.floor(ANTHROPIC_IMAGE_BASE64_LIMIT / 4) * 3;
+const LIMITS = { image: IMAGE_RAW_LIMIT, audio: 12 * 1024 * 1024 };
 const FIELDS = { image: 'header_image', audio: 'header_audio', video: 'header_video', document: 'header_document' };
 const TIMEOUT_MS = 20_000;
 
@@ -58,6 +63,9 @@ async function download(url, kind) {
 
 /* Image → what the AI models take: { media_type, data (base64) } */
 function imagePart({ buffer, contentType }, url) {
+    if (!Buffer.isBuffer(buffer) || buffer.length > LIMITS.image) {
+        throw err('الصورة أكبر من الحد المسموح بعد الترميز');
+    }
     const byExt = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' };
     const ext = (String(url).split('?')[0].split('.').pop() || '').toLowerCase();
     const mediaType = /^image\/(jpeg|png|webp|gif)$/.test(contentType) ? contentType : byExt[ext];
@@ -87,4 +95,4 @@ async function transcribe({ buffer, contentType }, url) {
     return String(data.text || '').trim();
 }
 
-module.exports = { mediaOf, isMazbotMedia, download, imagePart, transcribe, canTranscribe, LIMITS };
+module.exports = { mediaOf, isMazbotMedia, download, imagePart, transcribe, canTranscribe, LIMITS, ANTHROPIC_IMAGE_BASE64_LIMIT };
