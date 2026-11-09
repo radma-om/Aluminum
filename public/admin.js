@@ -1623,6 +1623,25 @@ async function enableWhatsappAgent() {
     } catch (err) { alert(err.message); }
 }
 
+async function loadPhoneVerification() {
+    if (!ME || ME.role !== 'manager') return;
+    const s = await api('GET', '/api/admin/phone-verification/status');
+    const state = s.misconfigured ? 'إعداد ناقص — السلوك الحالي معطل وآمن' : s.required ? 'مطلوب ومفعّل' : 'معطل';
+    const missing = s.missing && s.missing.length ? ' — المتغيرات الناقصة: ' + s.missing.join(', ') : '';
+    const metrics = Object.entries(s.metrics_24h || {}).map(([k, n]) => k + ': ' + n).join('، ') || 'لا توجد محاولات';
+    $id('phoneVerificationStatus').innerHTML =
+        '<strong>الحالة:</strong> ' + esc(state) + '<br><strong>المزود:</strong> ' + esc(s.provider || 'infocomm') +
+        '<br><strong>Mapping الرسمي:</strong> ' + (s.mapping_ready ? 'مكتمل' : 'بانتظار التوثيق') + esc(missing) +
+        '<br><strong>آخر 24 ساعة:</strong> ' + esc(metrics);
+}
+async function testPhoneVerification() {
+    try {
+        await api('POST', '/api/admin/phone-verification/test-connection', {});
+        toast('فحص مزود التحقق ناجح');
+    } catch (err) { toast(err.message, true); }
+    finally { loadPhoneVerification().catch(() => {}); }
+}
+
 /* ------------------------------ Boot ------------------------------ */
 
 const baseSwitchTab = switchTab;
@@ -1635,7 +1654,7 @@ window.switchTab = function (tabId) {
     if (tabId === 'backup' && ME && ME.role === 'manager') loadBackups().catch((err) => setStatus('backupStatus', err.message, 'err'));
     if (tabId === 'overhead') loadOverhead();
     if (tabId === 'motors') loadMotors();
-    if (tabId === 'integrations') { loadInbound().catch(() => {}); runDiagnose(); }
+    if (tabId === 'integrations') { loadInbound().catch(() => {}); runDiagnose(); if (ME && ME.role === 'manager') loadPhoneVerification().catch(() => {}); }
     if (tabId === 'agent') loadKnowledge().catch(() => {});
 };
 
@@ -1668,7 +1687,7 @@ async function initAdmin() {
     if (canSee('products') || canSee('purchases')) jobs.push(loadProducts());
     if (canSee('purchases')) jobs.push(loadPurchases());
     if (canSee('integrations')) jobs.push(loadMazbotStatus());
-    if (ME.role === 'manager') jobs.push(loadHooks());
+    if (ME.role === 'manager') jobs.push(loadHooks());\n    if (ME.role === 'manager') jobs.push(loadPhoneVerification());
     if (canSee('agent')) jobs.push(loadAgentStatus());
     await Promise.all(jobs);
     document.dispatchEvent(new Event('admin-ready'));
