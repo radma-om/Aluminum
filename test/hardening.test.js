@@ -146,11 +146,16 @@ test('logs older than 90 days are removed; business data never is', () => {
     conv.run('old', '-100 days'); conv.run('new', '-1 days');
     db.prepare("INSERT INTO leads (contact_key, created_at, last_activity_at) VALUES ('tel:1', datetime('now', '-400 days'), datetime('now', '-400 days'))").run();
     db.prepare("INSERT INTO audit_log (actor, action, at) VALUES ('x', 'old', datetime('now', '-400 days')), ('x', 'new', datetime('now', '-300 days'))").run();
-    assert.deepEqual(pruneOldLogs(db), { webhook_deliveries: 2, agent_conversations: 1, staff_sessions: 0, audit_log: 1, system_alerts: 0, password_resets: 0, offsite_backups: 0 });
+    db.prepare(`INSERT INTO phone_verification_challenges
+        (public_id, phone, provider, status, expires_at, created_at)
+        VALUES ('old', '96891234567', 'infocomm', 'expired', datetime('now','-40 days'), datetime('now','-40 days')),
+               ('new', '96892345678', 'infocomm', 'pending', datetime('now','+5 minutes'), datetime('now','-1 day'))`).run();
+    assert.deepEqual(pruneOldLogs(db), { webhook_deliveries: 2, agent_conversations: 1, staff_sessions: 0, audit_log: 1, system_alerts: 0, password_resets: 0, offsite_backups: 0, phone_verification_challenges: 1 });
     assert.equal(db.prepare('SELECT action FROM audit_log').get().action, 'new'); // the activity log is kept a year
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM webhook_deliveries').get().n, 1);
     assert.equal(db.prepare("SELECT conversation_key FROM agent_conversations").get().conversation_key, 'new');
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM leads').get().n, 1); // customers are kept
+    assert.equal(db.prepare('SELECT public_id FROM phone_verification_challenges').get().public_id, 'new');
 });
 
 /* ---------------- 5–6. Page security headers, password strength ---------------- */

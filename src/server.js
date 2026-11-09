@@ -40,6 +40,7 @@ const staff = require('./staff');
 const audit = require('./audit');
 const whatsappCheck = require('./whatsapp-check');
 const trustedProxies = require('./trusted-proxies');
+const phoneVerificationModule = require('./phone-verification');
 const { assertPublicUrl, allowPrivate } = require('./safe-url');
 const knowledge = require('./knowledge');
 const { renderQuotePdf } = require('./pdf');
@@ -240,9 +241,13 @@ const parseQuote = ({ items_json, details_json, ...q }) => ({
 });
 
 const pdfPath = (quote) => `/quotes/${quote.ref}.pdf?k=${quote.access_key}`;
+const emitQuoteCreated = (db, quote) => {
+    const { access_key, ...publicQuote } = quote;
+    webhooks.emit(db, 'quote.created', publicQuote);
+};
 
 /* Persist a priced quote (from the web calculator or the AI agent) and notify integrations */
-function saveQuote(db, { customer_name, customer_phone, customer_city, notes, source, priced, details = null, lead_key = null, validity_days = null }) {
+function saveQuote(db, { customer_name, customer_phone, customer_city, notes, source, priced, details = null, lead_key = null, validity_days = null, emit_webhook = true }) {
     if (priced && priced.promo) details = { ...(details || {}), ...promotions.quoteDetails(priced.promo) };
     const requestedValidityDays = Number(validity_days);
     const defaultValidityDays = Number(getSettings(db).quote_validity_days) || 15;
@@ -284,8 +289,7 @@ function saveQuote(db, { customer_name, customer_phone, customer_city, notes, so
         try { leads.quoteCreated(db, quote, { key: lead_key, channel }); } catch (err) { console.error('[leads]', err.message); }
     }
 
-    const { access_key, ...publicQuote } = quote;
-    webhooks.emit(db, 'quote.created', publicQuote);
+    if (emit_webhook) emitQuoteCreated(db, quote);
     return quote;
 }
 
@@ -400,12 +404,16 @@ function pruneOldLogs(db) {
         audit_log: audit.prune(db), // 365 days
         system_alerts: alerts.prune(db),
         password_resets: Number(db.prepare("DELETE FROM password_resets WHERE expires_at < datetime('now', '-1 day')").run().changes),
-        offsite_backups: Number(db.prepare("DELETE FROM offsite_backups WHERE at < datetime('now', ?)").run(days).changes)
+        offsite_backups: Number(db.prepare("DELETE FROM offsite_backups WHERE at < datetime('now', ?)").run(days).changes),
+        phone_verification_challenges: Number(db.prepare("DELETE FROM phone_verification_challenges WHERE created_at < datetime('now', '-30 days')").run().changes)
     };
 }
 
-function createApp(db, { agentClient } = {}) {
+function createApp(db, { agentClient, phoneVerificationProvider } = {}) {
     const app = express();
+    const phoneVerification = phoneVerificationModule.create({ db, provider: phoneVerificationProvider });
+    if (phoneVerification.isMisconfigured()) alerts.fail(db, 'phone_verification', 'verification_misconfigured');
+    else alerts.ok(db, 'phone_verification');
     pruneOldLogs(db);
     setInterval(() => { try { pruneOldLogs(db); } catch (err) { console.error('[prune]', err.message); } }, 24 * 3600_000).unref();
     // Customer address: only from the proxies listed in TRUSTED_PROXIES (default: none). An invalid
@@ -451,10 +459,19 @@ function createApp(db, { agentClient } = {}) {
     /* Status check for the hosting panel / uptime monitors */
     app.get('/healthz', (req, res) => {
         db.prepare('SELECT 1').get();
-        res.json({ ok: true, version: APP_VERSION, features: ['quote_terms', 'mazbot', 'backup', 'overhead', 'website_chat', 'motors'], node: process.versions.node });
+        res.json({ ok: true, version: APP_VERSION, features: ['quote_terms', 'mazbot', 'backup', 'overhead', 'website_chat', 'motors', 'phone_verification'], node: process.versions.node });
     });
 
     /* ------------------------- Public API ------------------------- */
+
+    app.get('/api/public/phone-verification/status', (req, res) => res.json(phoneVerification.publicStatus()));
+    const verificationLimit = rateLimit({ windowMs: 10 * 60_000, max: 10 });
+    app.post('/api/public/phone-verification/request', verificationLimit, asyncRoute(async (req, res) => {
+        res.json(await phoneVerification.requestCode({ ...(req.body || {}), idempotencyKey: req.get('Idempotency-Key') }));
+    }));
+    app.post('/api/public/phone-verification/confirm', verificationLimit, asyncRoute(async (req, res) => {
+        res.json(await phoneVerification.confirmCode(req.body || {}));
+    }));
 
     app.get('/api/public/catalog', (req, res) => {
         const settings = getSettings(db);
@@ -502,15 +519,30 @@ function createApp(db, { agentClient } = {}) {
         });
     };
 
+    const saveVerifiedPublicQuote = (body, customer, action) => {
+        phoneVerification.assertQuoteRequest({ phone: customer.customer_phone, proof: body.verification_proof });
+        const deferWebhook = phoneVerification.isRequired();
+        const result = phoneVerification.consumeForQuote({
+            phone: customer.customer_phone, proof: body.verification_proof
+        }, () => action({ deferWebhook }));
+        if (result.created && result.deferWebhook) emitQuoteCreated(db, result.quote);
+        return result;
+    };
+
     const quoteLimit = rateLimit({ windowMs: 10 * 60_000, max: 10 });
 
     /* Materials order (slats / accessories by quantity) */
     app.post('/api/public/quotes', quoteLimit, (req, res) => {
         const body = req.body || {};
         const customer = readCustomer(body);
+        phoneVerification.assertQuoteRequest({ phone: customer.customer_phone, proof: body.verification_proof });
         const rows = db.prepare('SELECT * FROM products WHERE active = 1 AND is_public = 1').all();
         const priced = priceQuote(body.items, new Map(rows.map((p) => [p.id, p])), getSettings(db));
-        quoteResponse(res, saveQuote(db, { ...customer, source: 'web', priced }));
+        const saved = saveVerifiedPublicQuote(body, customer, ({ deferWebhook }) => {
+            const quote = saveQuote(db, { ...customer, source: 'web', priced, emit_webhook: !deferWebhook });
+            return { quote, created: true, repeat: false, deferWebhook };
+        });
+        quoteResponse(res, saved.quote);
     });
 
     /* ---- Roller-shutter door configurator ---- */
@@ -547,26 +579,30 @@ function createApp(db, { agentClient } = {}) {
     /* "احتساب السعر" on the customer page: prices on the server, saves the quote and sends it to the
        sales numbers on WhatsApp. Pressing it again with the same data returns the same quote
        (no duplicate message); any change is a new request. */
-    const saveOrRepeat = (res, customer, priced, details) => {
-        // The promotion is part of what is saved: compare like with like (no duplicate on a second press)
+    const saveOrRepeat = (res, body, customer, priced, details) => {
         details = { ...details, ...promotions.quoteDetails(priced.promo) };
-        const same = db.prepare(`SELECT * FROM quotes WHERE customer_phone = ? AND customer_name = ? AND details_json = ?
-                                 AND total = ? AND IFNULL(notes, '') = ? AND created_at >= datetime('now', '-30 minutes')
-                                 ORDER BY id DESC LIMIT 1`)
-            .get(customer.customer_phone, String(customer.customer_name).trim().slice(0, 120), JSON.stringify(details),
-                priced.total, customer.notes ? String(customer.notes).slice(0, 1000) : '');
-        if (same) {
-            const quote = parseQuote(same);
-            return quoteResponse(res, { ...quote, pdf_url: pdfPath(quote) }, { repeat: true });
-        }
-        quoteResponse(res, saveQuote(db, { ...customer, source: 'web', priced, details }));
+        const saved = saveVerifiedPublicQuote(body, customer, ({ deferWebhook }) => {
+            const same = db.prepare(`SELECT * FROM quotes WHERE customer_phone = ? AND customer_name = ? AND details_json = ?
+                                     AND total = ? AND IFNULL(notes, '') = ? AND created_at >= datetime('now', '-30 minutes')
+                                     ORDER BY id DESC LIMIT 1`)
+                .get(customer.customer_phone, String(customer.customer_name).trim().slice(0, 120), JSON.stringify(details),
+                    priced.total, customer.notes ? String(customer.notes).slice(0, 1000) : '');
+            if (same) {
+                const quote = parseQuote(same);
+                return { quote: { ...quote, pdf_url: pdfPath(quote) }, created: false, repeat: true, deferWebhook: false };
+            }
+            const quote = saveQuote(db, { ...customer, source: 'web', priced, details, emit_webhook: !deferWebhook });
+            return { quote, created: true, repeat: false, deferWebhook };
+        });
+        quoteResponse(res, saved.quote, { repeat: saved.repeat });
     };
 
     app.post('/api/public/door-quotes', quoteLimit, (req, res) => {
         const body = req.body || {};
         const customer = readCustomer(body);
+        phoneVerification.assertQuoteRequest({ phone: customer.customer_phone, proof: body.verification_proof });
         const priced = doors.finalPrice(db, { ...readDoor(body), regionId: customer.region.id });
-        saveOrRepeat(res, customer, priced, { ...priced.door, spec: priced.spec, fees_note: priced.delivery_installation });
+        saveOrRepeat(res, body, customer, priced, { ...priced.door, spec: priced.spec, fees_note: priced.delivery_installation });
     });
 
     /* ---- Overhead (sectional) gate calculator: same method and data as the company site's ---- */
@@ -588,8 +624,9 @@ function createApp(db, { agentClient } = {}) {
     app.post('/api/public/overhead-quotes', quoteLimit, (req, res) => {
         const body = req.body || {};
         const customer = readCustomer(body);
+        phoneVerification.assertQuoteRequest({ phone: customer.customer_phone, proof: body.verification_proof });
         const priced = overhead.overheadPrice(db, { ...readOverhead(body), regionId: customer.region.id });
-        saveOrRepeat(res, customer, priced, {
+        saveOrRepeat(res, body, customer, priced, {
             calculator: 'overhead', ...priced.gate, governorate: priced.region.governorate,
             spec: priced.spec, fees_note: priced.delivery_installation, range: priced.range
         });
@@ -607,8 +644,9 @@ function createApp(db, { agentClient } = {}) {
     app.post('/api/public/motor-quotes', quoteLimit, (req, res) => {
         const body = req.body || {};
         const customer = readCustomer(body);
+        phoneVerification.assertQuoteRequest({ phone: customer.customer_phone, proof: body.verification_proof });
         const priced = motors.motorPrice(db, { ...readMotors(body), regionId: customer.region.id });
-        saveOrRepeat(res, customer, priced, {
+        saveOrRepeat(res, body, customer, priced, {
             ...priced.order, spec: priced.spec, fees_note: priced.delivery_installation, extra_fees_note: priced.extra_fees_note || null
         });
     });
@@ -814,6 +852,11 @@ function createApp(db, { agentClient } = {}) {
         }
         next();
     });
+
+    admin.get('/phone-verification/status', (req, res) => res.json(phoneVerification.adminStatus()));
+    admin.post('/phone-verification/test-connection', asyncRoute(async (req, res) => {
+        res.json(await phoneVerification.healthCheck());
+    }));
 
     /* Activity log (managers only: the route is not mapped to a section) */
     admin.get('/audit', (req, res) => res.json(audit.list(db, req.query)));
@@ -2035,6 +2078,11 @@ function createApp(db, { agentClient } = {}) {
 
     whatsapp.registerRoutes(app, db, { saveQuote: (q) => saveQuote(db, q) });
 
+    app.post('/webhooks/infocomm/verify', (req, res) => {
+        phoneVerification.handleWebhook(req.rawBody || Buffer.alloc(0), req.headers);
+        res.status(204).end();
+    });
+
     /* MazBot webhook: customer WhatsApp messages → AI agent → reply via MazBot.
        Every request is kept (last 100) with what happened to it, for checking in the admin panel.
        The secret in the path (MAZBOT_WEBHOOK_SECRET) and X-Mazbot-Signature are the access control. */
@@ -2101,7 +2149,9 @@ function createApp(db, { agentClient } = {}) {
     app.use((err, req, res, next) => {
         const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
         if (status >= 500) console.error(err);
-        res.status(status).json({ error: status >= 500 && !err.expose ? 'خطأ في الخادم' : err.message });
+        const body = { error: status >= 500 && !err.expose ? 'خطأ في الخادم' : err.message };
+        if (err.code) body.code = err.code;
+        res.status(status).json(body);
     });
 
     return app;

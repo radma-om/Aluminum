@@ -533,6 +533,33 @@ CREATE TABLE IF NOT EXISTS offsite_backups (
     reason      TEXT
 );
 
+-- Temporary OTP challenges and one-use proofs; secrets are stored only as SHA-256 hashes.
+CREATE TABLE IF NOT EXISTS phone_verification_challenges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    phone TEXT NOT NULL,
+    purpose TEXT NOT NULL DEFAULT 'quote',
+    provider TEXT NOT NULL,
+    provider_reference TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','consumed','expired','failed','blocked')),
+    code_hash TEXT,
+    idempotency_key TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    send_count INTEGER NOT NULL DEFAULT 0,
+    last_sent_at TEXT,
+    expires_at TEXT NOT NULL,
+    verified_at TEXT,
+    proof_hash TEXT,
+    proof_expires_at TEXT,
+    consumed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS phone_verification_proof ON phone_verification_challenges(proof_hash);
+CREATE INDEX IF NOT EXISTS phone_verification_phone ON phone_verification_challenges(phone, created_at);
+CREATE INDEX IF NOT EXISTS phone_verification_expiry ON phone_verification_challenges(expires_at);
+CREATE INDEX IF NOT EXISTS phone_verification_idempotency ON phone_verification_challenges(phone,purpose,idempotency_key);
+
 CREATE TABLE IF NOT EXISTS agent_conversations (
     conversation_key  TEXT PRIMARY KEY,
     channel           TEXT NOT NULL,

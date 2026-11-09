@@ -169,6 +169,7 @@
     <footer id="footer"></footer>
 
     <script src="location.js"></script>
+    <script src="phone-verification.js"></script>
     <script>
     const CATEGORY_LABELS = { slat: 'الشرائح', accessory: 'الإكسسوارات', machine: 'المكائن' };
     const UNIT_LABELS = { meter: 'متر', piece: 'قطعة', m2: 'م²', set: 'طقم', kg: 'كجم' };
@@ -187,6 +188,7 @@
 
     async function load() {
         try {
+            const verificationProof = await window.RadmaPhoneVerification.proofFor($('custPhone').value);
             const res = await fetch('/api/public/catalog');
             if (!res.ok) throw new Error();
             catalog = await res.json();
@@ -288,6 +290,7 @@
                 body: JSON.stringify({
                     customer_name: $('custName').value,
                     customer_phone: $('custPhone').value,
+                    verification_proof: verificationProof,
                     region_id: Number($('custWilayah').value) || null,
                     notes: $('custNotes').value,
                     items: lines.map((l) => l.width

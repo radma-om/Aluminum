@@ -117,6 +117,7 @@
     </footer>
 
     <script src="calc-common.js"></script>
+    <script src="phone-verification.js"></script>
     <script src="location.js"></script>
     <script>
     /* Overhead gates: same method as the company site's overhead calculator —
@@ -130,6 +131,7 @@
 
     async function load() {
         try {
+            const verificationProof = await window.RadmaPhoneVerification.proofFor(phone);
             const res = await fetch('/api/public/overhead');
             if (!res.ok) throw new Error();
             conf = await res.json();
@@ -211,7 +213,7 @@
         try {
             const res = await fetch('/api/public/overhead-quotes', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...payload(), customer_name: name, customer_phone: phone, notes: $('notes').value })
+                body: JSON.stringify({ ...payload(), customer_name: name, customer_phone: phone, notes: $('notes').value, verification_proof: verificationProof })
             });
             const data = await res.json();
             if (!res.ok) throw new Error(res.status === 429 ? 'تم تجاوز عدد المحاولات، يرجى المحاولة بعد قليل.' : data.error || 'تعذر احتساب السعر');

@@ -130,6 +130,7 @@
     </footer>
 
         <script src="calc-common.js"></script>
+    <script src="phone-verification.js"></script>
     <script src="location.js"></script>
     <script>
     /* Gate motors by section (sliding, swing, parking barrier...): a full kit and/or accessories
@@ -142,6 +143,7 @@
 
     async function load() {
         try {
+            const verificationProof = await window.RadmaPhoneVerification.proofFor(phone);
             const res = await fetch('/api/public/motors');
             if (!res.ok) throw new Error();
             conf = await res.json();
@@ -218,7 +220,7 @@
                 body: JSON.stringify({
                     section_id: Number($('section').value), kit_id: k ? k.id : null, kit_count: Number($('kitCount').value) || 1,
                     installation: $('installation').checked, parts, region_id: region.id,
-                    customer_name: name, customer_phone: phone, notes: $('notes').value
+                    customer_name: name, customer_phone: phone, notes: $('notes').value, verification_proof: verificationProof
                 })
             });
             const data = await res.json();
