@@ -692,6 +692,9 @@ function migrate(db) {
     addColumns('staff_users', { email: 'TEXT' });
     // The employee's own discount limit in % (NULL = the general limit)
     addColumns('staff_users', { max_discount_percent: 'REAL' });
+    // Overhead gates: what a size and a motor cost the company (for the cost & profit calculator; NULL = not entered)
+    addColumns('overhead_sizes', { cost: 'REAL' });
+    addColumns('overhead_motors', { cost: 'REAL' });
     // How long a quote's price holds (filled for older quotes from their date)
     const hadValidity = db.prepare('PRAGMA table_info(quotes)').all().some((c) => c.name === 'valid_until');
     addColumns('quotes', { valid_until: 'TEXT' });

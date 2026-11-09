@@ -450,6 +450,7 @@ async function deletePurchase(id) {
 let quotesCache = [];
 
 async function loadQuotes() {
+    if ($id('qbCostBtn')) $id('qbCostBtn').hidden = !canSee('purchases');
     if (!online) return;
     const status = $id('quoteFilter').value;
     const rows = await api('GET', '/api/admin/quotes' + (status ? '?status=' + status : ''));
@@ -1153,6 +1154,8 @@ let overheadData = { sizes: [], motors: [], regions: [] };
 
 async function loadOverhead() {
     overheadData = await api('GET', '/api/admin/overhead');
+    // The cost columns: only for whoever may see purchase prices
+    document.querySelectorAll('.oh-cost').forEach((el) => { el.hidden = !overheadData.sees_cost; });
     $id('ohSizeRows').innerHTML = '';
     overheadData.sizes.forEach(addOhSizeRow);
     $id('ohMotorRows').innerHTML = '';
@@ -1171,6 +1174,7 @@ function addOhSizeRow(s = {}) {
     const tr = document.createElement('tr');
     tr.innerHTML = cell('s-type', s.gate_type, 'text', 120) + cell('s-width', s.width_cm) + cell('s-height', s.height_cm) +
         cell('s-from', s.price_from) + cell('s-to', s.price_to) +
+        (overheadData.sees_cost ? cell('s-cost', s.cost) : '') +
         `<td><input class="s-active" type="checkbox" ${s.active === 0 ? '' : 'checked'}></td>
          <td><button class="btn btn-outline btn-sm" onclick="this.closest('tr').remove()">حذف</button></td>`;
     $id('ohSizeRows').appendChild(tr);
@@ -1179,6 +1183,7 @@ function addOhSizeRow(s = {}) {
 function addOhMotorRow(m = {}) {
     const tr = document.createElement('tr');
     tr.innerHTML = cell('m-name', m.name, 'text', 240) + cell('m-price', m.price) +
+        (overheadData.sees_cost ? cell('m-cost', m.cost) : '') +
         `<td><input class="m-active" type="checkbox" ${m.active === 0 ? '' : 'checked'}></td>
          <td><button class="btn btn-outline btn-sm" onclick="this.closest('tr').remove()">حذف</button></td>`;
     $id('ohMotorRows').appendChild(tr);
@@ -1188,10 +1193,12 @@ async function saveOverhead() {
     const val = (tr, cls) => tr.querySelector('.' + cls).value;
     const sizes = [...$id('ohSizeRows').children].map((tr) => ({
         gate_type: val(tr, 's-type'), width_cm: val(tr, 's-width'), height_cm: val(tr, 's-height'),
-        price_from: val(tr, 's-from'), price_to: val(tr, 's-to'), active: tr.querySelector('.s-active').checked
+        price_from: val(tr, 's-from'), price_to: val(tr, 's-to'), active: tr.querySelector('.s-active').checked,
+        ...(overheadData.sees_cost ? { cost: val(tr, 's-cost') } : {})
     }));
     const motors = [...$id('ohMotorRows').children].map((tr) => ({
-        name: val(tr, 'm-name'), price: val(tr, 'm-price'), active: tr.querySelector('.m-active').checked
+        name: val(tr, 'm-name'), price: val(tr, 'm-price'), active: tr.querySelector('.m-active').checked,
+        ...(overheadData.sees_cost ? { cost: val(tr, 'm-cost') } : {})
     }));
     try {
         await api('PUT', '/api/admin/overhead', { sizes, motors });

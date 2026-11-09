@@ -594,6 +594,14 @@
         .qb-line input, .qb-line select { width: 100%; padding: 7px 8px; border: 2px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 0.88rem; }
         .qb-line .qb-total { font-weight: 700; padding: 8px 4px; white-space: nowrap; }
         .qb-line .qb-free { grid-column: 1 / -1; }
+        .qb-cost { margin-top: 12px; padding: 12px; border: 2px dashed #c9a227; border-radius: 10px; background: #fffbea; }
+        .qb-cost table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+        .qb-cost th, .qb-cost td { padding: 5px 6px; border-bottom: 1px solid var(--border); text-align: start; white-space: nowrap; }
+        .qb-cost td:first-child { white-space: normal; }
+        .qb-cost .sum td { font-weight: 700; border-top: 2px solid var(--border); }
+        .qb-cost .neg { color: #a93226; }
+        .qb-cost .pos { color: #1b6b3a; }
+        @media (max-width: 700px) { .qb-cost table { font-size: 0.78rem; } .qb-cost th, .qb-cost td { padding: 4px 3px; } }
         .qb-add { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
         .qb-group { border: 2px solid var(--border); border-radius: 10px; padding: 10px; margin: 8px 0; background: var(--bg, #fafbfd); }
         .qb-group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
@@ -1516,13 +1524,13 @@
                 </div>
                 <p class="sub-heading">المقاسات القياسية <span class="status-text">— يختار العميل المقاس الأقرب والأكبر من مقاسه الفعلي. إذا كان للنوع ارتفاع واحد فلن يُسأل العميل عنه.</span></p>
                 <div class="table-wrapper"><table>
-                    <thead><tr><th>النوع (مثل Type A)</th><th>العرض (سم)</th><th>الارتفاع (سم)</th><th>السعر من (ر.ع)</th><th>السعر إلى (ر.ع)</th><th>مفعّل</th><th></th></tr></thead>
+                    <thead><tr><th>النوع (مثل Type A)</th><th>العرض (سم)</th><th>الارتفاع (سم)</th><th>السعر من (ر.ع)</th><th>السعر إلى (ر.ع)</th><th class="oh-cost" hidden>التكلفة (ر.ع)</th><th>مفعّل</th><th></th></tr></thead>
                     <tbody id="ohSizeRows"></tbody>
                 </table></div>
                 <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addOhSizeRow()">+ مقاس</button>
                 <p class="sub-heading">المحركات</p>
                 <div class="table-wrapper"><table>
-                    <thead><tr><th>المحرك</th><th>السعر (ر.ع)</th><th>مفعّل</th><th></th></tr></thead>
+                    <thead><tr><th>المحرك</th><th>السعر (ر.ع)</th><th class="oh-cost" hidden>التكلفة (ر.ع)</th><th>مفعّل</th><th></th></tr></thead>
                     <tbody id="ohMotorRows"></tbody>
                 </table></div>
                 <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addOhMotorRow()">+ محرك</button>
@@ -1751,6 +1759,7 @@
                     </select>
                     <button class="btn btn-outline btn-sm" onclick="loadQuotes()">تحديث</button>
                     <button class="btn btn-primary btn-sm" onclick="openQuoteBuilder()"><i class="fas fa-plus"></i> عرض سعر جديد</button>
+                    <button class="btn btn-outline btn-sm" id="qbCostBtn" hidden onclick="openQuoteBuilder({ costOnly: true })"><i class="fas fa-calculator"></i> حاسبة التكلفة والربح</button>
                     <a class="btn btn-accent btn-sm" href="calculator.html" target="_blank">فتح حاسبة العملاء</a>
                     <span class="manager-only status-text" style="margin-inline-start:auto">صلاحية العروض الجديدة
                         <input type="number" id="quoteValidityDays" min="1" max="365" style="width:64px"> يوماً
@@ -2180,7 +2189,8 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
         <form class="sheet-card" style="max-width:980px" onsubmit="event.preventDefault(); saveBuiltQuote();">
             <button type="button" class="sheet-close" onclick="closeSheet('qbSheet')" aria-label="إغلاق">×</button>
             <h3><i class="fas fa-file-invoice-dollar"></i> <span id="qbTitle">عرض سعر جديد</span></h3>
-            <p class="sub-heading" style="margin-top:6px">العميل</p>
+            <p class="status-text" id="qbCostIntro" hidden style="margin:6px 0">احسب تكلفة البوابة وربحها قبل إعطاء السعر: اختر الولاية والبوابة والمقاس والإكسسوارات. لا يُحفظ شيء — وإن أردت أكمل بـ «تحويل إلى عرض سعر».</p>
+            <p class="sub-heading qb-quote-only" style="margin-top:6px">العميل</p>
             <div id="qbCustFixed" class="status-text" hidden></div>
             <div class="form-grid" id="qbCustFields">
                 <div class="form-group"><label>الجوال</label><input type="tel" id="qbPhone" dir="ltr" list="qbCustList" placeholder="9XXXXXXX" autocomplete="off"></div>
@@ -2198,11 +2208,18 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
             <div class="form-grid" style="margin-top:10px">
                 <div class="form-group"><label>خصم على الإجمالي</label><select id="qbDiscType"><option value="">بدون</option><option value="amount">مبلغ (ر.ع)</option><option value="percent">نسبة %</option></select></div>
                 <div class="form-group"><label>قيمة الخصم</label><input type="number" id="qbDiscValue" min="0" step="0.01"></div>
-                <div class="form-group"><label>صلاحية العرض <span class="unit">(أيام)</span></label><input type="number" id="qbValidity" min="1" max="365" step="1"></div>
+                <div class="form-group qb-quote-only"><label>صلاحية العرض <span class="unit">(أيام)</span></label><input type="number" id="qbValidity" min="1" max="365" step="1"></div>
             </div>
-            <div class="form-group"><label>ملاحظات على العرض <span class="unit">(تظهر في PDF)</span></label><input type="text" id="qbNotes" maxlength="1000"></div>
+            <div class="form-group qb-quote-only"><label>ملاحظات على العرض <span class="unit">(تظهر في PDF)</span></label><input type="text" id="qbNotes" maxlength="1000"></div>
             <div class="qb-totals" id="qbTotals"></div>
+            <!-- Cost & profit: only for whoever may see purchase prices; never saved in the quote or shown to the customer -->
+            <div class="qb-cost" id="qbCostBox" hidden>
+                <p class="sub-heading" style="margin:0 0 6px"><i class="fas fa-coins"></i> التكلفة والربح <span class="status-text">— للإدارة فقط، لا تظهر للعميل ولا في PDF</span></p>
+                <div class="form-group" style="max-width:320px"><label>تكلفة التركيب والنقل <span class="unit">(عمالة، مواصلات… ر.ع)</span></label><input type="number" id="qbExtraCost" min="0" step="0.5" placeholder="0"></div>
+                <div id="qbCost"></div>
+            </div>
             <div class="form-buttons">
+                <button class="btn btn-primary" type="button" id="qbToQuote" hidden onclick="qbConvertToQuote()"><i class="fas fa-file-invoice-dollar"></i> تحويل إلى عرض سعر</button>
                 <button class="btn btn-primary" type="submit" id="qbSave">حفظ العرض</button>
                 <button class="btn btn-outline" type="button" onclick="closeSheet('qbSheet')">إلغاء</button>
                 <span id="qbStatus" class="status-text"></span>
