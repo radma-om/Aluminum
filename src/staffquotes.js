@@ -4,11 +4,16 @@
      cannot be typed over) or free lines (a service, a special item: name,
      quantity, unit, unit price).
    - A discount on any line and on the whole quote, as an amount or a %.
-   - The total discount, as a % of the price before discounts, is limited
-     per employee (their own limit, or the general one); managers have no
-     limit. The same limit applies when an invoice lowers the amount.
+   - A customer promotion switched on by the manager is applied by itself
+     to the gates and motors it covers, exactly as in the customer
+     calculators. It is not the employee's discount.
+   - The employee's own discounts, as a % of the price after the
+     promotion, are limited per employee (their own limit, or the general
+     one); managers have no limit. The same limit applies when an invoice
+     lowers the amount.
    ============================================================= */
 const { unitSellPrice, round2 } = require('./pricing');
+const promotions = require('./promotions');
 
 const UNITS = ['meter', 'piece', 'm2', 'set', 'kg', 'service'];
 const CALCS = { rolling_shutter: 'بوابة رول شتر', overhead: 'بوابة أوفرهيد', motors: 'مكينة بوابة' };
@@ -30,7 +35,7 @@ function discountOf(d, base, what) {
 
 /* A calculator line (a whole gate or motor kit, as the customer calculators price it, with the
    installation of the quote's wilayah) → its priced lines. Prices never come from the screen.
-   The customer promotion is not used here: the lines are the prices before it. */
+   The lines are the prices before the customer promotion (price() applies it per gate). */
 function calcLines(db, line, regionId, where) {
     const pr = line.params || {};
     const num = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
@@ -63,16 +68,16 @@ function calcLines(db, line, regionId, where) {
     })) };
 }
 
-/* A discount on a whole gate / kit, spread over its lines (the last line takes the rounding) */
-function spreadDiscount(lines, d) {
-    const gross = round2(lines.reduce((s, l) => s + l.gross, 0));
-    if (!d.amount || !gross) return;
-    let left = d.amount;
+/* An amount on a whole gate / kit, spread over its lines by their price (the last line takes the rounding) */
+function spread(lines, amount, set) {
+    const base = round2(lines.reduce((s, l) => s + l.line_total, 0));
+    if (!amount || !base) return;
+    let left = amount;
     lines.forEach((l, i) => {
-        const part = i === lines.length - 1 ? round2(left) : round2(d.amount * l.gross / gross);
+        const part = i === lines.length - 1 ? round2(left) : round2(amount * l.line_total / base);
         left = round2(left - part);
-        l.discount = { type: d.type, value: d.value, amount: part, group: true };
-        l.line_total = round2(l.gross - part);
+        set(l, part);
+        l.line_total = round2(l.line_total - part);
     });
 }
 
@@ -87,6 +92,7 @@ function price(db, input, settings) {
     const hasCalc = lines.some((l) => l && l.calc);
     if (hasCalc && !input.region_id) throw err(400, 'اختر ولاية العميل — التركيب والتوصيل يُحسبان حسبها كما في حاسبة العملاء');
     const groups = [];
+    let promoUsed = null;
     const items = lines.flatMap((line, i) => {
         const where = `البند ${i + 1}`;
         if (line && line.calc) {
@@ -94,9 +100,15 @@ function price(db, input, settings) {
             const g = groups.length;
             const priced = calc.map((it) => ({ ...it, gross: round2(it.line_total), group: g }));
             const gross = round2(priced.reduce((s, l) => s + l.gross, 0));
-            spreadDiscount(priced, discountOf(line.discount, gross, where));
+            // The customer promotion first (same amount as the customer calculator), then the employee's discount on what is left
+            const promo = promotions.active(settings, line.calc);
+            const promoAmount = promo ? round2(gross * promo.percent / 100) : 0;
+            if (promo) { promoUsed = promoUsed || promo; spread(priced, promoAmount, (l, part) => { l.promo = part; }); }
+            const d = discountOf(line.discount, round2(gross - promoAmount), where);
+            spread(priced, d.amount, (l, part) => { l.discount = { type: d.type, value: d.value, amount: part, group: true }; });
             groups.push({ calc: line.calc, label: `${CALCS[line.calc]} — ${label}`, params: line.params || {}, price_level: line.price_level === 'to' ? 'to' : 'from',
                 ...(line.discount && Number(line.discount.value) ? { discount: { type: line.discount.type === 'percent' ? 'percent' : 'amount', value: Number(line.discount.value) } } : {}),
+                ...(promoAmount ? { promo: promoAmount } : {}),
                 gross, total: round2(priced.reduce((s, l) => s + l.line_total, 0)) });
             return priced;
         }
@@ -124,26 +136,41 @@ function price(db, input, settings) {
         }];
     });
     const grossSubtotal = round2(items.reduce((s, i) => s + i.gross, 0));
+    const promoAmount = round2(items.reduce((s, i) => s + (i.promo || 0), 0));
+    const afterPromo = round2(grossSubtotal - promoAmount);
     const linesTotal = round2(items.reduce((s, i) => s + i.line_total, 0));
     const quoteDiscount = discountOf(input.discount, linesTotal, 'خصم الإجمالي');
     const subtotal = round2(linesTotal - quoteDiscount.amount);
     const vatPercent = Number(settings.vat_percent) || 0;
     const vat = round2(subtotal * vatPercent / 100);
-    const discountTotal = round2(grossSubtotal - subtotal);
+    const staffDiscount = round2(afterPromo - subtotal);
     return {
         items, subtotal, vat_percent: vatPercent, vat, total: round2(subtotal + vat),
         groups,
         pricing: {
             gross_subtotal: grossSubtotal,
-            lines_discount: round2(grossSubtotal - linesTotal),
+            ...(promoAmount ? { promo_label: promoUsed.label, promo_percent: promoUsed.percent, promo_amount: promoAmount } : {}),
+            lines_discount: round2(afterPromo - linesTotal),
             quote_discount: quoteDiscount.amount ? quoteDiscount : null,
-            discount_total: discountTotal,
-            discount_percent: grossSubtotal > 0 ? Math.round((discountTotal / grossSubtotal) * 10000) / 100 : 0
+            discount_total: round2(grossSubtotal - subtotal),
+            staff_discount: staffDiscount,
+            // The employee's own discount, from the price after the promotion: this is what the limit checks
+            discount_percent: afterPromo > 0 ? Math.round((staffDiscount / afterPromo) * 10000) / 100 : 0
         }
     };
 }
 
 /* The employee's limit in % (null = no limit: managers and the general manager) */
+/* The price an invoice's lower amount is measured against for the limit: after the customer
+   promotion (it is not the employee's discount), before the employee's own discounts */
+function limitBase(quote) {
+    const d = quote.details || {};
+    const gross = Number(d.gross_subtotal ?? quote.subtotal);
+    if (d.promo_amount != null) return round2(gross - Number(d.promo_amount));           // employee quote with the promotion
+    if (d.promo_label && !d.staff_quote) return Number(quote.subtotal);                    // customer calculator: the promotion is its only discount
+    return gross;
+}
+
 function limitFor(user, settings) {
     if (!user || user.role === 'manager') return null;
     const own = user.max_discount_percent;
@@ -158,4 +185,4 @@ function checkLimit(user, settings, percent) {
     return limit;
 }
 
-module.exports = { price, discountOf, limitFor, checkLimit, UNITS, CALCS };
+module.exports = { price, discountOf, limitFor, checkLimit, limitBase, UNITS, CALCS };

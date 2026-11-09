@@ -66,6 +66,10 @@ async function openQuoteBuilder({ customer = null, quote = null } = {}) {
     }
     qbFillRegions(quote ? (quote.details || {}).region_id : null, quote ? null : (customer && customer.city));
     qbFillAddButtons();
+    // The manager's promotion is applied by itself to the gates / motors it covers
+    const pr = qbCatalog.promotion;
+    $id('qbPromo').hidden = !pr;
+    if (pr) $id('qbPromo').textContent = `🎁 ${pr.label}: خصم ${pr.percent}% يُطبَّق تلقائياً على ${pr.applies_to.map((a) => a.name).join('، ')}${pr.until ? ` حتى ${pr.until}` : ''} — ولا يُحسب من حد خصمك.`;
     renderQbLines();
     setStatus('qbStatus', '');
     $id('qbSheet').hidden = false;
@@ -363,12 +367,13 @@ async function qbPreview() {
         const p = r.pricing;
         const limit = r.discount_limit;
         $id('qbTotals').innerHTML = `
-            ${p.discount_total > 0 ? `<div class="row"><span>المجموع قبل الخصم</span><span>${qbMoney(p.gross_subtotal)}</span></div>
-                <div class="row"><span>الخصم (${p.discount_percent}%)</span><span>-${qbMoney(p.discount_total)}</span></div>` : ''}
+            ${p.discount_total > 0 ? `<div class="row"><span>المجموع قبل الخصم</span><span>${qbMoney(p.gross_subtotal)}</span></div>` : ''}
+            ${p.promo_amount ? `<div class="row" style="color:var(--success)"><span>🎁 ${esc(p.promo_label)} — ${esc(p.promo_percent)}% (تلقائي)</span><span>-${qbMoney(p.promo_amount)}</span></div>` : ''}
+            ${p.staff_discount > 0 ? `<div class="row"><span>خصمك (${p.discount_percent}%)</span><span>-${qbMoney(p.staff_discount)}</span></div>` : ''}
             <div class="row"><span>المجموع قبل الضريبة</span><span>${qbMoney(r.subtotal)}</span></div>
             <div class="row"><span>ضريبة القيمة المضافة ${esc(r.vat_percent)}%</span><span>${qbMoney(r.vat)}</span></div>
             <div class="row grand"><span>الإجمالي (ر.ع)</span><span>${qbMoney(r.total)}</span></div>
-            ${limit !== null ? `<div class="status-text" style="color:${r.over_limit ? '#a93226' : 'inherit'}">${r.over_limit ? '⚠️ ' : ''}حد الخصم المسموح لك: ${esc(limit)}%${r.over_limit ? ' — قلّل الخصم أو اطلب من المدير' : ''}</div>` : ''}`;
+            ${limit !== null ? `<div class="status-text" style="color:${r.over_limit ? '#a93226' : 'inherit'}">${r.over_limit ? '⚠️ ' : ''}حد الخصم المسموح لك: ${esc(limit)}%${p.promo_amount ? ' (فوق العرض الترويجي)' : ''}${r.over_limit ? ' — قلّل الخصم أو اطلب من المدير' : ''}</div>` : ''}`;
         $id('qbSave').disabled = Boolean(r.over_limit);
         setStatus('qbStatus', '');
     } catch (err) {

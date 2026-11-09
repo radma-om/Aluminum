@@ -216,11 +216,6 @@ test('gates and motors by section: priced like the customer calculators, with th
         assert.equal(r.groups[0].gross, sum(door.items));
     }
 
-    // A promotion for customers does not change an employee quote
-    saveSettings(db, { promo_enabled: true, promo_percent: 20, promo_label: 'عرض', promo_scope: ['overhead', 'motors'] });
-    const again = (await call('POST', '/api/admin/quotes/preview', { region_id: nizwa.id, items })).body;
-    assert.equal(again.subtotal, p.subtotal);
-    saveSettings(db, { promo_enabled: false });
 
     // Saved with the wilayah and each gate, so it can be edited later; the group discount counts towards the limit
     staff.create(db, { username: 'emp', display_name: 'موظف', password: 'pass-12345', permissions: ['quotes'] });
@@ -244,4 +239,53 @@ test('gates and motors by section: priced like the customer calculators, with th
     // The PDF prints a heading for each gate
     const pdf = await call('GET', `/api/admin/quotes/${ok.body.id}/pdf`);
     assert.equal(pdf.body.subarray(0, 4).toString(), '%PDF');
+});
+
+test('the manager\'s promotion applies by itself to employee quotes, and is not counted in the employee\'s limit', async (t) => {
+    const { db, call, login } = await start(t);
+    const overhead = require('../src/overhead');
+    const { body: cat } = await call('GET', '/api/admin/quotes/catalog');
+    const nizwa = cat.locations.flatMap((g) => g.wilayat).find((w) => w.name === 'نزوى');
+    const og = cat.calculators.overhead;
+    const gate = { gate_type: og.gate_types[0].name, height_cm: og.gate_types[0].heights[0].height_cm, width_cm: og.gate_types[0].heights[0].widths[0], motor_id: og.motors[0].id };
+    saveSettings(db, { promo_enabled: true, promo_percent: 20, promo_label: 'عرض اليوم الوطني', promo_scope: ['overhead'] });
+    assert.equal((await call('GET', '/api/admin/quotes/catalog')).body.promotion.percent, 20);
+
+    // The same price the customer calculator gives with the promotion
+    const customer = overhead.overheadPrice(db, { gateType: gate.gate_type, heightCm: gate.height_cm, widthCm: gate.width_cm, motorId: gate.motor_id, regionId: nizwa.id });
+    assert.ok(customer.promo);
+    const free = { name: 'إزالة بوابة قديمة', unit: 'service', quantity: 1, unit_price: 20 };
+    const p = (await call('POST', '/api/admin/quotes/preview', { region_id: nizwa.id, items: [{ calc: 'overhead', params: gate }, free] })).body;
+    assert.equal(p.groups[0].total, customer.subtotal);
+    assert.equal(p.pricing.promo_amount, customer.promo.amount);
+    assert.equal(p.pricing.promo_label, 'عرض اليوم الوطني');
+    assert.equal(p.items.at(-1).line_total, 20, 'a free line is not part of the promotion');
+    assert.equal(p.pricing.discount_percent, 0, 'the promotion is not the employee\'s discount');
+
+    // An employee with a 10% limit: 10% on top of the promotion is fine, 15% is not
+    staff.create(db, { username: 'sultan', display_name: 'سلطان', password: 'pass-12345', permissions: ['quotes', 'invoices'] });
+    const tok = await login('sultan');
+    const body = (pct) => ({ customer_phone: '91234567', customer_name: 'خالد', region_id: nizwa.id, items: [{ calc: 'overhead', params: gate, discount: { type: 'percent', value: pct } }] });
+    const ok = await call('POST', '/api/admin/quotes', body(10), tok);
+    assert.equal(ok.status, 201, JSON.stringify(ok.body));
+    assert.equal(ok.body.details.discount_percent, 10);
+    assert.equal(ok.body.details.promo_amount, customer.promo.amount);
+    assert.equal(ok.body.subtotal, Math.round(customer.subtotal * 0.9 * 100) / 100);
+    assert.equal((await call('POST', '/api/admin/quotes', body(15), tok)).status, 400);
+    const pdf = await call('GET', `/api/admin/quotes/${ok.body.id}/pdf`, null, tok);
+    assert.equal(pdf.body.subarray(0, 4).toString(), '%PDF');
+
+    // An invoice from a customer's promotion quote: lowering it by 10% more stays within the limit
+    const promoQuote = (await call('POST', '/api/admin/quotes', body(0), OWNER)).body;
+    const inv = await call('POST', `/api/admin/quotes/${promoQuote.id}/invoice`, { final_subtotal: Math.round(promoQuote.subtotal * 0.91 * 100) / 100 }, tok);
+    assert.equal(inv.status, 201, JSON.stringify(inv.body));
+    const promoQuote2 = (await call('POST', '/api/admin/quotes', body(0), OWNER)).body;
+    assert.equal((await call('POST', `/api/admin/quotes/${promoQuote2.id}/invoice`, { final_subtotal: Math.round(promoQuote2.subtotal * 0.8 * 100) / 100 }, tok)).status, 400);
+    assert.equal(staffquotes.limitBase({ subtotal: 80, details: { promo_label: 'x', gross_subtotal: 100, discount_total: 20 } }), 80, 'customer calculator quote');
+
+    // The promotion over: no promotion on a new quote
+    saveSettings(db, { promo_enabled: false });
+    const after = (await call('POST', '/api/admin/quotes/preview', { region_id: nizwa.id, items: [{ calc: 'overhead', params: gate }] })).body;
+    assert.equal(after.pricing.promo_amount, undefined);
+    assert.equal(after.subtotal, customer.promo.gross_subtotal);
 });
