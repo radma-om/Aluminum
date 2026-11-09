@@ -57,6 +57,8 @@ const LABELS = [
     ['POST', /^\/work-orders$/, 'إنشاء أمر عمل'], ['PATCH', /^\/work-orders\/\d+$/, 'تعديل / جدولة أمر عمل'],
     ['POST', /^\/work-orders\/\d+\/status$/, 'تغيير حالة أمر عمل'], ['POST', /^\/work-orders\/\d+\/notes$/, 'ملاحظة على أمر عمل'],
     ['POST', /^\/work-orders\/\d+\/cancel$/, 'إلغاء أمر عمل'],
+    ['POST', /^\/service-requests$/, 'تسجيل طلب موعد'], ['POST', /^\/service-requests\/\d+\/approve$/, 'الموافقة على طلب موعد'],
+    ['POST', /^\/service-requests\/\d+\/reject$/, 'رفض طلب موعد'],
     ['PATCH', /^\/leads\/\d+$/, 'تعديل بيانات عميل'], ['POST', /^\/leads\/\d+\/notes$/, 'إضافة تقرير متابعة'],
     ['POST', /^\/leads\/\d+\/reply$/, 'رد على عميل'], ['DELETE', /^\/leads\/\d+\/pause$/, 'إعادة تشغيل المساعد لعميل'],
     ['PUT', /^\/leads\/\d+\/pause$/, 'إيقاف الرد الآلي لعميل'], ['POST', /^\/mazbot\/pauses$/, 'إيقاف الرد الآلي لرقم'],

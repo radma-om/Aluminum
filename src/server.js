@@ -31,6 +31,7 @@ const alerts = require('./alerts');
 const followup = require('./followup');
 const invoices = require('./invoices');
 const workorders = require('./workorders');
+const servicerequests = require('./servicerequests');
 const autoreply = require('./autoreply');
 const customers = require('./customers');
 const staffquotes = require('./staffquotes');
@@ -1248,7 +1249,8 @@ function createApp(db, { agentClient } = {}) {
             orders: workorders.list(db, { status: String(q.status || ''), technician: String(q.technician || ''), q: String(q.q || '').trim(), open: q.open === '1', user: req.user })
                 .filter((o) => req.user.role === 'technician' || staff.seesQuote(db, req.user, o)),
             technicians: req.user.role === 'technician' ? [] : workorders.technicians(db),
-            kinds: workorders.KINDS, statuses: workorders.STATUSES
+            kinds: workorders.KINDS, statuses: workorders.STATUSES,
+            pending_requests: req.user.role === 'technician' ? 0 : servicerequests.list(db, { status: 'pending' }).filter((r) => staff.seesQuote(db, req.user, r)).length
         });
     });
     admin.get('/work-orders/:id', (req, res) => res.json(orderFor(req, req.params.id)));
@@ -1267,11 +1269,16 @@ function createApp(db, { agentClient } = {}) {
         webhooks.emit(db, 'work_order.created', order);
         res.status(201).json(order);
     });
-    admin.patch('/work-orders/:id', (req, res) => {
+    // «إبلاغ العميل»: a new appointment or a cancellation goes to the customer on WhatsApp too
+    admin.patch('/work-orders/:id', asyncRoute(async (req, res) => {
         officeOnly(req);
-        orderFor(req, req.params.id);
-        res.json(workorders.update(db, req.params.id, req.body || {}, staffName(req)));
-    });
+        const before = orderFor(req, req.params.id);
+        const order = workorders.update(db, req.params.id, req.body || {}, staffName(req));
+        let notice = null;
+        const moved = order.scheduled_date !== before.scheduled_date || order.scheduled_time !== before.scheduled_time;
+        if ((req.body || {}).notify_customer && moved) notice = await servicerequests.notifyMoved(db, order);
+        res.json({ ...order, notice });
+    }));
     admin.post('/work-orders/:id/status', (req, res) => {
         orderFor(req, req.params.id);
         const b = req.body || {};
@@ -1283,13 +1290,45 @@ function createApp(db, { agentClient } = {}) {
         orderFor(req, req.params.id);
         res.status(201).json(workorders.addNote(db, req.params.id, (req.body || {}).text, req.user));
     });
-    admin.post('/work-orders/:id/cancel', (req, res) => {
+    admin.post('/work-orders/:id/cancel', asyncRoute(async (req, res) => {
         officeOnly(req);
         orderFor(req, req.params.id);
         const order = workorders.cancel(db, req.params.id, (req.body || {}).reason, staffName(req));
         webhooks.emit(db, 'work_order.status_changed', order);
-        res.json(order);
+        const notice = (req.body || {}).notify_customer ? await servicerequests.notifyCancelled(db, order, (req.body || {}).reason) : null;
+        res.json({ ...order, notice });
+    }));
+
+    /* ---- Appointment requests from customers: the responsible employee approves (→ a work order) or declines ---- */
+    const requestFor = (req, id) => {
+        officeOnly(req);
+        const r = servicerequests.get(db, id);
+        if (!r || !staff.seesQuote(db, req.user, r)) throw httpError(404, 'الطلب غير موجود');
+        return r;
+    };
+    admin.get('/service-requests', (req, res) => {
+        officeOnly(req);
+        res.json({
+            requests: servicerequests.list(db, { status: String(req.query.status || ''), q: String(req.query.q || '').trim() })
+                .filter((r) => staff.seesQuote(db, req.user, r)),
+            kinds: servicerequests.KINDS, statuses: servicerequests.STATUSES, periods: servicerequests.PERIODS
+        });
     });
+    admin.post('/service-requests', (req, res) => {
+        officeOnly(req);
+        const r = servicerequests.create(db, req.body || {}, { source: 'staff', author: staffName(req) });
+        res.status(201).json(r);
+    });
+    admin.post('/service-requests/:id/approve', asyncRoute(async (req, res) => {
+        requestFor(req, req.params.id);
+        const out = await servicerequests.approve(db, req.params.id, req.body || {}, staffName(req));
+        webhooks.emit(db, 'work_order.created', out.order);
+        res.json(out);
+    }));
+    admin.post('/service-requests/:id/reject', asyncRoute(async (req, res) => {
+        requestFor(req, req.params.id);
+        res.json(await servicerequests.reject(db, req.params.id, req.body || {}, staffName(req)));
+    }));
 
     /* ---- Dashboard figures ---- */
 

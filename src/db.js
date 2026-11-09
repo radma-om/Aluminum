@@ -515,6 +515,33 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 CREATE INDEX IF NOT EXISTS customers_phone2 ON customers (phone2);
 
+-- A customer asks for an installation / maintenance / inspection visit (AI on WhatsApp or the website,
+-- or entered by the office). The responsible employee approves it with an appointment, which makes a
+-- work order, or turns it down with a reason; the customer is told on WhatsApp either way.
+CREATE TABLE IF NOT EXISTS service_requests (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    ref              TEXT NOT NULL UNIQUE,
+    kind             TEXT NOT NULL DEFAULT 'maintenance',
+    customer_name    TEXT NOT NULL,
+    customer_phone   TEXT NOT NULL,
+    location         TEXT,
+    address          TEXT,
+    preferred_date   TEXT,
+    preferred_period TEXT,
+    description      TEXT NOT NULL,
+    source           TEXT,
+    status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
+    work_order_id    INTEGER REFERENCES work_orders(id) ON DELETE SET NULL,
+    decision_note    TEXT,
+    decided_by       TEXT,
+    decided_at       TEXT,
+    customer_notice  TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS service_requests_status ON service_requests (status, id);
+CREATE INDEX IF NOT EXISTS service_requests_phone ON service_requests (customer_phone, status);
+
 -- Jobs that run once a day / week (follow-up reminders, weekly report): the last day they ran
 CREATE TABLE IF NOT EXISTS scheduled_runs (
     name      TEXT PRIMARY KEY,
