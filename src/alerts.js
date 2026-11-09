@@ -27,6 +27,8 @@ const PARTS = {
         'تعذر تنزيل صور أو رسائل صوتية من MazBot أو تحويل الصوت إلى نص. تحقق من OPENAI_API_KEY ورصيد حساب OpenAI، ومن أن روابط الملفات من MazBot ما زالت تعمل.'],
     whatsapp: ['واتساب المباشر (WhatsApp Cloud API)', 2, 60,
         'رسائل واتساب المباشرة تفشل. تحقق من WHATSAPP_TOKEN (قد تنتهي صلاحيته) ومن حساب Meta Business وطرق الدفع.'],
+    phone_verification: ['التحقق من رقم العميل (Infocomm Verify)', 1, 60,
+        'طُلب تفعيل الميزة لكن ربط Infocomm غير مكتمل. اترك PHONE_VERIFICATION_MODE=off حتى وصول التوثيق وبيانات الحساب.'],
     webhook: ['Webhook', 3, 60,
         'النظام الذي يستقبل الأحداث (n8n / Make / Zapier…) لا يقبلها. افتح سجل الإرسال في تبويب الربط لترى السبب.'],
     backup_local: ['النسخة الاحتياطية اليومية على الخادم', 1, 60,
