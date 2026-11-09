@@ -1687,7 +1687,8 @@ async function initAdmin() {
     if (canSee('products') || canSee('purchases')) jobs.push(loadProducts());
     if (canSee('purchases')) jobs.push(loadPurchases());
     if (canSee('integrations')) jobs.push(loadMazbotStatus());
-    if (ME.role === 'manager') jobs.push(loadHooks());\n    if (ME.role === 'manager') jobs.push(loadPhoneVerification());
+    if (ME.role === 'manager') jobs.push(loadHooks());
+    if (ME.role === 'manager') jobs.push(loadPhoneVerification());
     if (canSee('agent')) jobs.push(loadAgentStatus());
     await Promise.all(jobs);
     document.dispatchEvent(new Event('admin-ready'));
