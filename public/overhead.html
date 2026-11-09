@@ -131,6 +131,7 @@
 
     async function load() {
         try {
+            const verificationProof = await window.RadmaPhoneVerification.proofFor(phone);
             const res = await fetch('/api/public/overhead');
             if (!res.ok) throw new Error();
             conf = await res.json();
