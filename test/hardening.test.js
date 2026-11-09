@@ -104,8 +104,10 @@ test('staff cannot divert customers or sales alerts: WhatsApp number, sales reci
         company_name: 'اسم جديد', company_whatsapp: '96899999999', mazbot_recipients: '99999999', public_base_url: 'https://evil.example'
     }, staffToken);
     assert.equal(r.status, 200);
-    assert.deepEqual([r.body.company_name, r.body.company_whatsapp, r.body.mazbot_recipients, r.body.public_base_url],
-        ['اسم جديد', '96871111111', '76979066', 'https://calcshutter.radma.co']);
+    assert.equal(r.body.company_name, 'اسم جديد');
+    assert.equal('company_whatsapp' in r.body, false);
+    assert.equal('mazbot_recipients' in r.body, false);
+    assert.equal('public_base_url' in r.body, false);
     // Customers' «تابع عبر واتساب» link still goes to the company number
     const cfg = await call('GET', '/api/public/chat/config', null, null);
     assert.equal(cfg.body.whatsapp, '96871111111');

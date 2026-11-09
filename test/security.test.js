@@ -58,7 +58,8 @@ test('Cloud API: the GET verification handshake still works on its own', async (
 
 test('MazBot does not depend on any Cloud API setting', async (t) => {
     const call = await start(t, { MAZBOT_WEBHOOK_SECRET: 'abcdefghijklmnop1234' });
-    t.after(() => { delete process.env.MAZBOT_WEBHOOK_SECRET; });
+    process.env.MAZBOT_ALLOW_UNSIGNED = '1';
+    t.after(() => { delete process.env.MAZBOT_WEBHOOK_SECRET; delete process.env.MAZBOT_ALLOW_UNSIGNED; });
     const res = await call('/webhooks/mazbot/abcdefghijklmnop1234', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'e1', type: 'user.registered', data: {} })
     });

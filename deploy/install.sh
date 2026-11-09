@@ -2,7 +2,7 @@
 # =============================================================================
 #  Install the pricing system on a fresh Ubuntu 22.04 / 24.04 server (Hostinger VPS)
 #
-#    curl -fsSL https://raw.githubusercontent.com/mohdhadhrami/Aluminum/HEAD/deploy/install.sh -o install.sh
+#    curl -fsSL https://raw.githubusercontent.com/radma-om/Aluminum/HEAD/deploy/install.sh -o install.sh
 #    sudo bash install.sh calc.radma.co you@example.com
 #
 #  Before running: point the subdomain's DNS "A" record at this server's IP.
@@ -12,7 +12,7 @@ set -euo pipefail
 
 DOMAIN="${1:?Usage: sudo bash install.sh <subdomain e.g. calc.radma.co> <email for the HTTPS certificate>}"
 EMAIL="${2:?Usage: sudo bash install.sh <subdomain> <email>}"
-REPO_URL="${REPO_URL:-https://github.com/mohdhadhrami/Aluminum.git}"
+REPO_URL="${REPO_URL:-https://github.com/radma-om/Aluminum.git}"
 APP_DIR=/opt/radma-calc
 DATA_DIR=/var/lib/radma-calc
 APP_USER=radmacalc
@@ -41,7 +41,7 @@ else
     if ! git clone "$REPO_URL" "$APP_DIR"; then
         echo "Could not clone $REPO_URL."
         echo "If the repository is private, run again with a read token:"
-        echo "  REPO_URL=https://<TOKEN>@github.com/mohdhadhrami/Aluminum.git sudo -E bash install.sh $DOMAIN $EMAIL"
+        echo "  REPO_URL=https://<TOKEN>@github.com/radma-om/Aluminum.git sudo -E bash install.sh $DOMAIN $EMAIL"
         exit 1
     fi
 fi

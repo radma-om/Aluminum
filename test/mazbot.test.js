@@ -191,7 +191,9 @@ test('a gate-motors request uses its own template with 6 values', async (t) => {
 
 test('the MazBot webhook records what it receives, only with the right secret', async (t) => {
     process.env.MAZBOT_WEBHOOK_SECRET = 'abcdefghijklmnop1234';
-    t.after(() => { delete process.env.MAZBOT_WEBHOOK_SECRET; });
+    // This test covers the path-secret compatibility mode; production requires HMAC.
+    process.env.MAZBOT_ALLOW_UNSIGNED = '1';
+    t.after(() => { delete process.env.MAZBOT_WEBHOOK_SECRET; delete process.env.MAZBOT_ALLOW_UNSIGNED; });
     const app = await startApp();
     t.after(() => app.server.close());
     const hook = app.base + '/webhooks/mazbot/abcdefghijklmnop1234';

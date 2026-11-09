@@ -95,6 +95,61 @@ test('an employee signs in and only reaches the sections given to them', async (
     assert.strictEqual((await call('GET', '/api/admin/dashboard', null, boss)).status, 200);
 });
 
+test('the products section cannot read or change purchase costs', async (t) => {
+    const { db, server, call, login } = await start();
+    t.after(() => server.close());
+
+    const product = await call('POST', '/api/admin/products', {
+        category: 'accessory', name: 'منتج اختبار الصلاحيات', unit: 'piece', purchase_price: 12, profit_percent: 20
+    });
+    assert.strictEqual(product.status, 201);
+    await call('POST', '/api/admin/purchases', {
+        product_id: product.body.id, supplier: 'مورد اختبار', quantity: 2, unit_price: 12, currency: 'OMR', exchange_rate: 1
+    });
+    await call('POST', '/api/admin/users', {
+        username: 'catalogonly', display_name: 'كتالوج فقط', password: 'catalog-pass-1', permissions: ['products']
+    });
+    const token = await login('catalogonly', 'catalog-pass-1');
+
+    const settings = await call('GET', '/api/admin/settings', null, token);
+    assert.strictEqual(settings.status, 200);
+    assert.strictEqual('lme' in settings.body, false);
+    assert.strictEqual('agent_instructions' in settings.body, false);
+    assert.strictEqual('mazbot_recipients' in settings.body, false);
+
+    const products = await call('GET', '/api/admin/products', null, token);
+    assert.strictEqual(products.status, 200);
+    const listed = products.body.find((p) => p.id === product.body.id);
+    assert.ok(listed);
+    assert.strictEqual('purchase_price' in listed, false);
+    assert.strictEqual('unit_cost' in listed, false);
+    assert.strictEqual('profit_percent' in listed, false);
+
+    const history = await call('GET', `/api/admin/products/${product.body.id}/history`, null, token);
+    assert.strictEqual(history.status, 200);
+    assert.deepStrictEqual(history.body.purchases, []);
+    assert.ok(history.body.changes.every((c) => !['purchase_price', 'profit_percent'].includes(c.field)));
+
+    const denied = await call('PUT', `/api/admin/products/${product.body.id}`, { purchase_price: 99 }, token);
+    assert.strictEqual(denied.status, 403);
+});
+
+test('integration staff cannot read the bearer secret from the MazBot webhook URL', async (t) => {
+    process.env.MAZBOT_WEBHOOK_SECRET = 'abcdefghijklmnop1234';
+    t.after(() => { delete process.env.MAZBOT_WEBHOOK_SECRET; });
+    const { server, call, login } = await start();
+    t.after(() => server.close());
+    await call('POST', '/api/admin/users', {
+        username: 'integrations', display_name: 'الربط', password: 'integrations-pass-1', permissions: ['integrations']
+    });
+    const token = await login('integrations', 'integrations-pass-1');
+    const staffView = await call('GET', '/api/admin/mazbot/inbound', null, token);
+    assert.strictEqual(staffView.status, 200);
+    assert.strictEqual(staffView.body.webhook_path, null);
+    const managerView = await call('GET', '/api/admin/mazbot/inbound');
+    assert.strictEqual(managerView.body.webhook_path, '/webhooks/mazbot/abcdefghijklmnop1234');
+});
+
 test('wilayah fees: overhead / motors staff change only their own fee', async (t) => {
     const { db, server, call, login } = await start();
     t.after(() => server.close());

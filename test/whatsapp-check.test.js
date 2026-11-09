@@ -66,7 +66,8 @@ test('agent switched off, paused number, missing AI key and MazBot login are eac
     const fake = await fakeMazbot();
     t.after(() => fake.server.close());
     process.env.MAZBOT_WEBHOOK_SECRET = 'abcdefghijklmnop1234';
-    t.after(() => { delete process.env.MAZBOT_WEBHOOK_SECRET; });
+    process.env.MAZBOT_ALLOW_UNSIGNED = '1';
+    t.after(() => { delete process.env.MAZBOT_WEBHOOK_SECRET; delete process.env.MAZBOT_ALLOW_UNSIGNED; });
     const db = openDatabase(':memory:');
     const server = http.createServer(createApp(db));
     await new Promise((r) => server.listen(0, r));
@@ -183,14 +184,14 @@ test('MazBot signature: correct accepted; wrong, missing and a changed body refu
     }
 });
 
-test('MazBot without a signing secret: still accepted (integration unchanged) and recorded as unchecked', async (t) => {
+test('MazBot without a signing secret is rejected and reported as unsafe', async (t) => {
     const { send, lastSig, db } = await webhookApp(t, null);
-    assert.strictEqual((await send(event('مرحبا'), null)).status, 200);
-    assert.strictEqual(lastSig().signature, 'unchecked');
+    assert.strictEqual((await send(event('مرحبا'), null)).status, 401);
+    assert.deepStrictEqual({ ...lastSig() }, { signature: 'missing', status: 'bad_signature' });
     const r = await check.run(db, { live: false });
-    assert.strictEqual(byKey(r, 'signature').level, 'warn');
-    assert.match(byKey(r, 'signature').title, /غير مفعّل/);
-    assert.match(byKey(r, 'signature').detail, /دون التأكد أنه من MazBot/);
+    assert.strictEqual(byKey(r, 'signature').level, 'bad');
+    assert.match(byKey(r, 'signature').title, /غير مضبوط/);
+    assert.match(byKey(r, 'signature').detail, /يرفض النظام/);
 });
 
 test('diagnostics never call the signature "sound" without a verified external request', async (t) => {
@@ -260,8 +261,8 @@ test('a reply MazBot accepted shows its message id, and a later failure event fr
     });
     await new Promise((r) => server.listen(0, r));
     t.after(() => server.close());
-    Object.assign(process.env, { MAZBOT_BASE_URL: `http://127.0.0.1:${server.address().port}/api`, MAZBOT_API_KEY: 'k', MAZBOT_STAFF_EMAIL: 'e', MAZBOT_STAFF_PASSWORD: 'p', ANTHROPIC_API_KEY: 'test', MAZBOT_WEBHOOK_SECRET: 'abcdefghijklmnop1234' });
-    t.after(() => { delete process.env.MAZBOT_WEBHOOK_SECRET; });
+    Object.assign(process.env, { MAZBOT_BASE_URL: `http://127.0.0.1:${server.address().port}/api`, MAZBOT_API_KEY: 'k', MAZBOT_STAFF_EMAIL: 'e', MAZBOT_STAFF_PASSWORD: 'p', ANTHROPIC_API_KEY: 'test', MAZBOT_WEBHOOK_SECRET: 'abcdefghijklmnop1234', MAZBOT_ALLOW_UNSIGNED: '1' });
+    t.after(() => { delete process.env.MAZBOT_WEBHOOK_SECRET; delete process.env.MAZBOT_ALLOW_UNSIGNED; });
     mazbot._reset();
     const db = openDatabase(':memory:');
     saveSettings(db, { mazbot_agent_enabled: true });

@@ -257,6 +257,7 @@ function renderProducts() {
     const filter = $id('productFilter').value;
     const rows = products.filter((p) => !filter || p.category === filter);
     const defaultProfit = parseFloat($id('profitPercent').value) || 0;
+    const canViewCosts = canSee('purchases');
     $id('productsBody').innerHTML = rows.map((p) => `
         <tr style="${p.active ? '' : 'opacity:0.5'}">
             <td>${esc(CATEGORY_NAMES[p.category])}</td>
@@ -264,8 +265,8 @@ function renderProducts() {
                 ${p.notes ? '<br><small style="color:var(--text-light)">' + esc(p.notes) + '</small>' : ''}</td>
             <td>${esc(UNIT_NAMES[p.unit] || p.unit)}</td>
             <td>${p.pricing_mode === 'lme' ? '<span class="badge lme">LME</span>' : '<span class="badge">يدوي</span>'}</td>
-            <td>${p.unit_cost.toFixed(3)}</td>
-            <td>${p.profit_percent ?? defaultProfit + ' (افتراضي)'}</td>
+            <td>${canViewCosts && p.unit_cost != null ? Number(p.unit_cost).toFixed(3) : '—'}</td>
+            <td>${canViewCosts ? (p.profit_percent ?? defaultProfit + ' (افتراضي)') : '—'}</td>
             <td><strong>${p.unit_price.toFixed(2)}</strong>${p.sell_price !== null ? ' <small>(ثابت)</small>' : ''}</td>
             <td>${p.is_public ? '<span class="badge on">نعم</span>' : '<span class="badge">لا</span>'}</td>
             <td style="white-space:nowrap">
@@ -283,7 +284,8 @@ function onProductCategoryChange() {
     $id('pPricingModeGroup').hidden = !isSlat;
     const lme = $id('pPricingMode').value === 'lme';
     document.querySelectorAll('.lme-only').forEach((el) => { el.hidden = !lme; });
-    $id('pPurchaseGroup').hidden = lme;
+    $id('pPurchaseGroup').hidden = !canSee('purchases') || lme;
+    $id('pProfitGroup').hidden = !canSee('purchases');
 }
 
 function resetProductForm() {
@@ -311,7 +313,7 @@ function editProduct(id) {
     $id('pType').value = p.type || '';
     $id('pUnit').value = p.unit;
     $id('pPricingMode').value = p.pricing_mode;
-    $id('pPurchase').value = p.purchase_price;
+    $id('pPurchase').value = p.purchase_price ?? '';
     $id('pThickness').value = p.thickness ?? '';
     $id('pWeight').value = p.weight_per_meter ?? '';
     $id('pProfit').value = p.profit_percent ?? '';
@@ -333,16 +335,18 @@ async function saveProduct() {
         type: $id('pType').value,
         unit: $id('pUnit').value,
         pricing_mode: $id('pPricingMode').value,
-        purchase_price: Number($id('pPurchase').value) || 0,
         thickness: numOrNull($id('pThickness').value),
         weight_per_meter: numOrNull($id('pWeight').value),
-        profit_percent: numOrNull($id('pProfit').value),
         sell_price: numOrNull($id('pSell').value),
         notes: $id('pNotes').value,
         painted: $id('pPainted').checked,
         is_public: $id('pPublic').checked,
         active: $id('pActive').checked
     };
+    if (canSee('purchases')) {
+        body.purchase_price = Number($id('pPurchase').value) || 0;
+        body.profit_percent = numOrNull($id('pProfit').value);
+    }
     try {
         await api(id ? 'PUT' : 'POST', id ? `/api/admin/products/${id}` : '/api/admin/products', body);
         await loadProducts();
@@ -1684,6 +1688,10 @@ async function initAdmin() {
 /* Show only the sections of this account; open the first one it may use */
 function applyPermissions() {
     const manager = ME.role === 'manager';
+    if (!manager) {
+        $id('pPurchaseGroup').hidden = !canSee('purchases');
+        $id('pProfitGroup').hidden = !canSee('purchases');
+    }
     document.querySelectorAll('.sidebar .tab-btn[data-tab]').forEach((b) => {
         const tab = b.dataset.tab;
         b.hidden = ['users', 'audit', 'backup'].includes(tab) ? !manager : !canSee(tab);

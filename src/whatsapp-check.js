@@ -102,13 +102,18 @@ async function run(db, { live = true } = {}) {
 
     // 2) Signature: judged from the latest external request, never from the secret alone
     const signingSet = Boolean(process.env.MAZBOT_SIGNING_SECRET);
+    const unsignedAllowed = process.env.MAZBOT_ALLOW_UNSIGNED === '1';
     const latestSigned = external.find((e) => e.signature === 'verified' || e.signature === 'bad' || e.status === 'bad_signature');
     const latestIsBad = latestSigned && (latestSigned.signature === 'bad' || latestSigned.status === 'bad_signature');
     const olderBad = external.filter((e) => e !== latestSigned && (e.signature === 'bad' || e.status === 'bad_signature'));
-    if (!signingSet) {
+    if (!signingSet && !unsignedAllowed) {
+        add('signature', 'bad', 'التحقق من توقيع MazBot غير مضبوط',
+            'MAZBOT_SIGNING_SECRET غير موجود، لذلك يرفض النظام رسائل MazBot بدلاً من قبول طلبات غير موثقة.',
+            'انسخ «Webhook signing secret» من صفحة الـ Webhook في MazBot وضعه في MAZBOT_SIGNING_SECRET ثم أرسل رسالة تجربة.');
+    } else if (!signingSet) {
         add('signature', 'warn', 'التحقق من التوقيع غير مفعّل',
             'MAZBOT_SIGNING_SECRET غير موجود، فالنظام يقبل أي طلب يصل إلى رابط الـ Webhook دون التأكد أنه من MazBot. الرد يعمل، والحماية الوحيدة سرية الرابط.',
-            'لتفعيل التحقق: انسخ «Webhook signing secret» من صفحة الـ Webhook في MazBot وضعه في MAZBOT_SIGNING_SECRET في هوستنجر، ثم أعد النشر وأرسل رسالة تجربة من واتساب وافحص هنا.');
+            'احذف MAZBOT_ALLOW_UNSIGNED، ثم انسخ «Webhook signing secret» من صفحة الـ Webhook في MazBot وضعه في MAZBOT_SIGNING_SECRET وأرسل رسالة تجربة.');
     } else if (!latestSigned) {
         add('signature', 'warn', 'لا يوجد دليل بعد على صحة التوقيع',
             'MAZBOT_SIGNING_SECRET مضبوط، لكن لم يصل منذ ضبطه أي طلب من MazBot اجتاز التحقق أو فشل فيه (وجود السر وحده لا يثبت أنه يطابق MazBot).',

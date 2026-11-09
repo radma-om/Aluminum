@@ -196,6 +196,21 @@ test('backups never carry two-step secrets, and a restore keeps each account\'s 
     assert.equal(secretOf(db, 'salem'), secret, 'restore keeps the current two-step secret');
 });
 
+test('backups never carry outgoing webhook HMAC secrets', async () => {
+    const db = openDatabase(':memory:');
+    db.prepare("INSERT INTO webhooks (name, url, secret, events) VALUES ('sink', 'https://example.com/hook', 'webhook-secret-for-test', '*')").run();
+    const file = await backup.exportWorkbook(db);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(file);
+    const ws = wb.getWorksheet('Webhooks');
+    const header = ws.getRow(1).values.map((v) => String(v || ''));
+    assert.strictEqual(header.includes('secret'), false);
+    assert.strictEqual(file.includes(Buffer.from('webhook-secret-for-test')), false);
+    db.prepare("UPDATE webhooks SET secret = 'live-secret-kept-on-server'").run();
+    await backup.restoreWorkbook(db, file);
+    assert.strictEqual(db.prepare('SELECT secret FROM webhooks WHERE name = ?').get('sink').secret, 'live-secret-kept-on-server');
+});
+
 /* ------------------------------ Activity log ------------------------------ */
 
 test('the activity log records who changed what, before → after, without secrets', async (t) => {

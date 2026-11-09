@@ -678,7 +678,7 @@ function migrate(db) {
     addColumns('inbound_events', { status: 'TEXT', event_key: 'TEXT' });
     // Gate motors have their own installation fee per wilayah (NULL = set after a site visit)
     addColumns('regions', { motor_installation_fee: 'REAL' });
-    // MazBot webhook requests: the signature check result (verified / bad / unchecked = no signing secret)
+    // MazBot webhook requests: the signature check result (verified / bad / missing / unchecked in local compatibility mode)
     addColumns('inbound_events', { signature: 'TEXT' });
     // What MazBot answered when the reply was sent (its message id / status), to follow up a reply that never arrived
     addColumns('inbound_events', { reply_json: 'TEXT' });

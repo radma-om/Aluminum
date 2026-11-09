@@ -38,24 +38,35 @@ function isPublicAddress(address) {
     return !blocked.check(address, family === 4 ? 'ipv4' : 'ipv6');
 }
 
-/* Throws (status 400) unless the URL is http(s) and its host resolves only to public addresses */
-async function assertPublicUrl(value) {
+async function addressesFor(host) {
+    if (net.isIP(host)) return [host];
+    try {
+        return (await dns.lookup(host, { all: true, verbatim: true })).map((a) => a.address);
+    } catch {
+        throw err(`تعذر العثور على النطاق «${host}»`);
+    }
+}
+
+/* Parse and resolve a target once. The addresses are returned to the caller so
+   the eventual connection can use the same checked address (no DNS-rebinding
+   gap between validation and delivery). */
+async function resolvePublicUrl(value) {
     let url;
     try { url = new URL(String(value)); } catch { throw err('الرابط غير صالح'); }
     if (!['http:', 'https:'].includes(url.protocol)) throw err('يجب أن يبدأ الرابط بـ http أو https');
     if (url.username || url.password) throw err('لا تضع اسم مستخدم أو كلمة مرور داخل الرابط');
-    if (allowPrivate()) return url;
     const host = url.hostname.replace(/^\[|\]$/g, '');
-    if (/^localhost$|\.localhost$|\.local$|\.internal$/i.test(host)) throw err('لا يُسمح بالعناوين الداخلية أو المحلية في الـ Webhook');
-    let addresses;
-    if (net.isIP(host)) addresses = [host];
-    else {
-        try { addresses = (await dns.lookup(host, { all: true, verbatim: true })).map((a) => a.address); } catch { throw err(`تعذر العثور على النطاق «${host}»`); }
-    }
-    if (!addresses.length || !addresses.every(isPublicAddress)) {
+    const addresses = await addressesFor(host);
+    if (!allowPrivate() && (/^localhost$|\.localhost$|\.local$|\.internal$/i.test(host) ||
+        !addresses.length || !addresses.every(isPublicAddress))) {
         throw err('لا يُسمح بالعناوين الداخلية أو المحلية في الـ Webhook — استخدم رابطاً عاماً على الإنترنت');
     }
-    return url;
+    return { url, host, addresses };
 }
 
-module.exports = { assertPublicUrl, isPublicAddress, allowPrivate };
+/* Throws (status 400) unless the URL is http(s) and its host resolves only to public addresses */
+async function assertPublicUrl(value) {
+    return (await resolvePublicUrl(value)).url;
+}
+
+module.exports = { assertPublicUrl, resolvePublicUrl, isPublicAddress, allowPrivate };

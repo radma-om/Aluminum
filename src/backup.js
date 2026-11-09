@@ -7,7 +7,8 @@
    - Staff accounts are saved with their password HASHES only (never a
      password, never an environment secret, never a two-step sign-in
      secret); login sessions are not saved, and every session ends after a
-     successful restore. Accounts keep their current two-step setup.
+     successful restore. Accounts and outgoing Webhooks keep their current
+     live secrets when a backup is restored.
    Logs (webhook deliveries, incoming webhook requests, AI conversation
    history, temporary agent pauses) are not included; the webhook delivery
    log is emptied when the webhooks are replaced, so it never points at a
@@ -59,9 +60,14 @@ const GROUPS = [['leads', 'lead_messages', 'lead_notes'], ['invoices', 'payments
 const INFO_SHEET = 'معلومات';
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
 
-/* Never written to the file: two-step sign-in secrets (a copy sent by email must not carry them).
-   A restore keeps the current secret of each account with the same username. */
-const NOT_EXPORTED = { staff_users: new Set(['totp_secret', 'totp_pending', 'totp_last_step']) };
+/* Never written to the file: two-step sign-in and outgoing Webhook secrets (a copy sent by email
+   must not carry them). A restore keeps the current live secret when the same record is present. */
+const NOT_EXPORTED = {
+    staff_users: new Set(['totp_secret', 'totp_pending', 'totp_last_step']),
+    // A backup may be emailed or copied outside the server. Webhook HMAC
+    // secrets must never leave the live database in that file.
+    webhooks: new Set(['secret'])
+};
 const columnsOf = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
 const exportedColumns = (db, table) => columnsOf(db, table).filter((c) => !(NOT_EXPORTED[table] && NOT_EXPORTED[table].has(c)));
 
@@ -148,6 +154,8 @@ async function restoreWorkbook(db, buffer) {
             db.prepare('DELETE FROM staff_sessions').run(); // everyone signs in again after a restore
             const twoStep = data.staff_users
                 ? db.prepare('SELECT username, totp_secret, totp_last_step FROM staff_users WHERE totp_secret IS NOT NULL').all() : [];
+            const webhookSecrets = data.webhooks
+                ? db.prepare('SELECT id, name, url, secret FROM webhooks WHERE secret IS NOT NULL').all() : [];
             for (const [table] of [...present].reverse()) db.prepare(`DELETE FROM ${table}`).run();
             for (const [table, label] of present) {
                 const cols = exportedColumns(db, table).filter((c) => data[table].header.includes(c));
@@ -158,6 +166,8 @@ async function restoreWorkbook(db, buffer) {
             }
             const keep2fa = db.prepare('UPDATE staff_users SET totp_secret = ?, totp_last_step = ? WHERE username = ?');
             for (const u of twoStep) keep2fa.run(u.totp_secret, u.totp_last_step, u.username);
+            const keepWebhookSecret = db.prepare('UPDATE webhooks SET secret = ? WHERE id = ? AND name = ? AND url = ?');
+            for (const hook of webhookSecrets) keepWebhookSecret.run(hook.secret, hook.id, hook.name, hook.url);
             // Motors items from a backup of version 3.0.0 (no sections yet) join the current sections
             require('./motors').linkItems(db);
             const broken = db.prepare('PRAGMA foreign_key_check').all();

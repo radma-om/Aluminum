@@ -64,6 +64,25 @@ function withPrices(product, settings) {
     };
 }
 
+/* Purchase prices and margins are a separate permission from the product catalog.
+   Keep this check close to the serializer so a route cannot accidentally return
+   the raw products row to a catalog-only employee. */
+const canSeeProductCosts = (user) => user.role === 'manager' || staff.can(user, 'purchases');
+const productForUser = (product, settings, user) => {
+    const priced = withPrices(product, settings);
+    if (canSeeProductCosts(user)) return priced;
+    const { purchase_price, profit_percent, unit_cost, ...catalog } = priced;
+    return catalog;
+};
+
+const rejectProductCostFields = (user, body) => {
+    if (canSeeProductCosts(user)) return;
+    if (Object.prototype.hasOwnProperty.call(body || {}, 'purchase_price') ||
+        Object.prototype.hasOwnProperty.call(body || {}, 'profit_percent')) {
+        throw httpError(403, 'تعديل تكلفة الشراء ونسبة الربح يحتاج صلاحية «أسعار الشراء»');
+    }
+};
+
 /* Forget addresses whose last hit is older than the window, so memory does not grow with every
    address ever seen (checked every minute; the timer never keeps the process alive) */
 function sweepEvery(map, windowMs, lastOf) {
@@ -458,7 +477,11 @@ function createApp(db, { agentClient } = {}) {
 
     /* ------------------------- Public API ------------------------- */
 
-    app.get('/api/public/catalog', (req, res) => {
+    // Catalog and live-price calls do not create records, but they still load the
+    // pricing catalog and can be sent repeatedly by an unauthenticated client.
+    const publicReadLimit = rateLimit({ windowMs: 10 * 60_000, max: 120 });
+
+    app.get('/api/public/catalog', publicReadLimit, (req, res) => {
         const settings = getSettings(db);
         const products = db.prepare(`SELECT * FROM products WHERE active = 1 AND is_public = 1
                                      ORDER BY category, name, type`).all();
@@ -525,15 +548,18 @@ function createApp(db, { agentClient } = {}) {
         return { ...Object.fromEntries(keys.map((k) => [k, settings[k]])), promotion: promotions.publicInfo(settings) };
     };
 
-    app.get('/api/public/configurator', (req, res) => {
+    app.get('/api/public/configurator', publicReadLimit, (req, res) => {
         res.json({ ...companyInfo(), locations: doors.locations(db), ...doors.publicCatalog(db) });
     });
 
-    const readDoor = (b) => ({
-        widthCm: b.width_cm, heightCm: b.height_cm, count: Number(b.count) || 1,
-        shutterTypeId: b.shutter_type_id, variantId: b.variant_id, colorId: b.color_id,
-        optionIds: Array.isArray(b.option_ids) ? b.option_ids : [], regionId: b.region_id
-    });
+    const readDoor = (b) => {
+        if (Array.isArray(b.option_ids) && b.option_ids.length > 100) throw httpError(400, 'عدد الإكسسوارات كبير جداً');
+        return {
+            widthCm: b.width_cm, heightCm: b.height_cm, count: Number(b.count) || 1,
+            shutterTypeId: b.shutter_type_id, variantId: b.variant_id, colorId: b.color_id,
+            optionIds: Array.isArray(b.option_ids) ? b.option_ids : [], regionId: b.region_id
+        };
+    };
 
     const publicPrice = (p) => ({
         items: p.items.map(({ product_id, category, ...i }) => i),
@@ -542,7 +568,7 @@ function createApp(db, { agentClient } = {}) {
     });
 
     /* Live price while the customer is choosing (same code that prices the saved quote) */
-    app.post('/api/public/door-price', (req, res) => {
+    app.post('/api/public/door-price', publicReadLimit, (req, res) => {
         res.json(publicPrice(doors.finalPrice(db, readDoor(req.body || {}))));
     });
 
@@ -573,7 +599,7 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Overhead (sectional) gate calculator: same method and data as the company site's ---- */
 
-    app.get('/api/public/overhead', (req, res) => res.json({ ...companyInfo(), ...overhead.publicOverhead(db) }));
+    app.get('/api/public/overhead', publicReadLimit, (req, res) => res.json({ ...companyInfo(), ...overhead.publicOverhead(db) }));
 
     const readOverhead = (b) => ({
         gateType: b.gate_type, widthCm: b.width_cm, heightCm: b.height_cm, motorId: b.motor_id, regionId: b.region_id
@@ -583,7 +609,7 @@ function createApp(db, { agentClient } = {}) {
         ...p, items: p.items.map(({ product_id, category, ...i }) => i)
     });
 
-    app.post('/api/public/overhead-price', (req, res) => {
+    app.post('/api/public/overhead-price', publicReadLimit, (req, res) => {
         res.json(publicOverheadPrice(overhead.overheadPrice(db, readOverhead(req.body || {}))));
     });
 
@@ -599,12 +625,15 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Gate motors (sections: sliding, swing, parking barrier...): kits and accessories ---- */
 
-    app.get('/api/public/motors', (req, res) => res.json({ ...companyInfo(), ...motors.publicMotors(db) }));
+    app.get('/api/public/motors', publicReadLimit, (req, res) => res.json({ ...companyInfo(), ...motors.publicMotors(db) }));
 
-    const readMotors = (b) => ({
-        sectionId: b.section_id ?? b.section, kitId: b.kit_id || null, kitCount: b.kit_count, regionId: b.region_id,
-        parts: Array.isArray(b.parts) ? b.parts : [], installation: b.installation !== false
-    });
+    const readMotors = (b) => {
+        if (Array.isArray(b.parts) && b.parts.length > 100) throw httpError(400, 'عدد قطع المكائن كبير جداً');
+        return {
+            sectionId: b.section_id ?? b.section, kitId: b.kit_id || null, kitCount: b.kit_count, regionId: b.region_id,
+            parts: Array.isArray(b.parts) ? b.parts : [], installation: b.installation !== false
+        };
+    };
 
     app.post('/api/public/motor-quotes', quoteLimit, (req, res) => {
         const body = req.body || {};
@@ -617,7 +646,7 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Website chat (chat bubble on radma.co, see chat-widget.js): the same AI agent ---- */
 
-    app.get('/api/public/chat/config', (req, res) => {
+    app.get('/api/public/chat/config', publicReadLimit, (req, res) => {
         res.setHeader('Access-Control-Allow-Origin', '*'); // read by chat-widget.js on the company website
         const settings = getSettings(db);
         res.json({
@@ -850,7 +879,26 @@ function createApp(db, { agentClient } = {}) {
     admin.put('/users/:id', (req, res) => res.json(staff.update(db, req.params.id, req.body || {})));
     admin.delete('/users/:id', (req, res) => { staff.remove(db, req.params.id); res.status(204).end(); });
 
-    admin.get('/settings', (req, res) => res.json(getSettings(db)));
+    /* Settings contain internal pricing inputs and agent instructions. The route is readable by
+       every signed-in account because the panel uses it for its forms, so return only the groups
+       that account is allowed to work with. Managers keep the complete view. */
+    const settingsForUser = (settings, user) => {
+        if (user.role === 'manager') return settings;
+        const keys = new Set();
+        const add = (list) => list.forEach((key) => keys.add(key));
+        if (staff.can(user, 'pricing')) add(['lme', 'manufacturing', 'painting', 'exchange_rate', 'profit_percent', 'vat_percent', 'tax_mode']);
+        if (staff.can(user, 'pricing') || staff.can(user, 'weight')) add(['slat_thicknesses']);
+        if (staff.can(user, 'motors')) add(['motors_profit_percent']);
+        if (staff.can(user, 'agent')) add(['agent_knowledge', 'agent_instructions']);
+        if (staff.can(user, 'integrations')) add([
+            'company_name', 'company_tagline', 'company_phone', 'company_address', 'company_website',
+            'calculator_notice', 'calculator_notes', 'quote_terms', 'mazbot_agent_enabled',
+            'website_chat_enabled', 'website_chat_greeting'
+        ]);
+        return Object.fromEntries([...keys].filter((key) => Object.prototype.hasOwnProperty.call(settings, key))
+            .map((key) => [key, settings[key]]));
+    };
+    admin.get('/settings', (req, res) => res.json(settingsForUser(getSettings(db), req.user)));
 
     /* Configuration problems shown as a banner in the admin panel (no secret values, only what is missing) */
     admin.get('/system-status', (req, res) => {
@@ -909,6 +957,11 @@ function createApp(db, { agentClient } = {}) {
         if (allowPrivate()) {
             warnings.push({ level: 'danger', text: 'WEBHOOK_ALLOW_PRIVATE_TARGETS=1 مفعّل: الـ Webhooks تستطيع الوصول إلى عناوين الخادم الداخلية. هذا للتجربة فقط — احذفه من متغيرات البيئة.' });
         }
+        if (process.env.MAZBOT_ALLOW_UNSIGNED === '1') {
+            warnings.push({ level: 'danger', text: 'MAZBOT_ALLOW_UNSIGNED=1 مفعّل: النظام يقبل رسائل MazBot دون توقيع HMAC. احذفه في الإنتاج.' });
+        } else if ((process.env.MAZBOT_WEBHOOK_SECRET || '').length >= 16 && !process.env.MAZBOT_SIGNING_SECRET) {
+            warnings.push({ level: 'danger', text: 'MAZBOT_SIGNING_SECRET غير مضبوط: رسائل MazBot ستُرفض حتى يتم تفعيل توقيع HMAC.' });
+        }
         if (process.env.TRUST_PROXY !== undefined) {
             warnings.push({ level: 'warning', text: 'المتغير TRUST_PROXY لم يعد يُستخدم (كان يثق بأي وكيل). احذفه، واستخدم TRUSTED_PROXIES بعناوين صريحة.' });
         }
@@ -923,7 +976,7 @@ function createApp(db, { agentClient } = {}) {
         if (!Object.keys(patch).length) throw httpError(403, 'ليست لديك صلاحية لتعديل هذه الإعدادات');
         const settings = saveSettings(db, patch);
         webhooks.emit(db, 'settings.updated', settings);
-        res.json(settings);
+        res.json(settingsForUser(settings, req.user));
     });
 
     admin.get('/products', (req, res) => {
@@ -931,15 +984,16 @@ function createApp(db, { agentClient } = {}) {
         const where = req.query.category ? 'WHERE category = ?' : '';
         const args = req.query.category ? [req.query.category] : [];
         const rows = db.prepare(`SELECT * FROM products ${where} ORDER BY category, name, type`).all(...args);
-        res.json(rows.map((p) => withPrices(p, settings)));
+        res.json(rows.map((p) => productForUser(p, settings, req.user)));
     });
 
     admin.post('/products', (req, res) => {
+        rejectProductCostFields(req.user, req.body || {});
         const p = parseProduct(req.body || {});
         const cols = Object.keys(p);
         const info = db.prepare(`INSERT INTO products (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
             .run(...cols.map((c) => p[c]));
-        const product = withPrices(getProduct(info.lastInsertRowid), getSettings(db));
+        const product = productForUser(getProduct(info.lastInsertRowid), getSettings(db), req.user);
         webhooks.emit(db, 'product.created', product);
         res.status(201).json(product);
     });
@@ -947,6 +1001,7 @@ function createApp(db, { agentClient } = {}) {
     admin.put('/products/:id', (req, res) => {
         const before = getProduct(req.params.id);
         if (!before) throw httpError(404, 'المنتج غير موجود');
+        rejectProductCostFields(req.user, req.body || {});
         const p = parseProduct(req.body || {}, true);
         const cols = Object.keys(p);
         if (cols.length) {
@@ -958,7 +1013,7 @@ function createApp(db, { agentClient } = {}) {
         for (const f of ['purchase_price', 'sell_price', 'profit_percent']) {
             if (f in p && p[f] !== before[f]) logChange.run(before.id, f, before[f], p[f]);
         }
-        const product = withPrices(getProduct(before.id), getSettings(db));
+        const product = productForUser(getProduct(before.id), getSettings(db), req.user);
         webhooks.emit(db, 'product.updated', product);
         res.json(product);
     });
@@ -972,8 +1027,15 @@ function createApp(db, { agentClient } = {}) {
     });
 
     admin.get('/products/:id/history', (req, res) => {
+        const changes = db.prepare('SELECT * FROM price_history WHERE product_id = ? ORDER BY id DESC').all(Number(req.params.id));
+        if (!canSeeProductCosts(req.user)) {
+            return res.json({
+                changes: changes.filter((c) => !['purchase_price', 'profit_percent'].includes(c.field)),
+                purchases: []
+            });
+        }
         res.json({
-            changes: db.prepare('SELECT * FROM price_history WHERE product_id = ? ORDER BY id DESC').all(Number(req.params.id)),
+            changes,
             purchases: db.prepare('SELECT * FROM purchases WHERE product_id = ? ORDER BY purchased_at DESC, id DESC').all(Number(req.params.id))
         });
     });
@@ -1941,14 +2003,19 @@ function createApp(db, { agentClient } = {}) {
     admin.get('/mazbot/inbound', (req, res) => {
         const secret = process.env.MAZBOT_WEBHOOK_SECRET || '';
         res.json({
-            webhook_path: secret.length >= 16 ? `/webhooks/mazbot/${secret}` : null,
+            // The path secret is a bearer credential. Only managers may copy it.
+            webhook_path: req.user.role === 'manager' && secret.length >= 16 ? `/webhooks/mazbot/${secret}` : null,
             events: db.prepare('SELECT * FROM inbound_events ORDER BY id DESC LIMIT 20').all()
         });
     });
 
     /* ---- "Why no reply on WhatsApp?": every link of the chain, in plain Arabic ---- */
 
-    admin.get('/mazbot/diagnose', asyncRoute(async (req, res) => res.json(await whatsappCheck.run(db))));
+    admin.get('/mazbot/diagnose', asyncRoute(async (req, res) => {
+        const result = await whatsappCheck.run(db);
+        if (req.user.role !== 'manager') result.webhook_path = null;
+        res.json(result);
+    }));
 
     // The whole chain for one number: AI answer, then the reply sent through MazBot
     admin.post('/mazbot/diagnose/simulate', asyncRoute(async (req, res) => {
@@ -2113,9 +2180,14 @@ function createApp(db, { agentClient } = {}) {
         db.prepare(`DELETE FROM inbound_events WHERE id NOT IN (SELECT id FROM inbound_events ORDER BY id DESC LIMIT 100)`).run();
 
         // X-Mazbot-Signature proves the request comes from MazBot (MAZBOT_SIGNING_SECRET from the MazBot webhook page).
-        // Checked over the exact bytes received — never over a re-encoded copy. Without the secret nothing can be
-        // checked: the request is accepted (as before) and recorded as 'unchecked', so the panel says so plainly.
+        // Check the exact bytes received — never a re-encoded copy. Unsigned requests are rejected unless the
+        // explicit local-development escape hatch MAZBOT_ALLOW_UNSIGNED=1 is enabled.
         const signingSecret = process.env.MAZBOT_SIGNING_SECRET || '';
+        const allowUnsigned = process.env.MAZBOT_ALLOW_UNSIGNED === '1';
+        if (!signingSecret && !allowUnsigned) {
+            db.prepare('UPDATE inbound_events SET signature = ?, status = ? WHERE id = ?').run('missing', 'bad_signature', eventId);
+            return res.status(401).json({ error: 'invalid signature' });
+        }
         const signed = signingSecret ? mazbot.verifySignature(raw || Buffer.alloc(0), req.get('x-mazbot-signature'), signingSecret) : null;
         db.prepare('UPDATE inbound_events SET signature = ? WHERE id = ?').run(signed === null ? 'unchecked' : signed ? 'verified' : 'bad', eventId);
         if (signed === false) {
