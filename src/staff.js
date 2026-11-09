@@ -304,6 +304,7 @@ function sectionsFor(method, path) {
         [/^\/invoices\/\d+\/(payments\/\d+|cancel)$/, method === 'GET' ? ['invoices'] : 'manager'],
         [/^\/invoices(\/|$)/, ['invoices']],
         [/^\/work-orders(\/|$)/, ['work_orders']],
+        [/^\/service-requests(\/|$)/, ['work_orders']],
         [/^\/customers\/\d+$/, method === 'DELETE' ? 'manager' : ['customers']],
         [/^\/customers(\/|$)/, ['customers']],
         [/^\/quotes(\/|$)/, ['quotes']],

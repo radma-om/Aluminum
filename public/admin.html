@@ -1827,12 +1827,14 @@
         <div id="tab-work_orders" class="tab-content">
             <div class="card">
                 <div class="card-title"><span class="icon"><i class="fas fa-screwdriver-wrench"></i></span> <span id="woTitle">أوامر العمل — التركيب والصيانة</span></div>
-                <p class="status-text office-only" style="margin:0 0 10px">يُنشأ أمر العمل من الفاتورة (زر «إنشاء أمر عمل»)، أو يدوياً لزيارة صيانة أو معاينة. حدّد الموعد والفني، فيصله بريد بالتفاصيل، ويرى أوامره فقط من حسابه على الجوال — بدون أسعار.</p>
+                <p class="status-text office-only" style="margin:0 0 10px">يُنشأ أمر العمل من الفاتورة (زر «إنشاء أمر عمل»)، أو يدوياً لزيارة صيانة أو معاينة. حدّد الموعد والفني، فيصله بريد بالتفاصيل، ويرى أوامره فقط من حسابه على الجوال — بدون أسعار.
+                    <br><b>طلبات المواعيد:</b> طلبات العملاء من المساعد الذكي (واتساب والموقع). وافق عليها بموعد فتصبح أمر عمل ويصل العميل تأكيد على واتساب، أو ارفضها مع السبب.</p>
                 <div class="filter-row">
                     <div id="woChips" class="check-row" style="margin:0; gap:6px"></div>
                     <select id="woTech" class="office-only" onchange="loadWorkOrders()"></select>
                     <input type="search" id="woSearch" placeholder="بحث: الرقم، العميل، الهاتف، المكان" style="flex:1; min-width:160px; padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-family:inherit" oninput="debouncedWorkOrders()">
                     <button class="btn btn-primary btn-sm office-only" onclick="newWorkOrder()">أمر عمل جديد</button>
+                    <button class="btn btn-outline btn-sm office-only" id="srNew" hidden onclick="newRequest()">تسجيل طلب موعد</button>
                 </div>
                 <div id="woList"></div>
                 <span id="woStatus" class="status-text"></span>
@@ -2256,10 +2258,59 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
                 <div class="form-group"><label>الفني</label><select id="woTechSel"></select></div>
             </div>
             <div class="form-group"><label>المطلوب من الفني</label><textarea id="woDesc" rows="5" maxlength="3000"></textarea></div>
+            <label class="check-row" id="woNotifyRow" hidden><input type="checkbox" id="woNotify"> إبلاغ العميل على واتساب إذا تغيّر الموعد</label>
             <div class="form-buttons">
                 <button class="btn btn-primary" type="submit" id="woSubmit">حفظ</button>
                 <button class="btn btn-outline" type="button" onclick="closeSheet('woSheet')">إلغاء</button>
                 <span id="woSheetStatus" class="status-text"></span>
+            </div>
+        </form>
+    </div>
+
+    <!-- Approve a customer's appointment request -->
+    <div id="srSheet" class="sheet" hidden>
+        <form class="sheet-card" onsubmit="event.preventDefault(); submitApprove();">
+            <button type="button" class="sheet-close" onclick="closeSheet('srSheet')" aria-label="إغلاق">×</button>
+            <h3><i class="fas fa-calendar-check"></i> <span id="srTitle">موافقة على طلب</span></h3>
+            <p class="status-text" id="srInfo" style="margin:0 0 10px"></p>
+            <div class="form-grid">
+                <div class="form-group"><label>نوع العمل</label><select id="srKind"></select></div>
+                <div class="form-group"><label>تاريخ الموعد</label><input type="date" id="srDate" required></div>
+                <div class="form-group"><label>الوقت <span class="unit">(مثلاً 9 صباحاً)</span></label><input type="text" id="srTime" maxlength="40"></div>
+                <div class="form-group"><label>الفني</label><select id="srTech"></select></div>
+                <div class="form-group"><label>العنوان التفصيلي</label><input type="text" id="srAddress" maxlength="200"></div>
+                <div class="form-group"><label>رابط الموقع على الخريطة <span class="unit">(اختياري)</span></label><input type="url" id="srMap" dir="ltr" placeholder="https://maps.app.goo.gl/..."></div>
+            </div>
+            <div class="form-group"><label>المطلوب من الفني</label><textarea id="srDesc" rows="4" maxlength="3000"></textarea></div>
+            <div class="form-group"><label>ملاحظة للعميل <span class="unit">(اختياري — تظهر في رسالة التأكيد)</span></label><input type="text" id="srNote" maxlength="500" placeholder="مثلاً: يرجى تجهيز نقطة كهرباء قريبة"></div>
+            <label class="check-row"><input type="checkbox" id="srNotify"> إرسال تأكيد الموعد للعميل على واتساب</label>
+            <div class="form-buttons">
+                <button class="btn btn-primary" type="submit">موافقة وإنشاء أمر العمل</button>
+                <button class="btn btn-outline" type="button" onclick="closeSheet('srSheet')">إلغاء</button>
+                <span id="srStatus" class="status-text"></span>
+            </div>
+        </form>
+    </div>
+
+    <!-- The office records a request taken by phone -->
+    <div id="srnSheet" class="sheet" hidden>
+        <form class="sheet-card" onsubmit="event.preventDefault(); submitNewRequest();">
+            <button type="button" class="sheet-close" onclick="closeSheet('srnSheet')" aria-label="إغلاق">×</button>
+            <h3><i class="fas fa-calendar-plus"></i> تسجيل طلب موعد</h3>
+            <div class="form-grid">
+                <div class="form-group"><label>نوع العمل</label><select id="srnKind"></select></div>
+                <div class="form-group"><label>اسم العميل</label><input type="text" id="srnName" maxlength="120"></div>
+                <div class="form-group"><label>جوال العميل</label><input type="tel" id="srnPhone" dir="ltr" maxlength="20" placeholder="9XXXXXXX"></div>
+                <div class="form-group"><label>المنطقة / الولاية</label><input type="text" id="srnLocation" maxlength="120"></div>
+                <div class="form-group"><label>العنوان</label><input type="text" id="srnAddress" maxlength="200"></div>
+                <div class="form-group"><label>اليوم المفضل</label><input type="date" id="srnDate"></div>
+                <div class="form-group"><label>الفترة</label><select id="srnPeriod"><option value="">—</option><option value="morning">صباحاً</option><option value="evening">مساءً</option><option value="any">أي وقت</option></select></div>
+            </div>
+            <div class="form-group"><label>المطلوب</label><textarea id="srnDesc" rows="4" maxlength="2000"></textarea></div>
+            <div class="form-buttons">
+                <button class="btn btn-primary" type="submit">تسجيل</button>
+                <button class="btn btn-outline" type="button" onclick="closeSheet('srnSheet')">إلغاء</button>
+                <span id="srnStatus" class="status-text"></span>
             </div>
         </form>
     </div>

@@ -61,6 +61,12 @@ function promoLine(settings) {
     return `\n\nعرض حالي للعملاء: «${p.label}» خصم ${p.percent}% على ${p.applies_to.map((a) => a.name).join(' و')}${p.until ? ` حتى ${p.until}` : ''}. الأسعار التي تعطيك إياها الأدوات تشمل هذا الخصم مسبقاً — لا تخصمه مرة ثانية. اذكر العرض للعميل عند إعطاء السعر لتشجيعه.`;
 }
 
+const WEEKDAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+function todayLine() {
+    const today = require('./leads').localToday();
+    return `${WEEKDAYS[new Date(today + 'T00:00:00Z').getUTCDay()]} ${today}`;
+}
+
 function systemPrompt(settings, db = null) {
     return promoLine(settings) ? basePrompt(settings, db) + promoLine(settings) : basePrompt(settings, db);
 }
@@ -107,7 +113,14 @@ function basePrompt(settings, db = null) {
 - الأسعار بالريال العماني (ر.ع) بخانتين عشريتين.
 - لا تكشف تكاليف الشراء أو نسب الربح أو تفاصيل النظام الداخلية.
 - أجب عن الأسئلة العامة (أوقات العمل، الموقع، الضمان، طرق الدفع، مدة التوريد والتركيب، الخدمات...) من قسمي «معلومات الشركة» و«قاعدة المعرفة» أدناه فقط (وإن وُجدت الأداة search_knowledge فابحث بها). إذا لم تجد الإجابة فيه فلا تخترعها: قل إنك ستتأكد من فريق المبيعات واستخدم request_human.
-- إذا طلب العميل التحدث مع موظف، أو طلب شيئاً خارج نطاق الأدوات ومعلومات الشركة (خصم، موعد معاينة، شكوى، منتج غير موجود)، استخدم request_human وأخبره أن فريق المبيعات سيتواصل معه.
+- إذا طلب العميل التحدث مع موظف، أو طلب شيئاً خارج نطاق الأدوات ومعلومات الشركة (خصم، شكوى، منتج غير موجود)، استخدم request_human وأخبره أن فريق المبيعات سيتواصل معه.
+
+مواعيد التركيب والصيانة والمعاينة (تاريخ اليوم في مسقط: ${todayLine()}):
+- إذا طلب العميل موعد تركيب أو صيانة أو معاينة/قياس: اسأله عن نوع الخدمة، وما المطلوب بالتحديد (مثل: محرك بوابة رول شتر لا يعمل)، والولاية والعنوان، واليوم المفضل وهل يفضّل الصباح أو المساء، واسمه.
+  ثم استخدم request_appointment. أخبره أن الطلب وصل للفريق وأن الموعد يُؤكَّد بعد موافقة الموظف المسؤول برسالة واتساب، ولا تَعِده بموعد محدد أبداً.
+- حوّل كلمات مثل «بكرة» و«الأحد القادم» إلى تاريخ YYYY-MM-DD حسب تاريخ اليوم الذي تعيده my_appointments، أو اسأل العميل عن التاريخ إن لم تكن متأكداً.
+- إذا سأل العميل عن موعده أو حالة طلبه («متى موعد التركيب؟»): استخدم my_appointments وأجبه منها فقط، ولا تخترع موعداً. إذا لم يجد شيئاً فقل ذلك واعرض عليه طلب موعد.
+- إذا أراد العميل تغيير موعد مؤكد أو إلغاءه: استخدم request_human مع ملخص (رقم الطلب والموعد الجديد المطلوب).
 - إذا كتب العميل بالإنجليزية فرد بالإنجليزية.
 - في محادثات الموقع الإلكتروني لا نعرف رقم جوال العميل: اسأله عن رقم جواله (عُماني، 8 أرقام) قبل إنشاء عرض السعر وضعه في customer_phone. في واتساب اترك customer_phone فارغاً (null).
 
@@ -219,6 +232,35 @@ const TOOLS = [
         }
     }
 ];
+
+TOOLS.splice(TOOLS.length - 1, 0,
+    {
+        name: 'request_appointment',
+        description: 'يسجّل طلب موعد تركيب أو صيانة أو معاينة/قياس، ويُرسل للموظف المسؤول للموافقة وتحديد الموعد. لا يؤكد موعداً بنفسه.',
+        strict: true,
+        input_schema: {
+            type: 'object',
+            properties: {
+                kind: { type: 'string', enum: ['installation', 'maintenance', 'inspection'], description: 'installation تركيب، maintenance صيانة، inspection معاينة/قياس' },
+                description: { type: 'string', description: 'المطلوب بالتفصيل: نوع البوابة/المكينة والمشكلة أو العمل المطلوب، وأي رقم عرض سعر ذكره العميل' },
+                location: { type: ['string', 'null'], description: 'الولاية/المنطقة' },
+                address: { type: ['string', 'null'], description: 'العنوان أو أقرب معلم إن ذكره' },
+                preferred_date: { type: ['string', 'null'], description: 'اليوم المفضل بصيغة YYYY-MM-DD، أو null' },
+                preferred_period: { type: ['string', 'null'], enum: ['morning', 'evening', 'any', null], description: 'صباحاً morning، مساءً evening، any أي وقت' },
+                customer_name: { type: 'string' },
+                customer_phone: { type: ['string', 'null'], description: 'رقم جوال العميل — مطلوب في محادثات الموقع، و null في واتساب' }
+            },
+            required: ['kind', 'description', 'location', 'address', 'preferred_date', 'preferred_period', 'customer_name', 'customer_phone'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'my_appointments',
+        description: 'يعرض طلبات المواعيد ومواعيد التركيب/الصيانة لرقم واتساب العميل الذي يحادثك (بانتظار الموافقة، مؤكد، مكتمل...)، وتاريخ اليوم.',
+        strict: true,
+        input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false }
+    }
+);
 
 const overheadChoiceProps = {
     gate_type: { type: 'string', description: 'نوع بوابة الأوفرهيد كما في list_overhead_options، مثل Type A' },
@@ -466,6 +508,21 @@ async function executeTool(name, input, ctx) {
             });
             ctx.events.push({ type: 'quote_created', quote });
             return { ref: quote.ref, total: quote.total, pdf: 'سيتم إرسال رابط ملف PDF للعميل تلقائياً بعد رسالتك' };
+        }
+        case 'request_appointment': {
+            const requests = require('./servicerequests');
+            const r = requests.create(db, { ...input, customer_phone: customerPhone(ctx, input) }, { source: ctx.channel });
+            ctx.events.push({ type: 'service_request', request: r });
+            requests.notifyStaff(db, r).catch((e) => console.error('[requests] notify', e.message));
+            return { ref: r.ref, status: 'وصل الطلب للفريق — يُؤكَّد الموعد بعد موافقة الموظف المسؤول برسالة واتساب' };
+        }
+        case 'my_appointments': {
+            const requests = require('./servicerequests');
+            // Only the number WhatsApp gives: on the website anyone could type someone else's number
+            if (!ctx.phone) {
+                return { today: require('./leads').localToday(), message: 'الاستعلام عن المواعيد متاح عبر واتساب من رقم العميل المسجّل فقط. اطلب منه مراسلتنا على واتساب، أو حوّله لفريق المبيعات.' };
+            }
+            return requests.forCustomer(db, ctx.phone);
         }
         case 'request_human': {
             ctx.events.push({ type: 'human_requested', summary: input.summary });

@@ -13,11 +13,12 @@ let woEditing = null;   // order being edited, or null for a new one
 let woSourceRef = null; // { invoice } when made from an invoice
 
 const isTech = () => ME && ME.role === 'technician';
-const WO_CHIPS = [['open', 'المفتوحة'], ['new', 'بانتظار الجدولة'], ['scheduled', 'مجدول'], ['in_progress', 'قيد التنفيذ'], ['done', 'مكتمل'], ['cancelled', 'ملغى'], ['', 'الكل']];
+let woPendingRequests = 0;
+const WO_CHIPS = [['requests', 'طلبات المواعيد'], ['open', 'المفتوحة'], ['new', 'بانتظار الجدولة'], ['scheduled', 'مجدول'], ['in_progress', 'قيد التنفيذ'], ['done', 'مكتمل'], ['cancelled', 'ملغى'], ['', 'الكل']];
 
 function renderWoChips() {
-    $id('woChips').innerHTML = WO_CHIPS.map(([k, label]) =>
-        `<button type="button" class="chip ${woFilter === k ? 'on' : ''}" onclick="woFilter='${k}'; renderWoChips(); loadWorkOrders()">${esc(label)}</button>`).join('');
+    $id('woChips').innerHTML = WO_CHIPS.filter(([k]) => k !== 'requests' || !isTech()).map(([k, label]) =>
+        `<button type="button" class="chip ${woFilter === k ? 'on' : ''}" onclick="woFilter='${k}'; renderWoChips(); loadWorkOrders()">${esc(label)}${k === 'requests' && woPendingRequests ? ` <span class="badge" style="background:#e67e22;color:#fff">${woPendingRequests}</span>` : ''}</button>`).join('');
 }
 
 let woTimer = null;
@@ -25,6 +26,8 @@ function debouncedWorkOrders() { clearTimeout(woTimer); woTimer = setTimeout(loa
 
 async function loadWorkOrders() {
     if (!online) return;
+    if (woFilter === 'requests' && !isTech()) return loadRequests();
+    $id('srNew').hidden = true;
     const p = new URLSearchParams();
     if (woFilter === 'open') p.set('open', '1');
     else if (woFilter) p.set('status', woFilter);
@@ -41,6 +44,7 @@ async function loadWorkOrders() {
         }
         $id('woTitle').textContent = isTech() ? 'أعمالي' : 'أوامر العمل — التركيب والصيانة';
         woOrders = r.orders;
+        if (woPendingRequests !== (r.pending_requests || 0)) { woPendingRequests = r.pending_requests || 0; renderWoChips(); }
         renderWorkOrders();
         setStatus('woStatus', '');
     } catch (err) {
@@ -125,7 +129,17 @@ async function woHistory(id, btn, forceOpen = false) {
 async function woCancel(id) {
     const reason = prompt('سبب إلغاء أمر العمل:');
     if (!reason || !reason.trim()) return;
-    try { await api('POST', `/api/admin/work-orders/${id}/cancel`, { reason: reason.trim() }); await loadWorkOrders(); } catch (err) { alert(err.message); }
+    const notify = confirm('إبلاغ العميل بالإلغاء على واتساب؟ (السبب يصله في الرسالة)');
+    try {
+        const r = await api('POST', `/api/admin/work-orders/${id}/cancel`, { reason: reason.trim(), notify_customer: notify });
+        woNoticeAlert(r.notice);
+        await loadWorkOrders();
+    } catch (err) { alert(err.message); }
+}
+
+/* What happened to the WhatsApp message to the customer (the change itself is saved either way) */
+function woNoticeAlert(notice) {
+    if (notice && !notice.ok) alert(`تم الحفظ ✓ لكن لم تصل رسالة واتساب للعميل:\n${notice.error}\n\nإذا مرّ أكثر من 24 ساعة على آخر رسالة منه فواتساب لا يسمح إلا بالقوالب — اتصل به أو راسله يدوياً.`);
 }
 
 /* ---- Create / edit (office) ---- */
@@ -168,6 +182,7 @@ async function newWorkOrder(source = null) {
     }
     $id('woTechSel').value = '';
     $id('woSubmit').textContent = 'إنشاء أمر العمل';
+    $id('woNotifyRow').hidden = true;
     setStatus('woSheetStatus', '');
     $id('woSheet').hidden = false;
 }
@@ -191,6 +206,8 @@ async function editWorkOrder(id) {
     $id('woTechSel').value = o.technician_id || '';
     $id('woDesc').value = o.description;
     $id('woSubmit').textContent = 'حفظ';
+    $id('woNotifyRow').hidden = false;
+    $id('woNotify').checked = Boolean(o.scheduled_date);
     setStatus('woSheetStatus', '');
     $id('woSheet').hidden = false;
 }
@@ -204,7 +221,8 @@ async function submitWorkOrder() {
     if ($id('woDesc').value.trim() || woEditing) body.description = $id('woDesc').value.trim();
     try {
         if (woEditing) {
-            await api('PATCH', `/api/admin/work-orders/${woEditing.id}`, body);
+            const r = await api('PATCH', `/api/admin/work-orders/${woEditing.id}`, { ...body, notify_customer: $id('woNotify').checked });
+            woNoticeAlert(r.notice);
         } else if (woSourceRef && woSourceRef.invoice) {
             await api('POST', '/api/admin/work-orders', { ...body, invoice_id: woSourceRef.invoice.id });
         } else {
@@ -223,3 +241,132 @@ window.switchTab = function (tabId) {
     switchTabBeforeWorkOrders(tabId);
     if (online && tabId === 'work_orders') { renderWoChips(); loadWorkOrders(); }
 };
+
+/* ==================== Appointment requests from customers ====================
+   The AI assistant (WhatsApp / website) or the office records a request; the responsible employee
+   approves it with an appointment (→ a work order, the customer is told on WhatsApp) or declines it. */
+let srList = [];
+let srMeta = { kinds: {}, periods: {} };
+let srFilter = 'pending';
+let srApproving = null;
+const SR_SOURCES = { mazbot: 'واتساب (المساعد)', whatsapp: 'واتساب (المساعد)', website: 'الموقع (المساعد)', staff: 'المكتب' };
+const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const srDay = (d) => (d ? `${DAY_NAMES[new Date(d + 'T00:00:00Z').getUTCDay()]} ${d}` : '');
+
+async function loadRequests() {
+    $id('srNew').hidden = false;
+    const p = new URLSearchParams();
+    if (srFilter) p.set('status', srFilter);
+    if ($id('woSearch').value.trim()) p.set('q', $id('woSearch').value.trim());
+    try {
+        const r = await api('GET', '/api/admin/service-requests?' + p);
+        srMeta = { kinds: r.kinds, periods: r.periods };
+        srList = r.requests;
+        const pending = srFilter === 'pending' ? srList.length : woPendingRequests;
+        if (pending !== woPendingRequests) { woPendingRequests = pending; renderWoChips(); }
+        renderRequests();
+        setStatus('woStatus', '');
+    } catch (err) { setStatus('woStatus', err.message, 'err'); }
+}
+
+function renderRequests() {
+    const tabs = [['pending', 'بانتظار الموافقة'], ['approved', 'تمت الموافقة'], ['rejected', 'مرفوض'], ['', 'الكل']].map(([k, l]) =>
+        `<button type="button" class="chip ${srFilter === k ? 'on' : ''}" onclick="srFilter='${k}'; loadRequests()">${l}</button>`).join('');
+    const notice = (r) => !r.customer_notice ? '' : r.customer_notice === 'sent'
+        ? '<span class="status-text" style="color:var(--success)">✓ أُبلغ العميل على واتساب</span>'
+        : `<span class="status-text" style="color:#a93226">⚠️ لم تصل رسالة واتساب للعميل — تواصل معه</span>`;
+    $id('woList').innerHTML = `<div class="check-row" style="margin:0 0 10px; gap:6px">${tabs}</div>` + (srList.map((r) => {
+        const phone = String(r.customer_phone).replace(/\D/g, '');
+        return `<div class="wo-card ${r.status === 'pending' ? '' : 'done'}">
+            <div class="wo-head"><strong>${esc(r.ref)}</strong> <span class="badge">${esc(r.kind_label)}</span>
+                <span class="badge" style="${r.status === 'pending' ? 'background:#fff4e5;color:#8a5a00' : ''}">${esc(r.status_label)}</span>
+                <span class="status-text">${esc(SR_SOURCES[r.source] || r.source || '')} — ${esc(String(r.created_at).slice(0, 16))}</span></div>
+            <div class="wo-line"><i class="fas fa-user"></i> <strong>${esc(r.customer_name)}</strong>
+                — <a href="tel:+${esc(phone)}" dir="ltr">+${esc(phone)}</a>
+                — <a href="https://wa.me/${esc(phone)}" target="_blank" rel="noopener">واتساب</a></div>
+            <div class="wo-line"><i class="fas fa-location-dot"></i> ${esc([r.location, r.address].filter(Boolean).join(' — ') || '—')}</div>
+            <div class="wo-line"><i class="fas fa-calendar"></i> يفضّل: ${r.preferred_date ? esc(srDay(r.preferred_date)) : 'غير محدد'}${r.period_label ? ' — ' + esc(r.period_label) : ''}</div>
+            <div class="wo-desc">${esc(r.description)}</div>
+            ${r.status === 'approved' ? `<div class="wo-line"><i class="fas fa-check"></i> الموعد: ${esc(srDay(r.scheduled_date))}${r.scheduled_time ? ' — ' + esc(r.scheduled_time) : ''} — أمر العمل ${esc(r.work_order_number || '')}${r.decided_by ? ' — ' + esc(r.decided_by) : ''}</div>` : ''}
+            ${r.status === 'rejected' ? `<div class="wo-line"><i class="fas fa-xmark"></i> السبب: ${esc(r.decision_note || '')}${r.decided_by ? ' — ' + esc(r.decided_by) : ''}</div>` : ''}
+            ${notice(r)}
+            ${r.status === 'pending' ? `<div class="wo-actions">
+                <button class="btn btn-primary btn-sm" onclick="openApprove(${r.id})"><i class="fas fa-calendar-check"></i> موافقة وتحديد الموعد</button>
+                <button class="btn btn-outline btn-sm" style="color:#a93226" onclick="rejectRequest(${r.id})">رفض</button>
+            </div>` : ''}
+        </div>`;
+    }).join('') || '<div class="empty-chart" style="padding:30px 10px">لا توجد طلبات بهذا التصنيف</div>');
+}
+
+async function openApprove(id) {
+    try { await ensureWoMeta(); } catch (err) { return alert(err.message); }
+    const r = srList.find((x) => x.id === id);
+    if (!r) return;
+    srApproving = r;
+    $id('srTitle').textContent = `موافقة على ${r.ref} — ${r.kind_label}`;
+    $id('srInfo').textContent = `${r.customer_name} (+${r.customer_phone}) — يفضّل ${r.preferred_date ? srDay(r.preferred_date) : 'أي يوم'}${r.period_label ? ' ' + r.period_label : ''}`;
+    $id('srKind').innerHTML = Object.entries(woMeta.kinds).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('');
+    $id('srKind').value = r.kind;
+    $id('srTech').innerHTML = '<option value="">— بدون فني الآن —</option>' + woMeta.technicians.filter((t) => t.active).map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    $id('srDate').value = r.preferred_date || '';
+    $id('srTime').value = r.preferred_period === 'morning' ? '9 صباحاً' : r.preferred_period === 'evening' ? '4 مساءً' : '';
+    $id('srAddress').value = r.address || '';
+    $id('srMap').value = '';
+    $id('srDesc').value = r.description;
+    $id('srNote').value = '';
+    $id('srNotify').checked = true;
+    setStatus('srStatus', '');
+    $id('srSheet').hidden = false;
+}
+
+async function submitApprove() {
+    const r = srApproving;
+    try {
+        const out = await api('POST', `/api/admin/service-requests/${r.id}/approve`, {
+            kind: $id('srKind').value, scheduled_date: $id('srDate').value, scheduled_time: $id('srTime').value.trim(),
+            technician_id: $id('srTech').value ? Number($id('srTech').value) : null, address: $id('srAddress').value.trim(),
+            map_url: $id('srMap').value.trim(), description: $id('srDesc').value.trim(), note: $id('srNote').value.trim(),
+            notify: $id('srNotify').checked
+        });
+        closeSheet('srSheet');
+        if (out.notice && out.notice.ok) alert(`تم ✓ أمر العمل ${out.order.number}، وأُرسل تأكيد الموعد للعميل على واتساب.`);
+        else if (out.notice) woNoticeAlert(out.notice);
+        else alert(`تم ✓ أمر العمل ${out.order.number}.`);
+        await loadRequests();
+    } catch (err) { setStatus('srStatus', err.message, 'err'); }
+}
+
+async function rejectRequest(id) {
+    const reason = prompt('سبب الرفض (يصل للعميل في رسالة واتساب):');
+    if (!reason || !reason.trim()) return;
+    const notify = confirm('إرسال الرسالة للعميل على واتساب الآن؟');
+    try {
+        const out = await api('POST', `/api/admin/service-requests/${id}/reject`, { reason: reason.trim(), notify });
+        woNoticeAlert(out.notice);
+        await loadRequests();
+    } catch (err) { alert(err.message); }
+}
+
+/* The office records a request taken by phone (then approves it like any other) */
+async function newRequest() {
+    try { await ensureWoMeta(); } catch (err) { return alert(err.message); }
+    $id('srnKind').innerHTML = Object.entries(woMeta.kinds).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('');
+    $id('srnKind').value = 'maintenance';
+    for (const id of ['srnName', 'srnPhone', 'srnLocation', 'srnAddress', 'srnDate', 'srnDesc']) $id(id).value = '';
+    $id('srnPeriod').value = '';
+    setStatus('srnStatus', '');
+    $id('srnSheet').hidden = false;
+}
+
+async function submitNewRequest() {
+    try {
+        await api('POST', '/api/admin/service-requests', {
+            kind: $id('srnKind').value, customer_name: $id('srnName').value.trim(), customer_phone: $id('srnPhone').value.trim(),
+            location: $id('srnLocation').value.trim(), address: $id('srnAddress').value.trim(),
+            preferred_date: $id('srnDate').value || null, preferred_period: $id('srnPeriod').value || null, description: $id('srnDesc').value.trim()
+        });
+        closeSheet('srnSheet');
+        srFilter = 'pending';
+        await loadRequests();
+    } catch (err) { setStatus('srnStatus', err.message, 'err'); }
+}
