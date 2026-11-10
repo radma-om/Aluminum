@@ -28,7 +28,31 @@ const now = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 
 /* Today's date in Oman (follow-up dates are local dates) */
 const localToday = (nowMs = Date.now()) => new Date(nowMs + 4 * 3600_000).toISOString().slice(0, 10);
-const markStaff = (db, leadId) => db.prepare('UPDATE leads SET last_staff_at = ? WHERE id = ?').run(now(), leadId);
+const markStaff = (db, leadId, author = null) => db.prepare('UPDATE leads SET last_staff_at = ?, last_staff_by = ? WHERE id = ?')
+    .run(now(), clip(author, 80) || null, leadId);
+
+const storedMs = (value) => {
+    const text = String(value || '');
+    if (!text) return NaN;
+    const parsed = Date.parse(text.includes('T') ? text : text.replace(' ', 'T') + 'Z');
+    return Number.isFinite(parsed) ? parsed : NaN;
+};
+
+/* An assigned employee has 48 hours to make a real follow-up action. Manager actions do not
+   clear this warning; last_staff_by lets the dashboard distinguish the two. */
+function assignmentOverdueOf(lead, { hours = 48, nowMs = Date.now() } = {}) {
+    if (!OPEN_STATUSES.includes(lead.status) || !lead.assigned_to || !lead.assigned_at) return null;
+    const assignedMs = storedMs(lead.assigned_at);
+    if (!Number.isFinite(assignedMs) || nowMs - assignedMs < hours * 3600_000) return null;
+    const lastMs = storedMs(lead.last_staff_at);
+    if (lead.last_staff_by === lead.assigned_to && Number.isFinite(lastMs) && lastMs >= assignedMs) return null;
+    return {
+        reason: 'assigned_overdue',
+        assigned_at: lead.assigned_at,
+        hours: Math.max(hours, Math.floor((nowMs - assignedMs) / 3600_000)),
+        assigned_to: lead.assigned_to
+    };
+}
 
 /* Why an open customer needs following up now, or null:
    - 'due' / 'overdue': the follow-up date is today / has passed;
@@ -119,7 +143,7 @@ function quoteCreated(db, quote, { key = null, channel = 'calculator' } = {}) {
 
 /* ---- Admin ---- */
 
-function list(db, { status = '', assigned = '', channel = '', q = '', open = false, mineOf = null, attention = false, staleDays = 3 } = {}) {
+function list(db, { status = '', assigned = '', channel = '', q = '', open = false, mineOf = null, attention = false, overdue = false, staleDays = 3 } = {}) {
     const where = [];
     const args = [];
     if (mineOf) { where.push("(assigned_to = ? OR IFNULL(assigned_to, '') = '')"); args.push(mineOf); }
@@ -141,8 +165,8 @@ function list(db, { status = '', assigned = '', channel = '', q = '', open = fal
             (SELECT kind FROM agent_pauses WHERE phone = l.phone AND until > datetime('now')) AS agent_stop
         FROM leads l ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
         ORDER BY CASE status WHEN 'needs_staff' THEN 0 WHEN 'new' THEN 1 ELSE 2 END, last_activity_at DESC LIMIT ${attention ? 2000 : 300}`).all(...args)
-        .map((l) => ({ ...l, attention: attentionOf(l, { staleDays }) }))
-        .filter((l) => !attention || l.attention)
+        .map((l) => ({ ...l, attention: attentionOf(l, { staleDays }), assignment_overdue: assignmentOverdueOf(l) }))
+        .filter((l) => (!attention || l.attention) && (!overdue || l.assignment_overdue))
         .slice(0, 300);
 }
 
@@ -153,6 +177,17 @@ function needingAttention(db, { staleDays = 3, today = localToday() } = {}) {
         .filter((l) => l.attention);
 }
 
+/* Assigned open leads with no action by the assignee for at least the warning window. */
+function overdueAssignments(db, { hours = 48, mineOf = null, nowMs = Date.now() } = {}) {
+    const rows = db.prepare(`SELECT * FROM leads WHERE status IN (${OPEN_STATUSES.map(() => '?').join(',')})
+                            AND assigned_to IS NOT NULL`).all(...OPEN_STATUSES);
+    return rows
+        .filter((l) => !mineOf || l.assigned_to === mineOf)
+        .map((l) => ({ ...l, assignment_overdue: assignmentOverdueOf(l, { hours, nowMs }) }))
+        .filter((l) => l.assignment_overdue)
+        .sort((a, b) => storedMs(a.assigned_at) - storedMs(b.assigned_at));
+}
+
 function detail(db, id) {
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(Number(id));
     if (!lead) throw err(404, 'العميل غير موجود');
@@ -160,6 +195,7 @@ function detail(db, id) {
         lead,
         messages: db.prepare('SELECT * FROM lead_messages WHERE lead_id = ? ORDER BY id').all(lead.id),
         notes: db.prepare('SELECT * FROM lead_notes WHERE lead_id = ? ORDER BY id DESC').all(lead.id),
+        assignments: db.prepare('SELECT * FROM lead_assignments WHERE lead_id = ? ORDER BY id DESC').all(lead.id),
         quotes: lead.phone
             ? db.prepare('SELECT id, ref, total, status, created_at, details_json FROM quotes WHERE customer_phone = ? ORDER BY id DESC LIMIT 50')
                 .all(lead.phone).map(({ details_json, ...q }) => ({ ...q, calculator: (JSON.parse(details_json || '{}') || {}).calculator || null }))
@@ -183,10 +219,18 @@ function update(db, id, patch, author) {
         set.next_follow_up = d || null;
     }
     if (patch.name !== undefined) set.name = clip(patch.name, 120) || null;
+    const assignmentChanged = 'assigned_to' in set && set.assigned_to !== lead.assigned_to;
+    const assignmentAt = assignmentChanged ? now() : null;
+    if (assignmentChanged) {
+        set.assigned_at = set.assigned_to ? assignmentAt : null;
+        set.assigned_by = clip(author, 80) || null;
+    }
     if (!Object.keys(set).length) return detail(db, lead.id);
     db.prepare(`UPDATE leads SET ${Object.keys(set).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(set), lead.id);
-    if (author && ['status', 'assigned_to', 'next_follow_up'].some((k) => k in set && set[k] !== lead[k])) markStaff(db, lead.id);
-    if ('assigned_to' in set && set.assigned_to !== lead.assigned_to) {
+    if (author && ['status', 'assigned_to', 'next_follow_up'].some((k) => k in set && set[k] !== lead[k])) markStaff(db, lead.id, author);
+    if (assignmentChanged) {
+        db.prepare(`INSERT INTO lead_assignments (lead_id, from_employee, to_employee, assigned_by, created_at)
+                    VALUES (?, ?, ?, ?, ?)`).run(lead.id, lead.assigned_to || null, set.assigned_to || null, clip(author, 80) || null, assignmentAt);
         const text = set.assigned_to
             ? `${lead.assigned_to ? `تم تحويل المتابعة من ${lead.assigned_to} إلى ${set.assigned_to}` : `تم إسناد المتابعة إلى ${set.assigned_to}`}`
             : `أُلغي إسناد المتابعة (كان: ${lead.assigned_to})`;
@@ -207,14 +251,14 @@ function addNote(db, leadId, { kind, text }, author, { system = false } = {}) {
     db.prepare('INSERT INTO lead_notes (lead_id, kind, author, text, created_at) VALUES (?, ?, ?, ?, ?)')
         .run(lead.id, k, clip(author, 80) || (system ? 'النظام' : null), body, now());
     db.prepare('UPDATE leads SET last_activity_at = ? WHERE id = ?').run(now(), lead.id);
-    if (author || !system) markStaff(db, lead.id);
+    if (author || !system) markStaff(db, lead.id, author);
 }
 
 function staffMessage(db, leadId, text, author) {
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(Number(leadId));
     if (!lead) throw err(404, 'العميل غير موجود');
     addMessage(db, lead, 'staff', text, { author: clip(author, 80) || null });
-    markStaff(db, lead.id);
+    markStaff(db, lead.id, author);
     if (['new', 'needs_staff'].includes(lead.status)) db.prepare("UPDATE leads SET status = 'following' WHERE id = ?").run(lead.id);
     return lead;
 }
@@ -238,7 +282,7 @@ function backfill(db) {
 }
 
 module.exports = {
-    STATUSES, OPEN_STATUSES, NOTE_KINDS, CHANNELS, phoneKey, attentionOf, needingAttention, localToday,
+    STATUSES, OPEN_STATUSES, NOTE_KINDS, CHANNELS, phoneKey, attentionOf, assignmentOverdueOf, overdueAssignments, needingAttention, localToday,
     touch, customerMessage, assistantMessage, humanRequested, quoteCreated,
     list, detail, update, addNote, staffMessage, backfill, addMessage
 };

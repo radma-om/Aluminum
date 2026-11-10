@@ -23,17 +23,29 @@ const ranked = (counts, labels = {}) => Object.entries(counts)
     .map(([key, value]) => ({ key, label: labels[key] || key, value }))
     .sort((a, b) => b.value - a.value);
 
-function build(db, { days = 30 } = {}) {
+const parseJson = (value) => {
+    try { return JSON.parse(value || '{}') || {}; } catch { return {}; }
+};
+
+const quoteOwner = (quote) => quote.details && quote.details.created_by ? String(quote.details.created_by) : null;
+const canFollow = (row) => row.role === 'manager' || parseJson(row.permissions_json).includes('leads');
+
+function build(db, { days = 30, user = null } = {}) {
     const n = Math.max(1, Math.min(365, parseInt(days, 10) || 30));
     const today = new Date();
     const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - (n - 1)));
     const prevStart = new Date(start.getTime() - n * 86400000);
+    const from = day(start);
+    const previousFrom = day(prevStart);
+    const tomorrow = day(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1)));
+    const employee = user && user.role !== 'manager' ? user.display_name : null;
 
     const rows = db.prepare('SELECT id, total, status, source, customer_city, details_json, created_at FROM quotes WHERE created_at >= ? ORDER BY id')
-        .all(day(prevStart) + ' 00:00:00')
-        .map((q) => ({ ...q, details: JSON.parse(q.details_json || '{}') || {}, date: q.created_at.slice(0, 10) }));
-    const current = rows.filter((q) => q.date >= day(start));
-    const previous = rows.filter((q) => q.date < day(start));
+        .all(previousFrom + ' 00:00:00')
+        .map((q) => ({ ...q, details: parseJson(q.details_json), date: q.created_at.slice(0, 10) }))
+        .filter((q) => !employee || quoteOwner(q) === employee);
+    const current = rows.filter((q) => q.date >= from);
+    const previous = rows.filter((q) => q.date < from);
 
     // Requests and value per day (every day of the period, zeros included)
     const perDay = [];
@@ -51,14 +63,79 @@ function build(db, { days = 30 } = {}) {
     const placeOf = (q) => q.details.region || (q.customer_city || '').split('،')[0].trim() || 'غير محدد';
 
     // Follow-up: open customers by status and by employee, and follow-ups due
-    const leadRows = db.prepare('SELECT status, assigned_to, next_follow_up, channel, created_at FROM leads').all();
+    const leadRows = db.prepare('SELECT * FROM leads').all().filter((l) => !employee || l.assigned_to === employee);
     const open = leadRows.filter((l) => leads.OPEN_STATUSES.includes(l.status));
     const todayStr = day(today);
-    const newLeads = (from, to) => leadRows.filter((l) => l.created_at.slice(0, 10) >= from && (!to || l.created_at.slice(0, 10) < to)).length;
+    const newLeads = (fromDate, toDate) => leadRows.filter((l) => l.created_at.slice(0, 10) >= fromDate && (!toDate || l.created_at.slice(0, 10) < toDate)).length;
+    const settings = getSettings(db);
+    const attention = leads.needingAttention(db, { staleDays: settings.follow_up_stale_days })
+        .filter((l) => !employee || l.assigned_to === employee);
+    const overdue = leads.overdueAssignments(db, { mineOf: employee });
+
+    const periodEnd = tomorrow + ' 00:00:00';
+    const assignmentRows = db.prepare('SELECT * FROM lead_assignments WHERE created_at >= ? AND created_at < ? ORDER BY id')
+        .all(from + ' 00:00:00', periodEnd);
+    const noteRows = db.prepare("SELECT author, kind, created_at FROM lead_notes WHERE author IS NOT NULL AND author != 'النظام' AND created_at >= ? AND created_at < ?")
+        .all(from + ' 00:00:00', periodEnd);
+    const messageRows = db.prepare("SELECT author, created_at FROM lead_messages WHERE role = 'staff' AND author IS NOT NULL AND created_at >= ? AND created_at < ?")
+        .all(from + ' 00:00:00', periodEnd);
+    const invoiceRows = db.prepare("SELECT created_by, details_json, total, issue_date FROM invoices WHERE status = 'issued' AND issue_date >= ? AND issue_date < ?")
+        .all(from, tomorrow)
+        .map((invoice) => ({
+            ...invoice,
+            // A manager may issue the invoice for an employee's quote. Credit the sale to
+            // the employee who created that quote, while keeping a sensible fallback for
+            // invoices that did not originate from a staff quote.
+            owner: quoteOwner({ details: parseJson(invoice.details_json) }) || invoice.created_by
+        }));
+    const staffAccounts = db.prepare('SELECT display_name, role, permissions_json FROM staff_users WHERE active = 1').all().filter(canFollow);
+    const names = new Set(staffAccounts.map((s) => s.display_name));
+    for (const a of assignmentRows) for (const name of [a.from_employee, a.to_employee, a.assigned_by]) if (name) names.add(name);
+    for (const n of noteRows) if (n.author) names.add(n.author);
+    for (const m of messageRows) if (m.author) names.add(m.author);
+    for (const q of current) if (quoteOwner(q)) names.add(quoteOwner(q));
+    for (const i of invoiceRows) if (i.owner) names.add(i.owner);
+    if (employee) {
+        names.clear();
+        names.add(employee);
+    }
+    const allLeads = db.prepare('SELECT * FROM leads').all();
+    const allAttention = leads.needingAttention(db, { staleDays: settings.follow_up_stale_days });
+    const staff = [...names].map((name) => {
+        const assigned = allLeads.filter((l) => l.assigned_to === name);
+        const assignedVisible = employee ? assigned.filter((l) => l.assigned_to === employee) : assigned;
+        const received = assignmentRows.filter((a) => a.to_employee === name).length;
+        const made = assignmentRows.filter((a) => a.assigned_by === name).length;
+        const reports = noteRows.filter((n) => n.author === name && n.kind !== 'handover').length;
+        const replies = messageRows.filter((m) => m.author === name).length;
+        const qRows = current.filter((q) => quoteOwner(q) === name);
+        const iRows = invoiceRows.filter((i) => i.owner === name);
+        const overdueCount = overdue.filter((l) => l.assigned_to === name).length;
+        return {
+            name,
+            assigned: assignedVisible.length,
+            assigned_open: assignedVisible.filter((l) => leads.OPEN_STATUSES.includes(l.status)).length,
+            needs_attention: allAttention.filter((l) => l.assigned_to === name).length,
+            overdue_48h: overdueCount,
+            assignments_received: received,
+            assignments_made: made,
+            reports,
+            replies,
+            quote_count: qRows.length,
+            quote_value: round2(qRows.reduce((sum, q) => sum + Number(q.total || 0), 0)),
+            accepted_quote_count: qRows.filter((q) => q.status === 'accepted' || q.status === 'done').length,
+            invoice_count: iRows.length,
+            invoice_value: round2(iRows.reduce((sum, i) => sum + Number(i.total || 0), 0))
+        };
+    }).sort((a, b) => b.invoice_value - a.invoice_value || b.quote_value - a.quote_value || b.assigned_open - a.assigned_open || a.name.localeCompare(b.name, 'ar'));
+    const sales = staff.map((s) => ({
+        name: s.name, quote_count: s.quote_count, quote_value: s.quote_value,
+        accepted_quote_count: s.accepted_quote_count, invoice_count: s.invoice_count, invoice_value: s.invoice_value
+    }));
 
     return {
         days: n,
-        from: day(start),
+        from,
         to: todayStr,
         kpis: {
             quotes: { value: current.length, previous: previous.length },
@@ -69,12 +146,13 @@ function build(db, { days = 30 } = {}) {
                 value: current.length ? round2(sum(current) / current.length) : 0,
                 previous: previous.length ? round2(sum(previous) / previous.length) : 0
             },
-            new_customers: { value: newLeads(day(start)), previous: newLeads(day(prevStart), day(start)) },
+            new_customers: { value: newLeads(from), previous: newLeads(previousFrom, from) },
             open_leads: { value: open.length },
             needs_staff: { value: open.filter((l) => l.status === 'needs_staff').length },
             // Due or overdue dates, and open customers nobody followed up for a while
-            due_follow_ups: { value: leads.needingAttention(db, { staleDays: getSettings(db).follow_up_stale_days }).length },
-            unassigned: { value: open.filter((l) => !l.assigned_to).length }
+            due_follow_ups: { value: attention.length },
+            unassigned: { value: open.filter((l) => !l.assigned_to).length },
+            overdue_assignments: { value: overdue.length }
         },
         per_day: perDay,
         by_calculator: ranked(count(current, (q) => calculatorOf(q.details)), CALCULATORS),
@@ -82,7 +160,19 @@ function build(db, { days = 30 } = {}) {
         by_status: Object.keys(QUOTE_STATUSES).map((k) => ({ key: k, label: QUOTE_STATUSES[k], value: current.filter((q) => q.status === k).length })),
         by_place: ranked(count(current, placeOf)).slice(0, 8),
         leads_by_status: Object.entries(leads.STATUSES).map(([key, label]) => ({ key, label, value: leadRows.filter((l) => l.status === key).length })),
-        leads_by_staff: ranked(open.reduce((m, l) => { const k = l.assigned_to || 'غير مُسند'; m[k] = (m[k] || 0) + 1; return m; }, {}))
+        leads_by_staff: ranked(open.reduce((m, l) => { const k = l.assigned_to || 'غير مُسند'; m[k] = (m[k] || 0) + 1; return m; }, {})),
+        staff,
+        sales_by_staff: sales,
+        notifications: {
+            overdue_assignments: {
+                count: overdue.length,
+                items: overdue.slice(0, 30).map((l) => ({
+                    id: l.id, name: l.name, phone: l.phone, status: l.status,
+                    assigned_to: l.assigned_to, assigned_at: l.assigned_at,
+                    hours: l.assignment_overdue.hours, next_follow_up: l.next_follow_up
+                }))
+            }
+        }
     };
 }
 

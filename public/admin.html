@@ -766,6 +766,7 @@
             <div id="dashBody">
                 <div class="kpi-grid" id="kpiGrid"></div>
                 <div class="attention" id="attention"></div>
+                <div id="dashboardNotifications" class="card" hidden style="margin:16px 0; border:2px solid #e74c3c; background:#fff8f7"></div>
                 <div class="dash-grid">
                     <div class="card span-8">
                         <div class="chart-head">
@@ -803,6 +804,14 @@
                     <div class="card span-6">
                         <div class="chart-head"><h3>المتابعات المفتوحة لكل موظف</h3><span class="sub">العملاء الذين لم تُغلق متابعتهم بعد</span></div>
                         <div class="hbars" id="staffChart"></div>
+                    </div>
+                    <div class="card span-12">
+                        <div class="chart-head"><h3>أداء متابعة العملاء</h3><span class="sub">الإسنادات والنشاط والتأخر خلال الفترة المحددة</span><button class="link-btn" data-table="staffPerformance">عرض كجدول</button></div>
+                        <div id="staffPerformanceTable"></div>
+                    </div>
+                    <div class="card span-12">
+                        <div class="chart-head"><h3>المبيعات حسب الموظف</h3><span class="sub">عروض الأسعار والفواتير المعتمدة خلال الفترة المحددة</span><button class="link-btn" data-table="salesStaff">عرض كجدول</button></div>
+                        <div id="salesStaffTable"></div>
                     </div>
                 </div>
             </div>

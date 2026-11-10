@@ -52,6 +52,8 @@ async function loadDashboard() {
 function renderDashboard() {
     renderKpis();
     renderAttention();
+    renderDashboardNotifications();
+    renderStaffPerformance();
     renderTrend();
     renderStatus();
     renderBars('calcChart', dash.by_calculator);
@@ -140,6 +142,7 @@ function renderAttention() {
     const items = [
         { cls: 'critical', icon: 'fa-hand', n: k.needs_staff.value, label: 'عملاء يطلبون موظفاً', filter: { status: 'needs_staff' }, pulse: k.needs_staff.value > 0 },
         { cls: 'warning', icon: 'fa-bell', n: k.due_follow_ups.value, label: 'بحاجة متابعة', filter: { status: 'open', due: true } },
+        { cls: 'critical', icon: 'fa-triangle-exclamation', n: k.overdue_assignments.value, label: 'متأخرة أكثر من 48 ساعة', filter: { overdue: true }, pulse: k.overdue_assignments.value > 0 },
         { cls: 'serious', icon: 'fa-user-slash', n: k.unassigned.value, label: 'عملاء بلا موظف متابع', filter: { status: 'open', assigned: '-' } },
         { cls: 'info', icon: 'fa-comments', n: k.open_leads.value, label: 'متابعات مفتوحة', filter: { status: 'open' } }
     ];
@@ -152,6 +155,42 @@ function renderAttention() {
         b.addEventListener('click', () => openLeadsWith(it.filter));
         $id('attention').appendChild(b);
     }
+}
+
+function renderDashboardNotifications() {
+    const box = $id('dashboardNotifications');
+    const items = dash.notifications && dash.notifications.overdue_assignments ? dash.notifications.overdue_assignments.items : [];
+    if (!items.length) { box.hidden = true; box.innerHTML = ''; return; }
+    const manager = ME && ME.role === 'manager';
+    box.hidden = false;
+    box.innerHTML = `<div class="chart-head" style="margin-bottom:8px"><h3 style="color:#a93226"><i class="fas fa-triangle-exclamation"></i> تنبيه متابعة متأخرة</h3>
+        <button class="btn btn-outline btn-sm" onclick="openLeadsWith({ overdue: true })">عرض الكل</button></div>
+        <p class="status-text" style="margin:0 0 8px">${manager ? 'العملاء المسندون الذين لم يسجل الموظف المسؤول عليهم إجراءً خلال 48 ساعة:' : 'لديك عملاء مسندون إليك لم تسجل عليهم إجراءً خلال 48 ساعة:'}</p>
+        <div class="mini-list">${items.map((l) => `<button type="button" class="link-btn" style="display:block;text-align:right;padding:6px 0" onclick="openLeadsWith({ overdue: true })">
+            <strong>${esc(l.name || (l.phone ? '+' + l.phone : 'عميل'))}</strong>${manager && l.assigned_to ? ` — ${esc(l.assigned_to)}` : ''}
+            <span class="muted"> — متأخر ${fmt.format(l.hours)} ساعة${l.next_follow_up ? `، الموعد ${esc(l.next_follow_up)}` : ''}</span></button>`).join('')}</div>`;
+}
+
+function renderStaffPerformance() {
+    const el = $id('staffPerformanceTable');
+    const rows = dash.staff || [];
+    el.innerHTML = rows.length ? `<div class="table-wrapper"><table class="mini"><thead><tr>
+        <th>الموظف</th><th>عملاء مسندون</th><th>إسنادات استلمها</th><th>إسنادات قام بها</th><th>تقارير / ردود</th><th>بحاجة متابعة</th><th>متأخرة +48س</th>
+        </tr></thead><tbody>${rows.map((s) => `<tr${s.overdue_48h ? ' style="background:#fff0ed"' : ''}>
+            <td><strong>${esc(s.name)}</strong></td><td>${fmt.format(s.assigned_open)} / ${fmt.format(s.assigned)}</td>
+            <td>${fmt.format(s.assignments_received)}</td><td>${fmt.format(s.assignments_made)}</td>
+            <td>${fmt.format(s.reports)} / ${fmt.format(s.replies)}</td><td>${fmt.format(s.needs_attention)}</td>
+            <td style="color:${s.overdue_48h ? '#a93226' : 'inherit'};font-weight:${s.overdue_48h ? '700' : '400'}">${fmt.format(s.overdue_48h)}</td>
+        </tr>`).join('')}</tbody></table></div>` : '<div class="empty-chart">لا توجد بيانات موظفين بعد</div>';
+
+    const sales = dash.sales_by_staff || [];
+    const salesEl = $id('salesStaffTable');
+    salesEl.innerHTML = sales.length ? `<div class="table-wrapper"><table class="mini"><thead><tr>
+        <th>الموظف</th><th>العروض</th><th>قيمة العروض</th><th>المقبولة</th><th>الفواتير المعتمدة</th><th>قيمة الفواتير</th>
+        </tr></thead><tbody>${sales.map((s) => `<tr>
+            <td><strong>${esc(s.name)}</strong></td><td>${fmt.format(s.quote_count)}</td><td>${fmt2.format(s.quote_value)} ر.ع</td>
+            <td>${fmt.format(s.accepted_quote_count)}</td><td>${fmt.format(s.invoice_count)}</td><td><strong>${fmt2.format(s.invoice_value)} ر.ع</strong></td>
+        </tr>`).join('')}</tbody></table></div>` : '<div class="empty-chart">لا توجد عروض أو فواتير موظفين خلال الفترة</div>';
 }
 
 /* Clean axis maximum and ticks (0 … max in 4 steps) */
@@ -337,7 +376,7 @@ window.addEventListener('resize', () => {
 /* ========================= Customer follow-up ========================= */
 
 let leadMeta = { statuses: {}, note_kinds: {}, channels: {}, staff: [], can_reply_whatsapp: false };
-let leadFilter = { status: 'open', assigned: '', due: false };
+let leadFilter = { status: 'open', assigned: '', due: false, overdue: false };
 let leadsCache = [];
 let currentLeadId = null;
 const AVATAR_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#6250d6', '#e34948', '#008300', '#d55181', '#c98500'];
@@ -366,8 +405,9 @@ function avatar(lead, cls = '') {
 function renderLeadFilters() {
     const chips = [['open', 'المفتوحة'], ...Object.entries(leadMeta.statuses), ['', 'الكل']];
     $id('leadStatusChips').innerHTML = chips.map(([k, label]) =>
-        `<button type="button" class="chip ${leadFilter.status === k && !leadFilter.due ? 'on' : ''}" data-status="${esc(k)}">${esc(label)}</button>`).join('') +
-        `<button type="button" class="chip ${leadFilter.due ? 'on' : ''}" data-due="1"><i class="fas fa-bell"></i> بحاجة متابعة</button>`;
+        `<button type="button" class="chip ${leadFilter.status === k && !leadFilter.due && !leadFilter.overdue ? 'on' : ''}" data-status="${esc(k)}">${esc(label)}</button>`).join('') +
+        `<button type="button" class="chip ${leadFilter.due ? 'on' : ''}" data-due="1"><i class="fas fa-bell"></i> بحاجة متابعة</button>` +
+        `<button type="button" class="chip ${leadFilter.overdue ? 'on' : ''}" data-overdue="1"><i class="fas fa-triangle-exclamation"></i> متأخرة +48 ساعة</button>`;
     const keep = leadFilter.assigned;
     $id('leadAssigned').innerHTML = `<option value="">${ME && ME.leads_scope === 'mine' ? 'عملائي وغير المُسندين' : 'كل الموظفين'}</option><option value="__me">مهامي (${esc(currentMe())})</option>
         <option value="-">غير مُسند</option>${leadMeta.staff.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}`;
@@ -378,7 +418,8 @@ $id('leadStatusChips').addEventListener('click', (e) => {
     const b = e.target.closest('.chip');
     if (!b) return;
     leadFilter.due = Boolean(b.dataset.due);
-    if (!leadFilter.due) leadFilter.status = b.dataset.status;
+    leadFilter.overdue = Boolean(b.dataset.overdue);
+    if (!leadFilter.due && !leadFilter.overdue) leadFilter.status = b.dataset.status;
     else leadFilter.status = 'open';
     renderLeadFilters();
     loadLeads();
@@ -386,7 +427,7 @@ $id('leadStatusChips').addEventListener('click', (e) => {
 
 function openLeadsWith(filter) {
     if (!canSee('leads')) return;
-    leadFilter = { status: filter.status ?? 'open', assigned: filter.assigned || '', due: Boolean(filter.due) };
+    leadFilter = { status: filter.status ?? 'open', assigned: filter.assigned || '', due: Boolean(filter.due), overdue: Boolean(filter.overdue) };
     switchTab('leads');
 }
 
@@ -401,6 +442,7 @@ async function loadLeads() {
     const firstLoad = !Object.keys(leadMeta.statuses).length;
     const p = new URLSearchParams();
     if (leadFilter.due) p.set('attention', '1');
+    if (leadFilter.overdue) p.set('overdue', '1');
     if (leadFilter.status === 'open') p.set('open', '1');
     else if (leadFilter.status) p.set('status', leadFilter.status);
     const assigned = leadFilter.assigned;
@@ -423,6 +465,7 @@ function renderLeadItems() {
     }
     el.innerHTML = leadsCache.map((l) => {
         const a = l.attention;
+        const overdue = l.assignment_overdue;
         const attention = !a ? '' : a.reason === 'stale'
             ? `<span class="pill due" title="لم يكتب أحد تقريراً أو يرد عليه منذ ${esc(a.since)}"><i class="fas fa-hourglass-half"></i>بلا متابعة ${esc(a.days)} يوم</span>`
             : `<span class="pill due"><i class="fas fa-bell"></i>${a.reason === 'due' ? 'اليوم' : 'فات: ' + esc(a.date)}</span>`;
@@ -437,6 +480,7 @@ function renderLeadItems() {
                     ${l.assigned_to ? `<span class="pill"><i class="fas fa-user"></i>${esc(l.assigned_to)}</span>` : ''}
                     ${l.quote_count ? `<span class="pill"><i class="fas fa-file-invoice"></i>${l.quote_count}</span>` : ''}
                     ${attention}
+                    ${overdue ? `<span class="pill due" title="لم يسجل الموظف المسؤول إجراءً خلال 48 ساعة"><i class="fas fa-triangle-exclamation"></i>متأخر ${esc(overdue.hours)} س</span>` : ''}
                     ${l.agent_stop === 'manual' ? '<span class="pill" title="الرد الآلي متوقف لهذا العميل"><i class="fas fa-circle-pause"></i>بلا رد آلي</span>' : ''}
                 </div>
             </div></div>`;
