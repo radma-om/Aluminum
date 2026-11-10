@@ -66,14 +66,14 @@ test('export → restore into an empty database keeps staff, permissions, custom
     wb.eachSheet((ws) => ws.eachRow((row) => row.eachCell((c) => allText.push(String(c.value ?? '')))));
     assert.ok(!allText.some((v) => v.includes('salem-secret-1') || v.includes('boss-secret-12')), 'plain password in backup');
     assert.ok(allText.some((v) => /^scrypt\$/.test(v)), 'password hash saved');
-    assert.ok(wb.getWorksheet('حسابات الموظفين') && wb.getWorksheet('متابعة العملاء') && wb.getWorksheet('رسائل العملاء') && wb.getWorksheet('تقارير المتابعة'));
+    assert.ok(wb.getWorksheet('حسابات الموظفين') && wb.getWorksheet('متابعة العملاء') && wb.getWorksheet('سجل إسناد المتابعة') && wb.getWorksheet('رسائل العملاء') && wb.getWorksheet('تقارير المتابعة'));
     assert.ok(!wb.getWorksheet('staff_sessions'));
 
     const dst = openDatabase(':memory:');
     assert.strictEqual(count(dst, 'staff_users'), 0);
     const counts = await restoreWorkbook(dst, file);
-    assert.deepStrictEqual([counts.staff_users, counts.leads, counts.lead_messages, counts.lead_notes, counts.quotes],
-        [2, 1, count(src, 'lead_messages'), count(src, 'lead_notes'), 1]);
+    assert.deepStrictEqual([counts.staff_users, counts.leads, counts.lead_assignments, counts.lead_messages, counts.lead_notes, counts.quotes],
+        [2, 1, count(src, 'lead_assignments'), count(src, 'lead_messages'), count(src, 'lead_notes'), 1]);
 
     const { server, call, login } = await start(dst);
     t.after(() => server.close());
@@ -142,6 +142,22 @@ test('an old backup without staff and follow-up sheets keeps the current account
     assert.deepStrictEqual(['staff_users', 'leads', 'lead_messages', 'lead_notes'].map((t) => count(db, t)), before);
     assert.strictEqual(count(db, 'staff_sessions'), 0); // sessions still end
     assert.strictEqual(count(db, 'quotes'), 0); // the old file's quotes (none) replaced the current ones
+    assert.deepStrictEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+});
+
+test('an older follow-up backup without assignment history rebuilds a safe baseline', async () => {
+    const source = openDatabase(':memory:');
+    populate(source);
+    const old = await withoutSheets(await exportWorkbook(source), ['سجل إسناد المتابعة']);
+
+    const db = openDatabase(':memory:');
+    populate(db); // stale assignment IDs must not survive the restore
+    assert.ok(count(db, 'lead_assignments') > 0);
+    const counts = await restoreWorkbook(db, old);
+    assert.strictEqual(counts.leads, 1);
+    assert.strictEqual(count(db, 'lead_assignments'), 1);
+    const assignment = db.prepare('SELECT from_employee, to_employee, assigned_by FROM lead_assignments').get();
+    assert.deepStrictEqual([assignment.from_employee, assignment.to_employee, assignment.assigned_by], [null, 'سالم', 'المدير العام']);
     assert.deepStrictEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
 });
 

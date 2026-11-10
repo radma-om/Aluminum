@@ -1405,7 +1405,7 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Dashboard figures ---- */
 
-    admin.get('/dashboard', (req, res) => res.json(dashboard.build(db, { days: req.query.days })));
+    admin.get('/dashboard', (req, res) => res.json(dashboard.build(db, { days: req.query.days, user: req.user })));
 
     /* ---- Customer follow-up (WhatsApp, website chat, calculators) ---- */
 
@@ -1435,7 +1435,7 @@ function createApp(db, { agentClient } = {}) {
                 status: String(q.status || ''), assigned: String(q.assigned || ''), channel: String(q.channel || ''),
                 q: String(q.q || '').trim().slice(0, 60), open: q.open === '1',
                 mineOf: req.user.leads_scope === 'mine' ? req.user.display_name : null,
-                attention: q.attention === '1', staleDays: getSettings(db).follow_up_stale_days
+                attention: q.attention === '1', overdue: q.overdue === '1', staleDays: getSettings(db).follow_up_stale_days
             }),
             stale_days: getSettings(db).follow_up_stale_days,
             statuses: leads.STATUSES, note_kinds: leads.NOTE_KINDS, channels: leads.CHANNELS,

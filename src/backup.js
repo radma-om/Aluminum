@@ -48,12 +48,13 @@ const TABLES = [
     ['staff_users', 'حسابات الموظفين'],
     ['customers', 'العملاء'],
     ['leads', 'متابعة العملاء'],
+    ['lead_assignments', 'سجل إسناد المتابعة'],
     ['lead_messages', 'رسائل العملاء'],
     ['lead_notes', 'تقارير المتابعة']
 ];
 /* Sheets added after the first backups: an older file without them keeps the current data */
 const OPTIONAL = new Set(['overhead_sizes', 'overhead_motors', 'knowledge_items', 'motor_sections', 'motor_items', 'motor_extra_fees',
-    'staff_users', 'leads', 'lead_messages', 'lead_notes', 'invoices', 'payments', 'work_orders', 'work_order_events', 'customers', 'service_requests']);
+    'staff_users', 'leads', 'lead_assignments', 'lead_messages', 'lead_notes', 'invoices', 'payments', 'work_orders', 'work_order_events', 'customers', 'service_requests']);
 /* Restored together or not at all (a customer without its messages, or messages of another
    backup's customers, would be inconsistent) */
 const GROUPS = [['leads', 'lead_messages', 'lead_notes'], ['invoices', 'payments'], ['work_orders', 'work_order_events']];
@@ -157,12 +158,27 @@ async function restoreWorkbook(db, buffer) {
             const webhookSecrets = data.webhooks
                 ? db.prepare('SELECT id, name, url, secret FROM webhooks WHERE secret IS NOT NULL').all() : [];
             for (const [table] of [...present].reverse()) db.prepare(`DELETE FROM ${table}`).run();
+            // Assignment history was added after the first follow-up backups. If an older
+            // file contains leads but no assignment sheet, remove the current history too;
+            // otherwise it would refer to the newly restored (different) lead IDs.
+            if (data.leads && !data.lead_assignments) db.prepare('DELETE FROM lead_assignments').run();
             for (const [table, label] of present) {
                 const cols = exportedColumns(db, table).filter((c) => data[table].header.includes(c));
                 if (!cols.length) throw err400(`ورقة «${label}» لا تحتوي أسماء الأعمدة في الصف الأول`);
                 const insert = db.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`);
                 for (const row of data[table].rows) insert.run(...cols.map((c) => row[c] ?? null));
                 counts[table] = data[table].rows.length;
+            }
+            // Give assigned leads from an old backup one baseline event so the dashboard can
+            // still show who currently owns them. Newer backups restore the complete history.
+            if (data.leads && !data.lead_assignments) {
+                const insert = db.prepare(`INSERT INTO lead_assignments (lead_id, from_employee, to_employee, assigned_by, created_at)
+                                           VALUES (?, NULL, ?, ?, COALESCE(?, datetime('now')))`);
+                const assigned = db.prepare('SELECT id, assigned_to, assigned_by, assigned_at, last_staff_at, created_at FROM leads WHERE assigned_to IS NOT NULL').all();
+                for (const lead of assigned) {
+                    insert.run(lead.id, lead.assigned_to, lead.assigned_by || null,
+                        lead.assigned_at || lead.last_staff_at || lead.created_at);
+                }
             }
             const keep2fa = db.prepare('UPDATE staff_users SET totp_secret = ?, totp_last_step = ? WHERE username = ?');
             for (const u of twoStep) keep2fa.run(u.totp_secret, u.totp_last_step, u.username);

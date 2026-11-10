@@ -3,6 +3,8 @@ const assert = require('node:assert');
 const http = require('node:http');
 const { openDatabase, saveSettings } = require('../src/db');
 const { createApp, saveQuote } = require('../src/server');
+const invoices = require('../src/invoices');
+const dashboard = require('../src/dashboard');
 const inbox = require('../src/mazbot-inbox');
 const mazbot = require('../src/mazbot');
 const leads = require('../src/leads');
@@ -174,6 +176,60 @@ test('dashboard: requests, value, win rate, calculators, channels, places and fo
     assert.strictEqual(d.kpis.needs_staff.value, 1);
     assert.strictEqual(d.kpis.due_follow_ups.value, 1);
     assert.strictEqual(d.leads_by_staff[0].label, 'غير مُسند');
+});
+
+test('assignment history records both sides and warns after 48 hours until the employee acts', () => {
+    const db = openDatabase(':memory:');
+    const lead = leads.customerMessage(db, { key: 'tel:96890001111', channel: 'whatsapp', name: 'متابعة', phone: '96890001111', text: 'أحتاج عرضاً' });
+
+    leads.update(db, lead.id, { assigned_to: 'سالم' }, 'المدير العام');
+    db.prepare("UPDATE leads SET assigned_at = datetime('now', '-49 hours'), last_staff_at = datetime('now', '-49 hours'), last_staff_by = 'المدير العام' WHERE id = ?").run(lead.id);
+
+    const overdue = leads.overdueAssignments(db);
+    assert.strictEqual(overdue.length, 1);
+    assert.strictEqual(overdue[0].assigned_to, 'سالم');
+    assert.ok(overdue[0].assignment_overdue.hours >= 48);
+    assert.deepStrictEqual(leads.detail(db, lead.id).assignments.map((a) => [a.from_employee, a.to_employee, a.assigned_by]), [[null, 'سالم', 'المدير العام']]);
+
+    leads.addNote(db, lead.id, { kind: 'report', text: 'تم الاتصال بالعميل' }, 'سالم');
+    assert.strictEqual(leads.overdueAssignments(db).length, 0);
+
+    leads.update(db, lead.id, { assigned_to: 'مريم' }, 'سالم');
+    assert.deepStrictEqual(leads.detail(db, lead.id).assignments.map((a) => [a.from_employee, a.to_employee, a.assigned_by]), [
+        ['سالم', 'مريم', 'سالم'], [null, 'سالم', 'المدير العام']
+    ]);
+});
+
+test('dashboard scopes an employee to their work and credits an invoice to the quote owner', () => {
+    const db = openDatabase(':memory:');
+    const priced = (total) => ({ items: [], subtotal: total, vat_percent: 0, vat: 0, total });
+    const salemQuote = saveQuote(db, {
+        customer_name: 'عميل سالم', customer_phone: '90002222', source: 'staff',
+        priced: priced(120), details: { staff_quote: true, created_by: 'سالم', calculator: 'motors' }
+    });
+    saveQuote(db, {
+        customer_name: 'عميل مريم', customer_phone: '90003333', source: 'staff',
+        priced: priced(300), details: { staff_quote: true, created_by: 'مريم', calculator: 'overhead' }
+    });
+    // The manager issues Salem's quote, but the sale belongs to Salem.
+    invoices.createFromQuote(db, salemQuote, {}, 'المدير العام');
+    const lead = leads.customerMessage(db, { key: 'tel:96890004444', channel: 'whatsapp', name: 'عميل متابعة', phone: '96890004444', text: 'اتصلوا بي' });
+    leads.update(db, lead.id, { assigned_to: 'سالم', status: 'following' }, 'المدير العام');
+    leads.addNote(db, lead.id, { kind: 'report', text: 'تمت المتابعة' }, 'سالم');
+
+    const manager = dashboard.build(db, { days: 30, user: { role: 'manager', display_name: 'المدير العام' } });
+    const salem = manager.staff.find((s) => s.name === 'سالم');
+    assert.deepStrictEqual({
+        assigned: salem.assigned, received: salem.assignments_received,
+        reports: salem.reports, quotes: salem.quote_count, invoices: salem.invoice_count, invoice_value: salem.invoice_value
+    }, { assigned: 1, received: 1, reports: 1, quotes: 1, invoices: 1, invoice_value: 120 });
+    assert.strictEqual(manager.staff.find((s) => s.name === 'المدير العام').invoice_count, 0);
+
+    const employee = dashboard.build(db, { days: 30, user: { role: 'staff', display_name: 'سالم' } });
+    assert.deepStrictEqual(employee.staff.map((s) => s.name), ['سالم']);
+    assert.strictEqual(employee.kpis.quotes.value, 1);
+    assert.strictEqual(employee.kpis.open_leads.value, 1);
+    assert.strictEqual(employee.sales_by_staff[0].invoice_count, 1);
 });
 
 test('an existing database starts the follow-up list from its recent quotes', () => {

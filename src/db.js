@@ -330,15 +330,32 @@ CREATE TABLE IF NOT EXISTS leads (
     phone             TEXT,
     status            TEXT NOT NULL DEFAULT 'new',
     assigned_to       TEXT,
+    assigned_at       TEXT,
+    assigned_by       TEXT,
     next_follow_up    TEXT,
     last_message      TEXT,
     last_role         TEXT,
     message_count     INTEGER NOT NULL DEFAULT 0,
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-    last_activity_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    last_activity_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    last_staff_at     TEXT,
+    last_staff_by     TEXT
 );
 CREATE INDEX IF NOT EXISTS leads_activity ON leads (last_activity_at);
 CREATE INDEX IF NOT EXISTS leads_phone_activity ON leads (phone, last_activity_at);
+
+-- Every assignment / handover, including who made it and when.
+CREATE TABLE IF NOT EXISTS lead_assignments (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id        INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    from_employee  TEXT,
+    to_employee    TEXT,
+    assigned_by    TEXT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS lead_assignments_lead ON lead_assignments (lead_id, id);
+CREATE INDEX IF NOT EXISTS lead_assignments_to ON lead_assignments (to_employee, created_at);
+CREATE INDEX IF NOT EXISTS lead_assignments_by ON lead_assignments (assigned_by, created_at);
 
 CREATE TABLE IF NOT EXISTS lead_messages (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -699,14 +716,48 @@ function migrate(db) {
     const hadValidity = db.prepare('PRAGMA table_info(quotes)').all().some((c) => c.name === 'valid_until');
     addColumns('quotes', { valid_until: 'TEXT' });
     if (!hadValidity) db.exec("UPDATE quotes SET valid_until = date(created_at, '+15 days') WHERE valid_until IS NULL");
-    // Last time an employee followed the customer up (report, reply, status / date / employee change)
     const hadStaffAt = db.prepare('PRAGMA table_info(leads)').all().some((c) => c.name === 'last_staff_at');
-    addColumns('leads', { last_staff_at: 'TEXT' });
+    // Assignment tracking and the last employee who actually worked the lead
+    addColumns('leads', { assigned_at: 'TEXT', assigned_by: 'TEXT', last_staff_at: 'TEXT', last_staff_by: 'TEXT' });
+    db.exec('CREATE INDEX IF NOT EXISTS leads_assigned_activity ON leads (assigned_to, status, assigned_at)');
+    // Last time an employee followed the customer up (report, reply, status / date / employee change)
     if (!hadStaffAt) {
         db.exec(`UPDATE leads SET last_staff_at = (SELECT MAX(t) FROM (
                      SELECT MAX(created_at) AS t FROM lead_notes WHERE lead_id = leads.id
                      UNION ALL SELECT MAX(created_at) FROM lead_messages WHERE lead_id = leads.id AND role = 'staff'))`);
     }
+    // Backfill assignment events from the handover notes written by older versions. New changes
+    // are recorded structurally by leads.update(), so reports do not need to parse Arabic text.
+    const assignmentCount = db.prepare('SELECT COUNT(*) AS n FROM lead_assignments').get().n;
+    if (!assignmentCount) {
+        const insert = db.prepare(`INSERT INTO lead_assignments (lead_id, from_employee, to_employee, assigned_by, created_at)
+                                   VALUES (?, ?, ?, ?, ?)`);
+        const notes = db.prepare("SELECT lead_id, author, text, created_at FROM lead_notes WHERE kind = 'handover' ORDER BY id").all();
+        for (const n of notes) {
+            const text = String(n.text || '').split('\n', 1)[0];
+            let from = null, to = null;
+            let m = text.match(/^تم تحويل المتابعة من (.+?) إلى (.+)$/);
+            if (m) { from = m[1].trim() || null; to = m[2].trim() || null; }
+            else if ((m = text.match(/^تم إسناد المتابعة إلى (.+)$/))) to = m[1].trim() || null;
+            else if ((m = text.match(/^أُلغي إسناد المتابعة \(كان: (.+)\)$/))) from = m[1].trim() || null;
+            if (from || to) insert.run(n.lead_id, from, to, n.author || null, n.created_at);
+        }
+    }
+    // Leads created before the assignment log still get a baseline received event. This is
+    // deliberately outside the global count check: a mixed database may have history for
+    // one lead and an older assigned lead with no event at all.
+    const baselineInsert = db.prepare(`INSERT INTO lead_assignments (lead_id, from_employee, to_employee, assigned_by, created_at)
+                                       VALUES (?, NULL, ?, ?, ?)`);
+    const current = db.prepare(`SELECT l.id, l.assigned_to, l.assigned_by, COALESCE(l.assigned_at, l.last_staff_at, l.created_at) AS at
+                                FROM leads l WHERE l.assigned_to IS NOT NULL
+                                  AND NOT EXISTS (SELECT 1 FROM lead_assignments a
+                                                  WHERE a.lead_id = l.id AND a.to_employee = l.assigned_to)`).all();
+    for (const l of current) baselineInsert.run(l.id, l.assigned_to, l.assigned_by || null, l.at);
+    // Use the latest matching event as the assignment start for records created before the
+    // explicit assigned_at column existed.
+    db.exec(`UPDATE leads SET assigned_at = (SELECT MAX(a.created_at) FROM lead_assignments a
+                                            WHERE a.lead_id = leads.id AND a.to_employee = leads.assigned_to)
+             WHERE assigned_to IS NOT NULL AND assigned_at IS NULL`);
 }
 
 /* "~/radma-data/aluminum.db" → the account's home folder. On shared hosting this keeps the
