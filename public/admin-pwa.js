@@ -117,7 +117,7 @@ async function openPushSheet() {
         help.innerHTML = installPrompt
             ? '<b>📲 ثبّت التطبيق على الشاشة الرئيسية:</b> <button type="button" class="btn btn-outline btn-sm" onclick="installApp()">تثبيت الآن</button>'
             : isIos
-                ? '<b>📲 التثبيت على الآيفون:</b><ol><li>افتح اللوحة في <b>Safari</b>.</li><li>اضغط زر <b>المشاركة</b> <i class="fas fa-arrow-up-from-bracket"></i> أسفل الشاشة.</li><li>اختر <b>«إضافة إلى الشاشة الرئيسية»</b> ثم «إضافة».</li><li>افتح «رادما» من أيقونته، ثم فعّل الإشعارات من الجرس 🔔.</li></ol>'
+                ? '<b>📲 التثبيت على الآيفون:</b><ol><li>افتح اللوحة في <b>Safari</b>.</li><li>اضغط زر <b>المشاركة</b> <i class="fas fa-arrow-up-from-bracket"></i> أسفل الشاشة.</li><li>اختر <b>«إضافة إلى الشاشة الرئيسية»</b> ثم «إضافة».</li><li>افتح «RADMA» من أيقونته، ثم فعّل الإشعارات من الجرس 🔔.</li></ol>'
                 : '<b>📲 التثبيت:</b> من قائمة المتصفح (⋮) اختر <b>«تثبيت التطبيق»</b> أو <b>«إضافة إلى الشاشة الرئيسية»</b>.';
     }
     $id('pushSheet').hidden = false;
