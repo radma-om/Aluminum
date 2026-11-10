@@ -38,6 +38,10 @@ function ensureTables(db) {
                  last_sent_at TEXT
              );
              CREATE INDEX IF NOT EXISTS push_subscriptions_user ON push_subscriptions (user_key);`);
+    // What the push service answered last time (shown in the bell window to find why nothing arrives)
+    const cols = db.prepare('PRAGMA table_info(push_subscriptions)').all().map((c) => c.name);
+    if (!cols.includes('last_error')) db.exec('ALTER TABLE push_subscriptions ADD COLUMN last_error TEXT');
+    if (!cols.includes('last_error_at')) db.exec('ALTER TABLE push_subscriptions ADD COLUMN last_error_at TEXT');
 }
 
 /* The signing keys: from the environment, or made once and kept in the database */
@@ -91,14 +95,37 @@ function unsubscribe(db, user, endpoint) {
 
 function devices(db, user) {
     ensureTables(db);
-    return db.prepare('SELECT id, device, created_at, last_sent_at FROM push_subscriptions WHERE user_key = ? ORDER BY id').all(keyOf(user));
+    const SERVICES = [[/push\.apple\.com$/, 'Apple'], [/googleapis\.com$/, 'Google'], [/mozilla\.com$/, 'Mozilla'], [/notify\.windows\.com$/, 'Microsoft']];
+    return db.prepare(`SELECT id, device, endpoint, created_at, last_sent_at, last_error, last_error_at FROM push_subscriptions
+                       WHERE user_key = ? ORDER BY id`).all(keyOf(user)).map(({ endpoint, ...d }) => {
+        const host = (() => { try { return new URL(endpoint).hostname; } catch { return ''; } })();
+        const svc = SERVICES.find(([re]) => re.test(host));
+        // The endpoint itself is a secret address: only its last characters, to tell this device apart
+        return { ...d, service: svc ? svc[1] : host, tail: endpoint.slice(-12) };
+    });
+}
+
+/* The push service's answer in words an employee can act on */
+function explain(err) {
+    const code = err && err.statusCode;
+    const body = String((err && err.body) || '').replace(/\s+/g, ' ').slice(0, 160);
+    if (code === 403) return `403 — رفضت خدمة الإشعارات مفتاح الخادم (VAPID)${body ? ': ' + body : ''}. أوقف الإشعارات على هذا الجهاز ثم فعّلها من جديد.`;
+    if (code === 400) return `400 — رفضت خدمة الإشعارات الطلب${body ? ': ' + body : ''}`;
+    if (code === 413) return '413 — الرسالة أطول من المسموح';
+    if (code === 429) return '429 — طلبات كثيرة، تُعاد لاحقاً';
+    if (code) return `${code} — ${body || 'خطأ من خدمة الإشعارات'}`;
+    const m = String((err && (err.code || err.message)) || 'خطأ غير معروف');
+    if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|ECONNRESET|socket|network|timeout/i.test(m)) {
+        return `لم يصل الخادم إلى خدمة الإشعارات (${m}) — قد تكون الاستضافة تمنع الاتصال الخارجي بخوادم Apple / Google`;
+    }
+    return m.slice(0, 200);
 }
 
 /**
  * Send { title, body, url, tag } to these accounts' devices. Never throws; returns how many devices got it.
- * userKeys: 'owner' and / or 'u:<id>' (duplicates are fine).
+ * userKeys: 'owner' and / or 'u:<id>' (duplicates are fine). The last error of each device is kept.
  */
-async function send(db, userKeys, message) {
+async function send(db, userKeys, message, { report = null } = {}) {
     try {
         ensureTables(db);
         const keys = [...new Set(userKeys.filter(Boolean))];
@@ -116,12 +143,17 @@ async function send(db, userKeys, message) {
         await Promise.all(subs.map(async (s) => {
             try {
                 await sender({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, options);
-                db.prepare("UPDATE push_subscriptions SET last_sent_at = datetime('now') WHERE id = ?").run(s.id);
+                db.prepare("UPDATE push_subscriptions SET last_sent_at = datetime('now'), last_error = NULL WHERE id = ?").run(s.id);
                 ok++;
             } catch (err) {
+                const why = explain(err);
+                if (report) report.push({ device: s.device, error: why });
                 // The browser was uninstalled or the permission withdrawn: forget the device
                 if (err && (err.statusCode === 404 || err.statusCode === 410)) db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(s.id);
-                else console.error('[push]', err && (err.statusCode || err.message));
+                else {
+                    db.prepare("UPDATE push_subscriptions SET last_error = ?, last_error_at = datetime('now') WHERE id = ?").run(why, s.id);
+                    console.error('[push]', why);
+                }
             }
         }));
         return ok;

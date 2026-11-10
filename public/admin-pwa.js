@@ -106,6 +106,7 @@ async function openPushSheet() {
     }
     state.textContent = msg;
     state.className = 'push-state ' + (ok ? 'ok' : '');
+    renderPushDevices(sub).catch(() => {});
     $id('pushOn').hidden = !pushSupported || ok || Notification.permission === 'denied';
     $id('pushTest').hidden = !ok;
     $id('pushOff').hidden = !ok;
@@ -142,14 +143,36 @@ async function enablePush() {
 }
 
 async function testPush() {
+    $id('pushState').textContent = '… جارٍ الإرسال';
     try {
-        await api('POST', '/api/admin/me/push/test');
-        $id('pushState').textContent = '✓ أُرسل إشعار تجريبي — يصل خلال ثوانٍ';
+        const r = await api('POST', '/api/admin/me/push/test');
+        $id('pushState').textContent = `✓ قبلت خدمة الإشعارات الإرسال إلى ${r.sent} جهاز — يصل خلال ثوانٍ. إن لم يظهر فالسبب في إعدادات الجوال (التركيز / عدم الإزعاج، أو إشعارات التطبيق مغلقة).`
+            + (r.failed && r.failed.length ? ` لم يصل إلى: ${r.failed.map((f) => `${f.device || 'جهاز'} (${f.error})`).join('، ')}` : '');
         $id('pushState').className = 'push-state ok';
     } catch (err) {
         $id('pushState').textContent = err.message;
         $id('pushState').className = 'push-state err';
     }
+    renderPushDevices(await currentSubscription().catch(() => null)).catch(() => {});
+}
+
+/* The account's devices on the server: when each last received something, and the last error */
+async function renderPushDevices(sub) {
+    const box = $id('pushDevices');
+    if (!box) return;
+    const r = await api('GET', '/api/admin/me/push');
+    const mine = sub ? sub.endpoint.slice(-12) : null;
+    const when = (s) => (s ? new Date(String(s).replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+    // This browser allowed notifications but the server does not know it: register it again
+    if (sub && Notification.permission === 'granted' && !r.devices.some((d) => d.tail === mine)) {
+        await api('POST', '/api/admin/me/push', { subscription: sub.toJSON(), device: deviceName() }).catch(() => {});
+        return renderPushDevices(sub);
+    }
+    box.innerHTML = r.devices.length ? `<div class="sub-heading" style="margin:10px 0 4px">أجهزتك المشتركة</div>` + r.devices.map((d) => `<div class="push-dev${d.tail === mine ? ' me' : ''}">
+        <b>${esc(d.device || 'جهاز')}</b>${d.tail === mine ? ' <span class="badge on">هذا الجهاز</span>' : ''} <small>(${esc(d.service || '')})</small>
+        <div class="status-text">آخر إشعار وصل للخدمة: ${esc(when(d.last_sent_at))}</div>
+        ${d.last_error ? `<div class="status-text bad">آخر خطأ (${esc(when(d.last_error_at))}): ${esc(d.last_error)}</div>` : ''}
+    </div>`).join('') : '';
 }
 
 /* This device stops: unsubscribed in the browser and forgotten by the server */
