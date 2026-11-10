@@ -247,6 +247,7 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
         const cells = {
             idx: String(i + 1),
             name: item.name + (item.type ? ' — ' + item.type : '') + (item.optional ? ' (إضافة)' : '')
+                + (item.gift ? ' (هدية — خصم 100%)' : '')
                 + (item.discount && item.discount.amount && !item.discount.group ? ` (خصم ${item.discount.type === 'percent' ? item.discount.value + '%' : money(item.discount.amount)})` : ''),
             qty: qty(item.quantity),
             unit: UNIT_LABELS[item.unit] || item.unit,
@@ -269,20 +270,31 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
     const tW = range.total_to != null ? 340 : 300;
     const tX = left;
     const valW = range.total_to != null ? 130 : 80;
-    // An employee's quote can carry both the customer promotion and the employee's own discount: one row each
+    // A quote can carry the manager's promotion, the gift and the employee's own discount: one row each
+    const promoLabel = () => `${details.promo_label} — خصم ${details.promo_percent}%${Array.isArray(details.promo_parts) && details.promo_parts.length ? ` (${details.promo_parts.join(' و')})` : ''}`;
+    const giftRow = () => (Number(details.gift_amount) > 0.004 ? [[`هدية: ${details.gift_name || ''} — خصم 100%`, money(details.gift_amount)]] : []);
     const staffRows = () => {
         const promo = Number(details.promo_amount) || 0;
-        const own = Math.round((Number(details.discount_total) - promo) * 100) / 100;
+        const gift = Number(details.gift_amount) || 0;
+        const own = Math.round((Number(details.discount_total) - promo - gift) * 100) / 100;
         return [
-            ...(promo > 0.004 ? [[`${details.promo_label} — خصم ${details.promo_percent}%`, money(promo)]] : []),
+            ...(promo > 0.004 ? [[promoLabel(), money(promo)]] : []),
+            ...giftRow(),
             ...(own > 0.004 ? [[details.quote_discount && details.quote_discount.type === 'percent' && !details.lines_discount
                 ? `الخصم ${details.quote_discount.value}%` : 'الخصم', money(own)]] : [])
         ];
     };
+    // A customer calculator's quote: the promotion (a range for overhead gates) and the gift
+    const offerRows = (fmtDiscount) => {
+        const gift = Number(details.gift_amount) || 0;
+        if (!gift) return [[details.promo_label ? promoLabel() : 'الخصم', fmtDiscount]];
+        const from = Math.round((Number(details.discount_total) - gift) * 100) / 100;
+        const to = details.discount_total_to != null ? Math.round((Number(details.discount_total_to) - gift) * 100) / 100 : null;
+        return [...(from > 0.004 ? [[details.promo_label ? promoLabel() : 'الخصم', amount(from, to)]] : []), ...giftRow()];
+    };
     const discountRows = (fmtGross, fmtDiscount) => (details.discount_total > 0.004 ? [
         ['المجموع قبل الخصم', fmtGross],
-        ...(details.staff_quote ? staffRows()
-            : [[details.promo_label ? `${details.promo_label} — خصم ${details.promo_percent}%` : 'الخصم', fmtDiscount]])
+        ...(details.staff_quote ? staffRows() : offerRows(fmtDiscount))
     ] : []);
     const totals = inv
         ? [

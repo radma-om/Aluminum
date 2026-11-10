@@ -63,8 +63,10 @@ function attentionOf(lead, { staleDays = 3, today = localToday() } = {}) {
         if (lead.next_follow_up > today) return null; // planned: not forgotten
         return { reason: lead.next_follow_up < today ? 'overdue' : 'due', date: lead.next_follow_up };
     }
-    const since = String(lead.last_staff_at || lead.created_at || '').slice(0, 10);
-    if (!since) return null;
+    // Stored times are UTC: the day they fall on is the Muscat day (after 20:00 UTC it is already tomorrow)
+    const sinceMs = storedMs(lead.last_staff_at || lead.created_at);
+    if (!Number.isFinite(sinceMs)) return null;
+    const since = localToday(sinceMs);
     const days = Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(since + 'T00:00:00Z')) / 86400000);
     return days >= Math.max(1, Number(staleDays) || 3) ? { reason: 'stale', days, since } : null;
 }

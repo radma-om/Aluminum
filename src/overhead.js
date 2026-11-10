@@ -76,9 +76,9 @@ function overheadPrice(db, { gateType, heightCm, widthCm, motorId, regionId }) {
 
     const vatPercent = Number(getSettings(db).vat_percent) || 0;
     const items = [
-        service(`بوابة أوفرهيد ${size.gate_type}`, `العرض ${size.width_cm} سم × الارتفاع ${size.height_cm} سم`, size.price_from, size.price_to),
-        service('المحرك', motor.name, motor.price),
-        service('التركيب', region.name, install)
+        { ...service(`بوابة أوفرهيد ${size.gate_type}`, `العرض ${size.width_cm} سم × الارتفاع ${size.height_cm} سم`, size.price_from, size.price_to), part: 'gate' },
+        { ...service('المحرك', motor.name, motor.price), part: 'motor' },
+        { ...service('التركيب', region.name, install), part: 'installation' }
     ];
     const subtotal = round2(items.reduce((sum, i) => sum + i.line_total, 0));
     const subtotalTo = round2(items.reduce((sum, i) => sum + (i.line_total_to ?? i.line_total), 0));
@@ -98,7 +98,7 @@ function overheadPrice(db, { gateType, heightCm, widthCm, motorId, regionId }) {
         delivery_installation: 'شامل التركيب والملحقات الأساسية — اختلاف السعر ضمن النطاق حسب اللون',
         gate: { gate_type: size.gate_type, width_cm: size.width_cm, height_cm: size.height_cm, motor: motor.name, region: region.name },
         region
-    }, 'overhead');
+    }, 'overhead', { units: 1 });
 }
 
 module.exports = { loadOverhead, publicOverhead, overheadPrice, gateTypes };

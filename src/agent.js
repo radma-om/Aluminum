@@ -58,7 +58,11 @@ function knowledgeSection(db) {
 function promoLine(settings) {
     const p = require('./promotions').publicInfo(settings);
     if (!p) return '';
-    return `\n\nعرض حالي للعملاء: «${p.label}» خصم ${p.percent}% على ${p.applies_to.map((a) => a.name).join(' و')}${p.until ? ` حتى ${p.until}` : ''}. الأسعار التي تعطيك إياها الأدوات تشمل هذا الخصم مسبقاً — لا تخصمه مرة ثانية. اذكر العرض للعميل عند إعطاء السعر لتشجيعه.`;
+    const on = (a) => a.name + (a.parts ? ` (${a.parts.join(' و')} فقط)` : '');
+    let out = '';
+    if (p.percent) out += `\n\nعرض حالي للعملاء: «${p.label}» خصم ${p.percent}% على ${p.applies_to.map(on).join('، ')}${p.until ? ` حتى ${p.until}` : ''}. الأسعار التي تعطيك إياها الأدوات تشمل هذا الخصم مسبقاً — لا تخصمه مرة ثانية. اذكر العرض للعميل عند إعطاء السعر لتشجيعه.`;
+    if (p.gift) out += `\n\nهدية حالية: ${p.gift.name} (قيمتها ${p.gift.price.toFixed(2)} ر.ع) مجاناً مع كل بوابة من ${p.gift.applies_to.map((a) => a.name).join(' و')}${p.gift.until ? ` حتى ${p.gift.until}` : ''}. تظهر في السعر كبند مخصوم بالكامل — اذكرها للعميل.`;
+    return out;
 }
 
 const WEEKDAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];

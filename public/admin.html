@@ -602,6 +602,15 @@
         .qb-cost .neg { color: #a93226; }
         .qb-cost .pos { color: #1b6b3a; }
         @media (max-width: 700px) { .qb-cost table { font-size: 0.78rem; } .qb-cost th, .qb-cost td { padding: 4px 3px; } }
+        .promo-scope { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 6px 0 4px; }
+        .promo-kind { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: #fff; }
+        .promo-kind > label { font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .promo-parts { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; padding-inline-start: 24px; font-size: 0.86rem; }
+        .promo-parts label { display: inline-flex; align-items: center; gap: 5px; }
+        .promo-kind:not(:has(> label input:checked)) .promo-parts { opacity: 0.45; pointer-events: none; }
+        .qb-item-disc { display: inline-flex; gap: 4px; align-items: center; margin-inline-start: 8px; }
+        .qb-item-disc select, .qb-item-disc input { padding: 2px 4px !important; font-size: 0.78rem !important; border-radius: 6px !important; width: auto; }
+        .qb-item-disc input { width: 64px; }
         .qb-add { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
         .qb-group { border: 2px solid var(--border); border-radius: 10px; padding: 10px; margin: 8px 0; background: var(--bg, #fafbfd); }
         .qb-group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
@@ -1780,19 +1789,31 @@
         <div id="tab-quotes" class="tab-content">
             <div class="card manager-only">
                 <div class="card-title"><span class="icon"><i class="fas fa-tags"></i></span> خصم العملاء (عرض موسمي)</div>
-                <p class="status-text" style="margin:0 0 10px">نسبة تُخصم من السعر قبل الضريبة في الحاسبات المختارة: يراها العميل في الحاسبة، وتظهر في عرض السعر وملف PDF، ويذكرها المساعد الذكي ويحسب بها. ينتهي العرض تلقائياً بعد آخر يوم. عروض الموظفين لا تتأثر (لها خصمها الخاص).</p>
+                <p class="status-text" style="margin:0 0 10px">نسبة تُخصم من السعر قبل الضريبة في الحاسبات المختارة، وعلى الأجزاء المختارة فقط من كل بوابة (مثلاً الشرائح وحدها، أو بوابة الأوفرهيد بدون المحرك والتركيب). يراها العميل في الحاسبة، وتظهر في عرض السعر وملف PDF، ويذكرها المساعد الذكي، وتُطبَّق تلقائياً في عروض الموظفين ولا تُحسب من حد خصمهم. ينتهي العرض تلقائياً بعد آخر يوم.</p>
                 <div class="form-grid">
                     <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="promoEnabled"> تفعيل الخصم</label></div>
                     <div class="form-group"><label>اسم العرض</label><input type="text" id="promoLabel" maxlength="60" placeholder="مثلاً: عرض الشتاء"></div>
                     <div class="form-group"><label>النسبة <span class="unit">(% حتى 50)</span></label><input type="number" id="promoPercent" min="0" max="50" step="0.5"></div>
                     <div class="form-group"><label>آخر يوم <span class="unit">(اختياري)</span></label><input type="date" id="promoUntil"></div>
                 </div>
-                <div class="check-row" id="promoScope">
+                <div class="promo-scope" id="promoScope"></div>
+                <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="savePromo()">حفظ</button><span id="promoStatus" class="status-text"></span></div>
+            </div>
+            <div class="card manager-only">
+                <div class="card-title"><span class="icon"><i class="fas fa-gift"></i></span> هدية مع البوابة 🎁</div>
+                <p class="status-text" style="margin:0 0 10px">هدية تُضاف تلقائياً مع كل بوابة (أو طقم مكينة) في الحاسبات المختارة: تظهر بسعرها ثم تُخصم 100%، وتدخل في مجمل الخصم. تظهر للعميل في الحاسبة، وفي عرض السعر وملف PDF، ويذكرها المساعد الذكي، وتُضاف في عروض الموظفين ولا تُحسب من حد خصمهم.</p>
+                <div class="form-grid">
+                    <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="giftEnabled"> تفعيل الهدية</label></div>
+                    <div class="form-group"><label>اسم الهدية</label><input type="text" id="giftName" maxlength="60" placeholder="مثلاً: جهاز GSM opener"></div>
+                    <div class="form-group"><label>سعرها <span class="unit">(ر.ع)</span></label><input type="number" id="giftPrice" min="0" max="1000" step="0.5"></div>
+                    <div class="form-group"><label>آخر يوم <span class="unit">(اختياري)</span></label><input type="date" id="giftUntil"></div>
+                </div>
+                <div class="check-row" id="giftScope">
                     <label><input type="checkbox" value="rolling_shutter"> بوابات الرول شتر</label>
                     <label><input type="checkbox" value="overhead"> بوابات الأوفرهيد</label>
                     <label><input type="checkbox" value="motors"> مكائن البوابات</label>
                 </div>
-                <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="savePromo()">حفظ</button><span id="promoStatus" class="status-text"></span></div>
+                <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="saveGift()">حفظ</button><span id="giftStatus" class="status-text"></span></div>
             </div>
             <div class="card">
                 <div class="card-title">

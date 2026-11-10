@@ -133,24 +133,24 @@ function priceChoice({ widthCm, heightCm, count = 1 }, choice, catalog, region) 
     const slat = products.get(variant.product_id);
     const line = slatLine(slat, variant, color, size, settings);
     const items = [{
-        product_id: slat.id, category: 'slat', name: `شرائح ${type.name}`,
+        product_id: slat.id, category: 'slat', part: 'slats', name: `شرائح ${type.name}`,
         type: [variant.label, color && color.name].filter(Boolean).join(' — '),
         unit: line.unit, quantity: Math.round(line.quantity * 1000) / 1000,
         unit_price: line.unitPrice, line_total: round2(line.unitPrice * line.quantity)
     }];
     if (color && color.surcharge_per_m2 > 0) {
         const area = round2(slatArea(variant, size));
-        items.push({ ...serviceItem('إضافة لون', color.name, area, color.surcharge_per_m2), unit: 'm2' });
+        items.push({ ...serviceItem('إضافة لون', color.name, area, color.surcharge_per_m2), unit: 'm2', part: 'slats' });
     }
-    if (color && color.fixed_fee > 0) items.push(serviceItem('رسوم الصبغ', color.name, size.count, color.fixed_fee));
+    if (color && color.fixed_fee > 0) items.push({ ...serviceItem('رسوم الصبغ', color.name, size.count, color.fixed_fee), part: 'slats' });
     for (const { group, option } of accessories) {
         const product = products.get(option.product_id);
         items.push(lineItem(product, group.factor * basisValue(group.basis, size) * size.count, settings, {
-            name: group.name, type: option.label
+            name: group.name, type: option.label, part: product.category === 'machine' ? 'motor' : 'accessories'
         }));
     }
-    if (region && region.installation_fee > 0) items.push(serviceItem('التركيب', region.name, size.count, region.installation_fee));
-    if (region && region.delivery_fee > 0) items.push(serviceItem('التوصيل', region.name, 1, region.delivery_fee));
+    if (region && region.installation_fee > 0) items.push({ ...serviceItem('التركيب', region.name, size.count, region.installation_fee), part: 'installation' });
+    if (region && region.delivery_fee > 0) items.push({ ...serviceItem('التوصيل', region.name, 1, region.delivery_fee), part: 'delivery' });
 
     const spec = [
         ['المقاس', `العرض ${Number(widthCm)} سم — الارتفاع ${Number(heightCm)} سم`],
@@ -174,7 +174,7 @@ function priceChoice({ widthCm, heightCm, count = 1 }, choice, catalog, region) 
         },
         spec,
         delivery_installation: feesNote(region)
-    }, 'rolling_shutter');
+    }, 'rolling_shutter', { units: size.count });
 }
 
 function finalPrice(db, { widthCm, heightCm, count = 1, shutterTypeId, variantId, colorId, optionIds, regionId }) {
