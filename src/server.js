@@ -1499,9 +1499,12 @@ function createApp(db, { agentClient } = {}) {
     });
     admin.delete('/me/push', (req, res) => res.json({ devices: push.unsubscribe(db, req.user, (req.body || {}).endpoint) }));
     admin.post('/me/push/test', asyncRoute(async (req, res) => {
-        const sent = await push.send(db, [push.keyOf(req.user)], { title: '🔔 تجربة الإشعارات', body: 'وصلت الإشعارات إلى هذا الجهاز ✓', url: '/admin', tag: 'test' });
-        if (!sent) throw httpError(400, 'لا يوجد جهاز مشترك لهذا الحساب — فعّل الإشعارات أولاً');
-        res.json({ sent });
+        if (!push.devices(db, req.user).length) throw httpError(400, 'لا يوجد جهاز مشترك لهذا الحساب — فعّل الإشعارات أولاً');
+        const report = [];
+        const sent = await push.send(db, [push.keyOf(req.user)], { title: '🔔 تجربة الإشعارات', body: 'وصلت الإشعارات إلى هذا الجهاز ✓', url: '/admin', tag: 'test' }, { report });
+        // Nothing was accepted: say what the push service answered
+        if (!sent) throw httpError(502, 'لم تقبل خدمة الإشعارات الإرسال: ' + (report.map((r) => `${r.device || 'جهاز'}: ${r.error}`).join(' — ') || 'الجهاز لم يعد مشتركاً، فعّل الإشعارات من جديد'));
+        res.json({ sent, failed: report, devices: push.devices(db, req.user) });
     }));
 
     admin.post('/leads/:id/notes', (req, res) => {

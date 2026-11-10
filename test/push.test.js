@@ -17,6 +17,8 @@ process.env.ADMIN_TOKEN = OWNER;
 const sent = [];
 push.setSenderForTests(async (sub, payload) => {
     if (sub.endpoint.includes('gone')) throw Object.assign(new Error('Gone'), { statusCode: 410 });
+    if (sub.endpoint.includes('refused')) throw Object.assign(new Error('Forbidden'), { statusCode: 403, body: '{"reason":"BadJwtToken"}' });
+    if (sub.endpoint.includes('offline')) throw Object.assign(new Error('getaddrinfo ENOTFOUND web.push.apple.com'), { code: 'ENOTFOUND' });
     sent.push({ endpoint: sub.endpoint, ...JSON.parse(payload) });
 });
 const settle = () => new Promise((r) => setTimeout(r, 30));
@@ -139,4 +141,28 @@ test('who is told: customer quotes, a customer handed over, a work order, an app
     await settle();
     assert.deepEqual(to('📅 طلب موعد ينتظر موافقتك'), ['boss', 'office']);
     assert.ok(sultan && office);
+});
+
+test('when nothing arrives: the push service\'s answer is kept per device and shown by the test button', async (t) => {
+    const { call } = await start(t);
+    await call('POST', '/api/admin/me/push', { subscription: device('refused'), device: 'iPhone — Safari (التطبيق)' });
+    const r = await call('POST', '/api/admin/me/push/test');
+    assert.equal(r.status, 502);
+    assert.match(r.body.error, /403 — رفضت خدمة الإشعارات مفتاح الخادم/);
+    assert.match(r.body.error, /BadJwtToken/);
+    const d = (await call('GET', '/api/admin/me/push')).body.devices[0];
+    assert.match(d.last_error, /^403/);
+    assert.equal(d.service, 'push.example.com');
+    assert.equal(d.tail, device('refused').endpoint.slice(-12));
+    assert.ok(!('endpoint' in d), 'the full address is never sent back');
+    // The host cannot reach the push service
+    await call('POST', '/api/admin/me/push', { subscription: device('offline') });
+    const r2 = await call('POST', '/api/admin/me/push/test');
+    assert.match(r2.body.error, /لم يصل الخادم إلى خدمة الإشعارات \(ENOTFOUND\)/);
+    // A good device next to a bad one: sent, and the failure listed
+    await call('POST', '/api/admin/me/push', { subscription: device('good') });
+    const r3 = await call('POST', '/api/admin/me/push/test');
+    assert.equal(r3.status, 200);
+    assert.equal(r3.body.sent, 1);
+    assert.equal(r3.body.failed.length, 2);
 });
