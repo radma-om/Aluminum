@@ -1694,7 +1694,7 @@ function applyPermissions() {
     }
     document.querySelectorAll('.sidebar .tab-btn[data-tab]').forEach((b) => {
         const tab = b.dataset.tab;
-        b.hidden = ['users', 'audit', 'backup'].includes(tab) ? !manager : !canSee(tab);
+        b.hidden = ['users', 'audit', 'backup', 'team'].includes(tab) ? !manager : !canSee(tab);
     });
     document.querySelectorAll('.manager-only').forEach((el) => { el.hidden = !manager; });
     // Where customers and sales alerts go: only managers change them (the server ignores them from staff)

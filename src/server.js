@@ -33,6 +33,7 @@ const invoices = require('./invoices');
 const workorders = require('./workorders');
 const servicerequests = require('./servicerequests');
 const costs = require('./costs');
+const team = require('./team');
 const autoreply = require('./autoreply');
 const customers = require('./customers');
 const staffquotes = require('./staffquotes');
@@ -1405,7 +1406,15 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Dashboard figures ---- */
 
-    admin.get('/dashboard', (req, res) => res.json(dashboard.build(db, { days: req.query.days, user: req.user })));
+    admin.get('/dashboard', (req, res) => res.json({
+        ...dashboard.build(db, { days: req.query.days, user: req.user }),
+        // Today's pulse, the rates and the latest events: the whole company's figures, for managers
+        pulse: req.user.role === 'manager' ? team.pulse(db, { days: req.query.days }) : null
+    }));
+    /* Employees' performance between two dates (managers only: the route is not mapped to a section) */
+    admin.get('/team', (req, res) => res.json(team.report(db, {
+        from: String(req.query.from || ''), to: String(req.query.to || ''), employee: String(req.query.employee || '')
+    })));
 
     /* ---- Customer follow-up (WhatsApp, website chat, calculators) ---- */
 
