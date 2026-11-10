@@ -381,3 +381,6 @@ button.feed-item:hover { background: #f6f9fc; }
 @media (max-width: 640px) { .team-kpis, .pulse-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .team-kpis .k-value { font-size: 1.15rem; } .pulse-tile .p-value { font-size: 1.15rem; } }
 .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .seg button { white-space: nowrap; flex: none; }
+.qb-group-items .gift-row { color: var(--good-text); }
+.qb-group-items .row s { color: var(--ink-muted); margin-inline-end: 4px; }
+.qb-group-items .pos { color: var(--good-text); }

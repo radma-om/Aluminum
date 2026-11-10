@@ -41,6 +41,7 @@ function calcLines(db, line, regionId, where) {
     const num = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
     let priced;
     let label;
+    let units = 1;
     if (line.calc === 'rolling_shutter') {
         priced = require('./doors').finalPrice(db, {
             widthCm: num(pr.width_cm), heightCm: num(pr.height_cm), count: Number(pr.count) || 1,
@@ -48,20 +49,24 @@ function calcLines(db, line, regionId, where) {
             optionIds: Array.isArray(pr.option_ids) ? pr.option_ids.filter(Boolean) : [], regionId
         });
         label = `${Number(pr.width_cm)}×${Number(pr.height_cm)} سم${Number(pr.count) > 1 ? ` × ${Number(pr.count)}` : ''}`;
+        units = priced.door.count;
     } else if (line.calc === 'overhead') {
         priced = require('./overhead').overheadPrice(db, { gateType: pr.gate_type, widthCm: num(pr.width_cm), heightCm: num(pr.height_cm), motorId: pr.motor_id, regionId });
         label = `أوفرهيد ${pr.gate_type} ${Number(pr.width_cm)}×${Number(pr.height_cm)} سم`;
+        units = 1;
     } else if (line.calc === 'motors') {
         priced = require('./motors').motorPrice(db, {
             sectionId: pr.section_id, kitId: pr.kit_id || null, kitCount: Number(pr.kit_count) || 1,
             parts: Array.isArray(pr.parts) ? pr.parts : [], regionId, installation: pr.installation !== false
         });
         label = (priced.order && priced.order.section_label) || CALCS.motors;
+        units = priced.order ? priced.order.kit_count : 0;
     } else {
         throw err(400, `نوع البند غير معروف (${where})`);
     }
     const high = line.price_level === 'to';
-    return { label, items: priced.items.map(({ product_id, category, unit_price_to, line_total_to, ...i }) => ({
+    // The engine's gift line is left out: price() adds the offers per gate itself
+    return { label, units, items: priced.items.filter((i) => !i.gift).map(({ product_id, category, unit_price_to, line_total_to, ...i }) => ({
         ...i,
         unit_price: high && unit_price_to != null ? unit_price_to : i.unit_price,
         line_total: high && line_total_to != null ? line_total_to : i.line_total
@@ -93,23 +98,52 @@ function price(db, input, settings) {
     if (hasCalc && !input.region_id) throw err(400, 'اختر ولاية العميل — التركيب والتوصيل يُحسبان حسبها كما في حاسبة العملاء');
     const groups = [];
     let promoUsed = null;
+    let giftUsed = null;
     const items = lines.flatMap((line, i) => {
         const where = `البند ${i + 1}`;
         if (line && line.calc) {
-            const { label, items: calc } = calcLines(db, line, input.region_id, where);
+            const { label, items: calc, units } = calcLines(db, line, input.region_id, where);
             const g = groups.length;
             const priced = calc.map((it) => ({ ...it, gross: round2(it.line_total), group: g }));
             const gross = round2(priced.reduce((s, l) => s + l.gross, 0));
-            // The customer promotion first (same amount as the customer calculator), then the employee's discount on what is left
+            // 1) The manager's promotion, on the parts it covers (the same amount as the customer calculator)
             const promo = promotions.active(settings, line.calc);
-            const promoAmount = promo ? round2(gross * promo.percent / 100) : 0;
-            if (promo) { promoUsed = promoUsed || promo; spread(priced, promoAmount, (l, part) => { l.promo = part; }); }
-            const d = discountOf(line.discount, round2(gross - promoAmount), where);
-            spread(priced, d.amount, (l, part) => { l.discount = { type: d.type, value: d.value, amount: part, group: true }; });
+            let promoAmount = 0;
+            if (promo) {
+                const covered = priced.filter((l) => promo.parts.includes(l.part));
+                promoAmount = promotions.promoCut(promo, covered);
+                if (promoAmount) { promoUsed = promoUsed || promo; spread(covered, promoAmount, (l, part) => { l.promo = part; }); }
+            }
+            // 2) The employee's discount on single lines of the gate (e.g. the slats only)
+            const itemDiscounts = {};
+            for (const [k, v] of Object.entries(line.item_discounts && typeof line.item_discounts === 'object' ? line.item_discounts : {})) {
+                const l = priced[Number(k)];
+                if (!l || !v || !Number(v.value)) continue;
+                const d = discountOf(v, l.line_total, `${where} — ${l.name}`);
+                if (!d.amount) continue;
+                l.discount = d;
+                l.line_total = round2(l.line_total - d.amount);
+                itemDiscounts[k] = { type: d.type, value: d.value };
+            }
+            // 3) The employee's discount on the whole gate, spread over its lines
+            const d = discountOf(line.discount, round2(priced.reduce((s, l) => s + l.line_total, 0)), where);
+            spread(priced, d.amount, (l, part) => { l.group_discount = round2((l.group_discount || 0) + part); });
+            // 4) The manager's gift, one per gate: its price, given in full
+            const gift = units > 0 ? promotions.activeGift(settings, line.calc) : null;
+            let giftAmount = 0;
+            if (gift) {
+                const gl = promotions.giftLine(gift, units);
+                giftAmount = gl.line_total;
+                giftUsed = giftUsed || gift;
+                const { product_id, category, ...rest } = gl;
+                priced.push({ ...rest, gross: giftAmount, promo: giftAmount, line_total: 0, group: g });
+            }
             groups.push({ calc: line.calc, label: `${CALCS[line.calc]} — ${label}`, params: line.params || {}, price_level: line.price_level === 'to' ? 'to' : 'from',
                 ...(line.discount && Number(line.discount.value) ? { discount: { type: line.discount.type === 'percent' ? 'percent' : 'amount', value: Number(line.discount.value) } } : {}),
+                ...(Object.keys(itemDiscounts).length ? { item_discounts: itemDiscounts } : {}),
                 ...(promoAmount ? { promo: promoAmount } : {}),
-                gross, total: round2(priced.reduce((s, l) => s + l.line_total, 0)) });
+                ...(giftAmount ? { gift: giftAmount } : {}),
+                gross: round2(gross + giftAmount), total: round2(priced.reduce((s, l) => s + l.line_total, 0)) });
             return priced;
         }
         const quantity = Math.round(num(line.quantity) * 1000) / 1000;
@@ -136,8 +170,10 @@ function price(db, input, settings) {
         }];
     });
     const grossSubtotal = round2(items.reduce((s, i) => s + i.gross, 0));
-    const promoAmount = round2(items.reduce((s, i) => s + (i.promo || 0), 0));
-    const afterPromo = round2(grossSubtotal - promoAmount);
+    // The manager's offers (promotion and gift) are not the employee's discount
+    const giftAmount = round2(items.filter((i) => i.gift).reduce((s, i) => s + (i.promo || 0), 0));
+    const promoAmount = round2(items.filter((i) => !i.gift).reduce((s, i) => s + (i.promo || 0), 0));
+    const afterPromo = round2(grossSubtotal - promoAmount - giftAmount);
     const linesTotal = round2(items.reduce((s, i) => s + i.line_total, 0));
     const quoteDiscount = discountOf(input.discount, linesTotal, 'خصم الإجمالي');
     const subtotal = round2(linesTotal - quoteDiscount.amount);
@@ -150,6 +186,7 @@ function price(db, input, settings) {
         pricing: {
             gross_subtotal: grossSubtotal,
             ...(promoAmount ? { promo_label: promoUsed.label, promo_percent: promoUsed.percent, promo_amount: promoAmount } : {}),
+            ...(giftAmount ? { gift_name: giftUsed.name, gift_amount: giftAmount } : {}),
             lines_discount: round2(afterPromo - linesTotal),
             quote_discount: quoteDiscount.amount ? quoteDiscount : null,
             discount_total: round2(grossSubtotal - subtotal),
@@ -166,8 +203,8 @@ function price(db, input, settings) {
 function limitBase(quote) {
     const d = quote.details || {};
     const gross = Number(d.gross_subtotal ?? quote.subtotal);
-    if (d.promo_amount != null) return round2(gross - Number(d.promo_amount));           // employee quote with the promotion
-    if (d.promo_label && !d.staff_quote) return Number(quote.subtotal);                    // customer calculator: the promotion is its only discount
+    if (d.staff_quote) return round2(gross - Number(d.promo_amount || 0) - Number(d.gift_amount || 0)); // employee quote: after the manager's offers
+    if (d.promo_label || d.gift_amount) return Number(quote.subtotal);                                 // customer calculator: the offers are its only discounts
     return gross;
 }
 

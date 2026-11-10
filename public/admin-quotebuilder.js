@@ -54,7 +54,8 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
                 seen.add(i.group);
                 const g = groups[i.group];
                 qbLines.push({ calc: g.calc, params: qbScreenParams(g.calc, g.params || {}), price_level: g.price_level || 'from',
-                    disc_type: g.discount ? g.discount.type : '', disc_value: g.discount ? g.discount.value : '' });
+                    disc_type: g.discount ? g.discount.type : '', disc_value: g.discount ? g.discount.value : '',
+                    item_discounts: structuredClone(g.item_discounts || {}) });
                 continue;
             }
             qbLines.push({
@@ -73,7 +74,12 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
     // The manager's promotion is applied by itself to the gates / motors it covers
     const pr = qbCatalog.promotion;
     $id('qbPromo').hidden = !pr;
-    if (pr) $id('qbPromo').textContent = `🎁 ${pr.label}: خصم ${pr.percent}% يُطبَّق تلقائياً على ${pr.applies_to.map((a) => a.name).join('، ')}${pr.until ? ` حتى ${pr.until}` : ''} — ولا يُحسب من حد خصمك.`;
+    if (pr) {
+        const notes = [];
+        if (pr.percent) notes.push(`🎉 ${pr.label}: خصم ${pr.percent}% يُطبَّق تلقائياً على ${pr.applies_to.map((a) => a.name + (a.parts ? ` (${a.parts.join(' و')} فقط)` : '')).join('، ')}${pr.until ? ` حتى ${pr.until}` : ''}`);
+        if (pr.gift) notes.push(`🎁 هدية مع كل بوابة: ${pr.gift.name} (${Number(pr.gift.price).toFixed(2)} ر.ع، تُخصم 100%) في ${pr.gift.applies_to.map((a) => a.name).join('، ')}`);
+        $id('qbPromo').textContent = notes.join(' — ') + ' — لا يُحسب من حد خصمك.';
+    }
     renderQbLines();
     setStatus('qbStatus', '');
     qbApplyMode();
@@ -283,6 +289,16 @@ $id('qbRegion').addEventListener('change', () => qbSchedule());
 /* A choice changed in a gate / motor card; a parent choice (type, thickness, height, section) resets what depends on it */
 function qbOnCalcChange(e, l) {
     const t = e.target;
+    // A discount on one line of the gate (e.g. the slats only)
+    if (t.dataset.idisc !== undefined) {
+        const k = t.dataset.idisc;
+        l.item_discounts = l.item_discounts || {};
+        const cur = l.item_discounts[k] || { type: 'percent', value: '' };
+        if (t.dataset.f === 'type') cur.type = t.value; else cur.value = t.value;
+        if (cur.value === '' || !Number(cur.value)) delete l.item_discounts[k]; else l.item_discounts[k] = cur;
+        if (cur.value === '' && t.dataset.f === 'type') l.item_discounts[k] = cur; // keep the chosen type while the value is empty
+        return qbSchedule();
+    }
     const p = l.params;
     const c = qbCatalog.calculators;
     let redraw = false;
@@ -347,7 +363,8 @@ const qbUsed = (l) => (l.calc ? !qbCalcMissing(l) : l.product_id || String(l.nam
 
 function qbPayload(all = false) {
     const items = qbLines.filter((l) => (all && l.calc) || qbUsed(l)).map((l) => ({
-        ...(l.calc ? { calc: l.calc, params: qbCalcParams(l), price_level: l.price_level === 'to' ? 'to' : 'from' }
+        ...(l.calc ? { calc: l.calc, params: qbCalcParams(l), price_level: l.price_level === 'to' ? 'to' : 'from',
+            ...(l.item_discounts && Object.values(l.item_discounts).some((d) => Number(d.value)) ? { item_discounts: Object.fromEntries(Object.entries(l.item_discounts).filter(([, d]) => Number(d.value)).map(([k, d]) => [k, { type: d.type, value: Number(d.value) }])) } : {}) }
             : l.product_id ? { product_id: Number(l.product_id), quantity: Number(l.quantity) }
                 : { name: l.name, unit: l.unit, unit_price: l.unit_price === '' ? '' : Number(l.unit_price), quantity: Number(l.quantity) }),
         ...(l.disc_type && l.disc_value !== '' ? { discount: { type: l.disc_type, value: Number(l.disc_value) } } : {})
@@ -382,7 +399,7 @@ async function qbPreview() {
                 while (r.items[n] && r.items[n].group === g) lines.push(r.items[n++]);
                 if (el) el.textContent = r.groups[g] ? qbMoney(r.groups[g].total) : '—';
                 const box = $id('qbGroupItems' + i);
-                if (box) box.innerHTML = lines.map((it) => `<div class="row"><span>${esc(it.name)}${it.type ? ' — ' + esc(it.type) : ''}${it.quantity !== 1 ? ` × ${esc(it.quantity)}` : ''}</span><span>${qbMoney(it.gross)}</span></div>`).join('');
+                if (box) renderQbGroupItems(box, l, lines);
                 g++;
             } else {
                 if (el) el.textContent = r.items[n] ? qbMoney(r.items[n].line_total) : '—';
@@ -393,12 +410,13 @@ async function qbPreview() {
         const limit = r.discount_limit;
         $id('qbTotals').innerHTML = `
             ${p.discount_total > 0 ? `<div class="row"><span>المجموع قبل الخصم</span><span>${qbMoney(p.gross_subtotal)}</span></div>` : ''}
-            ${p.promo_amount ? `<div class="row" style="color:var(--success)"><span>🎁 ${esc(p.promo_label)} — ${esc(p.promo_percent)}% (تلقائي)</span><span>-${qbMoney(p.promo_amount)}</span></div>` : ''}
+            ${p.promo_amount ? `<div class="row" style="color:var(--success)"><span>🎉 ${esc(p.promo_label)} — ${esc(p.promo_percent)}% (تلقائي)</span><span>-${qbMoney(p.promo_amount)}</span></div>` : ''}
+            ${p.gift_amount ? `<div class="row" style="color:var(--success)"><span>🎁 هدية: ${esc(p.gift_name)} — خصم 100% (تلقائي)</span><span>-${qbMoney(p.gift_amount)}</span></div>` : ''}
             ${p.staff_discount > 0 ? `<div class="row"><span>خصمك (${p.discount_percent}%)</span><span>-${qbMoney(p.staff_discount)}</span></div>` : ''}
             <div class="row"><span>المجموع قبل الضريبة</span><span>${qbMoney(r.subtotal)}</span></div>
             <div class="row"><span>ضريبة القيمة المضافة ${esc(r.vat_percent)}%</span><span>${qbMoney(r.vat)}</span></div>
             <div class="row grand"><span>الإجمالي (ر.ع)</span><span>${qbMoney(r.total)}</span></div>
-            ${limit !== null ? `<div class="status-text" style="color:${r.over_limit ? '#a93226' : 'inherit'}">${r.over_limit ? '⚠️ ' : ''}حد الخصم المسموح لك: ${esc(limit)}%${p.promo_amount ? ' (فوق العرض الترويجي)' : ''}${r.over_limit ? ' — قلّل الخصم أو اطلب من المدير' : ''}</div>` : ''}`;
+            ${limit !== null ? `<div class="status-text" style="color:${r.over_limit ? '#a93226' : 'inherit'}">${r.over_limit ? '⚠️ ' : ''}حد الخصم المسموح لك: ${esc(limit)}%${p.promo_amount || p.gift_amount ? ' (فوق العرض والهدية)' : ''}${r.over_limit ? ' — قلّل الخصم أو اطلب من المدير' : ''}</div>` : ''}`;
         $id('qbSave').disabled = Boolean(r.over_limit);
         renderQbCost(r.cost);
         setStatus('qbStatus', '');
@@ -476,3 +494,30 @@ for (const id of ['qbPhone', 'qbName']) {
         }
     });
 }
+
+/* The lines of one gate: price, the promotion / gift on it, and the employee's own discount on that line.
+   Rebuilt after each preview; the field being typed in keeps its focus. */
+function renderQbGroupItems(box, l, lines) {
+    const active = document.activeElement && box.contains(document.activeElement) ? document.activeElement : null;
+    const keep = active ? { idx: active.dataset.idisc, f: active.dataset.f, pos: active.selectionStart } : null;
+    const disc = l.item_discounts || {};
+    box.innerHTML = lines.map((it, k) => {
+        if (it.gift) {
+            return `<div class="row gift-row"><span>${esc(it.name)}${it.quantity !== 1 ? ` × ${esc(it.quantity)}` : ''} <small>(خصم 100%)</small></span><span><s>${qbMoney(it.gross)}</s> 0.00</span></div>`;
+        }
+        const d = disc[k] || { type: 'percent', value: '' };
+        const off = round2q((it.promo || 0) + (it.discount ? it.discount.amount : 0));
+        return `<div class="row"><span>${esc(it.name)}${it.type ? ' — ' + esc(it.type) : ''}${it.quantity !== 1 ? ` × ${esc(it.quantity)}` : ''}
+                ${it.promo ? `<small class="pos"> 🎉 -${qbMoney(it.promo)}</small>` : ''}
+                <span class="qb-item-disc" title="خصم على هذا البند فقط">
+                    <select data-idisc="${k}" data-f="type"><option value="percent" ${d.type === 'percent' ? 'selected' : ''}>%</option><option value="amount" ${d.type === 'amount' ? 'selected' : ''}>ر.ع</option></select>
+                    <input type="number" data-idisc="${k}" data-f="value" min="0" step="0.5" placeholder="خصم" value="${esc(d.value)}">
+                </span></span>
+            <span>${off ? `<s>${qbMoney(it.gross)}</s> ` : ''}${qbMoney(round2q(it.gross - off))}</span></div>`;
+    }).join('');
+    if (keep) {
+        const el = box.querySelector(`[data-idisc="${keep.idx}"][data-f="${keep.f}"]`);
+        if (el) { el.focus(); try { if (keep.pos != null) el.setSelectionRange(keep.pos, keep.pos); } catch { /* not a text field */ } }
+    }
+}
+const round2q = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
