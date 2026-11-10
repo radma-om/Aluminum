@@ -34,6 +34,7 @@ const workorders = require('./workorders');
 const servicerequests = require('./servicerequests');
 const costs = require('./costs');
 const team = require('./team');
+const push = require('./push');
 const autoreply = require('./autoreply');
 const customers = require('./customers');
 const staffquotes = require('./staffquotes');
@@ -308,6 +309,8 @@ function saveQuote(db, { customer_name, customer_phone, customer_city, notes, so
 
     const { access_key, ...publicQuote } = quote;
     webhooks.emit(db, 'quote.created', publicQuote);
+    // A customer's quote: a notification on the phones of whoever handles quotes (never blocks the reply)
+    push.quoteFromCustomer(db, quote).catch(() => {});
     return quote;
 }
 
@@ -1481,9 +1484,25 @@ function createApp(db, { agentClient } = {}) {
     });
 
     admin.patch('/leads/:id', (req, res) => {
-        leadFor(req, req.params.id);
-        res.json(withPause(leads.update(db, req.params.id, req.body || {}, staffName(req))));
+        const { lead: before } = leadFor(req, req.params.id);
+        const out = leads.update(db, req.params.id, req.body || {}, staffName(req));
+        const after = db.prepare('SELECT * FROM leads WHERE id = ?').get(before.id);
+        if (after && after.assigned_to && after.assigned_to !== before.assigned_to) push.leadAssigned(db, after, staffName(req)).catch(() => {});
+        res.json(withPause(out));
     });
+
+    /* ---- This device's notifications (any signed-in account, the technicians included) ---- */
+    admin.get('/me/push', (req, res) => res.json({ public_key: push.publicKey(db), devices: push.devices(db, req.user) }));
+    admin.post('/me/push', (req, res) => {
+        const b = req.body || {};
+        res.status(201).json({ devices: push.subscribe(db, req.user, b.subscription, String(b.device || req.get('user-agent') || '')) });
+    });
+    admin.delete('/me/push', (req, res) => res.json({ devices: push.unsubscribe(db, req.user, (req.body || {}).endpoint) }));
+    admin.post('/me/push/test', asyncRoute(async (req, res) => {
+        const sent = await push.send(db, [push.keyOf(req.user)], { title: '🔔 تجربة الإشعارات', body: 'وصلت الإشعارات إلى هذا الجهاز ✓', url: '/admin', tag: 'test' });
+        if (!sent) throw httpError(400, 'لا يوجد جهاز مشترك لهذا الحساب — فعّل الإشعارات أولاً');
+        res.json({ sent });
+    }));
 
     admin.post('/leads/:id/notes', (req, res) => {
         leadFor(req, req.params.id);

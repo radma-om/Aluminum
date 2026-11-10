@@ -2,7 +2,14 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="/icons/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="رادما">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>نظام تسعير شرائح الألمنيوم</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -754,6 +761,8 @@
                 <button type="button" id="mePwd" onclick="changeMyPassword()" title="تغيير كلمة المرور" hidden><i class="fas fa-key"></i></button>
                 <button type="button" id="me2fa" onclick="openTwoStep()" title="التحقق بخطوتين" hidden><i class="fas fa-shield-halved"></i></button>
             </div>
+            <button type="button" class="hdr-icon" id="installBtn" onclick="installApp()" title="تثبيت التطبيق على الشاشة الرئيسية" hidden><i class="fas fa-mobile-screen-button"></i></button>
+            <button type="button" class="hdr-icon" id="pushBtn" onclick="openPushSheet()" title="الإشعارات" hidden><i class="fas fa-bell"></i></button>
             <button class="logout-btn" onclick="logout()" title="تسجيل الخروج"><i class="fas fa-right-from-bracket"></i> <span class="t-out">خروج</span></button>
         </div>
     </header>
@@ -2405,6 +2414,28 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
         </form>
     </div>
 
+    <!-- This device: install the app and notifications -->
+    <div id="pushSheet" class="sheet" hidden>
+        <div class="sheet-card" style="max-width:520px">
+            <button type="button" class="sheet-close" onclick="closeSheet('pushSheet')" aria-label="إغلاق">×</button>
+            <h3><i class="fas fa-bell"></i> الإشعارات والتطبيق</h3>
+            <p class="status-text" style="margin:4px 0 12px">تصلك على هذا الجهاز حتى والتطبيق مغلق:</p>
+            <ul class="push-list">
+                <li>📄 عرض سعر جديد من عميل (الحاسبات، واتساب، الموقع)</li>
+                <li>👤 عميل أُسند إليك، و🙋 عميل يطلب التواصل مع موظف</li>
+                <li>🔧 أمر عمل أُسند إليك أو تغيّر موعده</li>
+                <li>📅 طلب موعد ينتظر الموافقة</li>
+            </ul>
+            <div id="pushState" class="push-state"></div>
+            <div class="form-buttons">
+                <button type="button" class="btn btn-primary" id="pushOn" onclick="enablePush()"><i class="fas fa-bell"></i> تفعيل الإشعارات على هذا الجهاز</button>
+                <button type="button" class="btn btn-outline" id="pushTest" onclick="testPush()" hidden>إرسال إشعار تجريبي</button>
+                <button type="button" class="btn btn-outline" id="pushOff" onclick="disablePush()" hidden style="color:#a93226">إيقافها على هذا الجهاز</button>
+            </div>
+            <div id="installHelp" class="install-help" hidden></div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="app-footer">
         نظام تسعير شرائح الألمنيوم — <a href="calculator.html" target="_blank">حاسبة العملاء</a>
@@ -2916,6 +2947,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-invoices.js"></script>
     <script src="admin-workorders.js"></script>
     <script src="admin-team.js"></script>
+    <script src="admin-pwa.js"></script>
     <script src="admin-customers.js"></script>
     <script src="admin-quotebuilder.js"></script>
 </body>

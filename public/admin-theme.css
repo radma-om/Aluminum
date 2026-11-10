@@ -384,3 +384,22 @@ button.feed-item:hover { background: #f6f9fc; }
 .qb-group-items .gift-row { color: var(--good-text); }
 .qb-group-items .row s { color: var(--ink-muted); margin-inline-end: 4px; }
 .qb-group-items .pos { color: var(--good-text); }
+
+/* ---------------- App: bell, install, notifications sheet ---------------- */
+.hdr-icon { border: 1px solid var(--border); background: #fff; color: var(--ink-2); width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; font-size: 0.95rem; transition: color 0.15s, border-color 0.15s, background 0.15s; flex: none; }
+.hdr-icon:hover { color: var(--primary); border-color: #b9c6d4; }
+.hdr-icon.on { color: var(--good-text); background: #e9f7ee; border-color: #b9e2c8; }
+.push-list { margin: 0 0 12px; padding-inline-start: 20px; line-height: 2; font-size: 0.9rem; }
+.push-state { padding: 10px 12px; border-radius: 10px; background: #f4f6f9; font-size: 0.88rem; margin-bottom: 4px; }
+.push-state.ok { background: #e9f7ee; color: var(--good-text); }
+.push-state.err { background: #fdf1f0; color: #8f271f; }
+.install-help { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 0.88rem; line-height: 1.9; }
+.install-help ol { margin: 4px 0 0; padding-inline-start: 22px; }
+/* Installed app: room for the iPhone notch / home bar */
+@supports (padding: env(safe-area-inset-top)) {
+    @media (display-mode: standalone) {
+        .app-header { padding-top: calc(10px + env(safe-area-inset-top)); }
+        .sidebar { padding-top: env(safe-area-inset-top); }
+        .main-container { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+    }
+}
