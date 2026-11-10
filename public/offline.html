@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#111b26">
+<title>رادما — بدون اتصال</title>
+<style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #111b26; color: #fff; font-family: system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif; text-align: center; padding: 24px; box-sizing: border-box; }
+    .card { background: #fff; color: #16212c; border-radius: 18px; padding: 28px 24px; max-width: 360px; width: 100%; box-shadow: 0 30px 60px rgba(0,0,0,0.4); }
+    img { width: 72px; }
+    h1 { font-size: 1.2rem; margin: 10px 0 6px; }
+    p { color: #64717e; font-size: 0.92rem; line-height: 1.7; margin: 0 0 16px; }
+    button { background: #17598c; color: #fff; border: 0; border-radius: 10px; padding: 12px 22px; font: inherit; font-weight: 600; cursor: pointer; }
+</style>
+</head>
+<body>
+    <div class="card">
+        <img src="/images/logo.png" alt="">
+        <h1>لا يوجد اتصال بالإنترنت</h1>
+        <p>اللوحة تحتاج الاتصال لعرض الأسعار والعملاء الحالية. تأكد من الشبكة ثم أعد المحاولة.</p>
+        <button onclick="location.href='/admin'">إعادة المحاولة</button>
+    </div>
+</body>
+</html>

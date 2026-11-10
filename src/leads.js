@@ -133,6 +133,7 @@ function humanRequested(db, key, summary) {
     if (!lead) return;
     if (!['following', 'waiting'].includes(lead.status)) db.prepare("UPDATE leads SET status = 'needs_staff' WHERE id = ?").run(lead.id);
     addMessage(db, lead, 'system', '🙋 طلب التواصل مع موظف: ' + summary);
+    require('./push').humanRequested(db, lead, summary).catch(() => {});
 }
 
 /* Every saved quote joins its customer's lead (calculator, WhatsApp, website) */

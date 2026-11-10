@@ -275,6 +275,7 @@ function orderLines(o) {
 }
 
 async function notifyTechnician(db, order, { rescheduled = false } = {}) {
+    require('./push').workOrderAssigned(db, order, { rescheduled }).catch(() => {});
     const tech = order.technician_id && db.prepare('SELECT * FROM staff_users WHERE id = ? AND active = 1').get(order.technician_id);
     if (!tech || !tech.email || !mailer.isConfigured()) return false;
     const link = panelLink(db);

@@ -83,7 +83,8 @@ async function api(method, url, body) {
 }
 
 async function logout() {
-    // Ends an employee's session on the server too
+    // This device stops receiving this account's notifications, then the session ends on the server too
+    if (typeof pushForget === 'function') await pushForget().catch(() => {});
     await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + storedToken() } }).catch(() => {});
     try { localStorage.removeItem('adminToken'); } catch { /* ignore */ }
     location.reload();

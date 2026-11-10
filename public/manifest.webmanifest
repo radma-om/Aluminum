@@ -1,0 +1,24 @@
+{
+  "name": "رادما — نظام التسعير والمبيعات",
+  "short_name": "رادما",
+  "description": "لوحة إدارة الأسعار والعروض والعملاء وأوامر العمل",
+  "lang": "ar",
+  "dir": "rtl",
+  "id": "/admin",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#111b26",
+  "theme_color": "#111b26",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "طلبات العروض", "url": "/admin#tab=quotes", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "متابعة العملاء", "url": "/admin#tab=leads", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "أوامر العمل", "url": "/admin#tab=work_orders", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
