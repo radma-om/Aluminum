@@ -705,6 +705,7 @@
         <nav class="sb-nav">
             <div class="nav-group">الرئيسية</div>
             <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')" title="لوحة المؤشرات"><i class="fas fa-chart-line"></i><span class="t-label">لوحة المؤشرات</span></button>
+            <button class="tab-btn" data-tab="team" onclick="switchTab('team')" title="أداء الموظفين" hidden><i class="fas fa-ranking-star"></i><span class="t-label">أداء الموظفين</span></button>
             <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')" title="متابعة العملاء"><i class="fas fa-headset"></i><span class="t-label">متابعة العملاء</span><span class="count" id="leadsBadge" hidden></span></button>
             <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')" title="العملاء"><i class="fas fa-address-book"></i><span class="t-label">العملاء</span></button>
             <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')" title="طلبات العروض"><i class="fas fa-file-invoice-dollar"></i><span class="t-label">طلبات العروض</span></button>
@@ -766,8 +767,23 @@
                 <span class="muted" id="dashUpdated"></span>
             </div>
             <div id="dashBody">
+                <section id="pulse" class="pulse" hidden aria-label="نبض اليوم"></section>
                 <div class="kpi-grid" id="kpiGrid"></div>
                 <div class="attention" id="attention"></div>
+                <div class="dash-grid" id="pulseCharts" hidden style="margin-bottom:16px">
+                    <div class="card span-4">
+                        <div class="chart-head"><h3>مؤشرات الأداء</h3><span class="sub" id="ratesSub"></span></div>
+                        <div class="rings" id="rateRings"></div>
+                    </div>
+                    <div class="card span-4">
+                        <div class="chart-head"><h3>مسار المبيعات</h3><span class="sub">من العرض إلى السداد خلال الفترة</span></div>
+                        <div class="funnel" id="salesFunnel"></div>
+                    </div>
+                    <div class="card span-4">
+                        <div class="chart-head"><h3><span class="live-dot"></span> آخر الأحداث</h3><span class="sub">تتحدث كل 30 ثانية</span></div>
+                        <div class="feed" id="activityFeed"></div>
+                    </div>
+                </div>
                 <div id="dashboardNotifications" class="card" hidden style="margin:16px 0; border:2px solid #e74c3c; background:#fff8f7"></div>
                 <div class="dash-grid">
                     <div class="card span-8">
@@ -894,6 +910,30 @@
                 <div class="form-buttons"><button class="btn btn-outline btn-sm" id="auditMore" onclick="loadAudit(true)" hidden>عرض المزيد</button>
                     <span id="auditStatus" class="status-text"></span></div>
             </div>
+        </div>
+
+        <!-- ==================== Employees' performance (managers) ==================== -->
+        <div id="tab-team" class="tab-content">
+            <div class="dash-toolbar">
+                <h2>أداء الموظفين</h2>
+                <div class="seg" id="teamRange" role="group" aria-label="الفترة">
+                    <button type="button" data-range="today">اليوم</button>
+                    <button type="button" data-range="7">7 أيام</button>
+                    <button type="button" data-range="30" class="on">30 يوماً</button>
+                    <button type="button" data-range="month">هذا الشهر</button>
+                    <button type="button" data-range="last-month">الشهر الماضي</button>
+                    <button type="button" data-range="90">90 يوماً</button>
+                </div>
+            </div>
+            <div class="filter-row team-filters">
+                <label>من <input type="date" id="teamFrom"></label>
+                <label>إلى <input type="date" id="teamTo"></label>
+                <label>الموظف <select id="teamEmployee"><option value="">كل الموظفين</option></select></label>
+                <button class="btn btn-outline btn-sm" onclick="loadTeam()"><i class="fas fa-rotate"></i> تحديث</button>
+                <button class="btn btn-outline btn-sm" onclick="teamCsv()"><i class="fas fa-file-csv"></i> تصدير CSV</button>
+                <span class="status-text" id="teamStatus"></span>
+            </div>
+            <div id="teamBody"></div>
         </div>
 
         <div id="tab-users" class="tab-content">
@@ -2854,6 +2894,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-security.js"></script>
     <script src="admin-invoices.js"></script>
     <script src="admin-workorders.js"></script>
+    <script src="admin-team.js"></script>
     <script src="admin-customers.js"></script>
     <script src="admin-quotebuilder.js"></script>
 </body>
