@@ -244,3 +244,32 @@ test('an existing database starts the follow-up list from its recent quotes', ()
     assert.strictEqual(lead.status, 'won');
     assert.strictEqual(leads.detail(db, lead.id).messages.length, 1);
 });
+
+test('a new quote from a customer whose follow-up was closed opens it again; the list shows the latest activity first', () => {
+    const { openDatabase } = require('../src/db');
+    const leadsLib = require('../src/leads');
+    const db = openDatabase(':memory:');
+    const quote = (phone, name, source = 'web') => ({ ref: 'Q-' + Math.random().toString(36).slice(2, 8), customer_phone: phone, customer_name: name, total: 300, source });
+    leadsLib.quoteCreated(db, quote('96892345678', 'محمد الفرقاني'));
+    const lead = db.prepare("SELECT * FROM leads WHERE phone = '96892345678'").get();
+    db.prepare("UPDATE leads SET status = 'won' WHERE id = ?").run(lead.id);
+    assert.equal(leadsLib.list(db, { open: true }).some((l) => l.id === lead.id), false);
+    // He asks for a new quote from the calculator
+    leadsLib.quoteCreated(db, quote('96892345678', 'محمد الفرقاني'));
+    const back = leadsLib.list(db, { open: true }).find((l) => l.id === lead.id);
+    assert.ok(back, 'back in «المفتوحة»');
+    assert.equal(back.status, 'new');
+    assert.match(leadsLib.detail(db, lead.id).messages.map((m) => m.text).join('\n'), /أُعيد فتح المتابعة \(كانت: تم البيع\)/);
+    // An employee's own quote reopens a lost customer as followed up
+    db.prepare("UPDATE leads SET status = 'lost' WHERE id = ?").run(lead.id);
+    leadsLib.quoteCreated(db, quote('96892345678', 'محمد الفرقاني', 'staff'));
+    assert.equal(db.prepare('SELECT status FROM leads WHERE id = ?').get(lead.id).status, 'following');
+
+    // Latest activity first (a customer asking for a person stays on top)
+    leadsLib.quoteCreated(db, quote('96890000001', 'قديم'));
+    db.prepare("UPDATE leads SET last_activity_at = datetime('now', '-3 days') WHERE phone = '96890000001'").run();
+    leadsLib.quoteCreated(db, quote('96890000002', 'يتابَع'));
+    db.prepare("UPDATE leads SET status = 'following' WHERE phone = '96890000002'").run();
+    const order = leadsLib.list(db, { open: true }).map((l) => l.name);
+    assert.ok(order.indexOf('يتابَع') < order.indexOf('قديم'), 'a followed-up customer active now is above an old untouched new one');
+});

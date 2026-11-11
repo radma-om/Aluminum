@@ -1,6 +1,6 @@
 {
   "name": "aluminum-pricing",
-  "version": "3.26.3",
+  "version": "3.26.4",
   "description": "نظام تسعير شرائح الألمنيوم والإكسسوارات والمكائن — قاعدة بيانات، Webhooks، واتساب، وحاسبة عروض أسعار للعملاء",
   "main": "app.js",
   "private": true,

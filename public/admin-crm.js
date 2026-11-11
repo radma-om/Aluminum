@@ -688,16 +688,34 @@ window.switchTab = function (tabId) {
     if (tabId === 'leads') { renderLeadFilters(); loadLeads().then(() => { if (currentLeadId) openLead(currentLeadId, { keepScroll: true }); }).catch(() => {}); }
 };
 
-// Keep the follow-up fresh while it is open (new WhatsApp / website messages)
-setInterval(() => {
+// Back to the app (phone unlocked, app brought back from the background): fresh data at once,
+// not the list and times of when it was left
+let lastRefresh = Date.now();
+function refreshVisible() {
     if (!online || document.hidden) return;
+    lastRefresh = Date.now();
     if ($id('tab-leads').classList.contains('active')) {
         loadLeads().catch(() => {});
         if (currentLeadId && !document.activeElement.closest('#leadDetail textarea, #leadDetail input')) openLead(currentLeadId, { keepScroll: true }).catch(() => {});
     } else if ($id('tab-dashboard').classList.contains('active')) {
         loadDashboard();
     }
-}, 30_000);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - lastRefresh > 5000) refreshVisible(); });
+window.addEventListener('pageshow', (e) => { if (e.persisted) refreshVisible(); });
+window.addEventListener('focus', () => { if (Date.now() - lastRefresh > 5000) refreshVisible(); });
+// «منذ 5 د» keeps counting between refreshes
+setInterval(() => {
+    if (document.hidden || !$id('tab-leads').classList.contains('active')) return;
+    document.querySelectorAll('#leadItems .lead-item').forEach((item) => {
+        const l = leadsCache.find((x) => x.id === Number(item.dataset.id));
+        const t = item.querySelector('.lead-time');
+        if (l && t) t.textContent = ago(l.last_activity_at);
+    });
+}, 60_000);
+
+// Keep the follow-up fresh while it is open (new WhatsApp / website messages)
+setInterval(refreshVisible, 30_000);
 
 document.addEventListener('admin-ready', () => {
     // Load the data of the section that opened first (it depends on the account's permissions)
