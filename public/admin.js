@@ -485,7 +485,7 @@ async function loadQuotes() {
                 ${q.details && q.details.staff_quote && !q.invoice && ['new', 'contacted'].includes(q.status) ? `<br><button class="link-btn" style="margin:4px 0 0" onclick="openQuoteBuilder({ quote: quotesCache.find((x) => x.id === ${q.id}) })">تعديل البنود</button>` : ''}</td>
         </tr>`).join('');
     quotesCache = rows;
-    if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; fillPromo(st); }).catch(() => {});
+    if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; }).catch(() => {});
     $id('quotesEmpty').style.display = rows.length ? 'none' : 'block';
 }
 
@@ -535,7 +535,28 @@ function fillPromo(st) {
     const ended = st.promo_enabled && st.promo_until && st.promo_until < localDay();
     setStatus('promoStatus', !st.promo_enabled ? 'متوقف' : ended ? 'انتهى (مرّ آخر يوم)' : `يعمل الآن: خصم ${st.promo_percent}%`, st.promo_enabled && !ended ? 'ok' : '');
     fillGift(st);
+    offersSummary(st);
 }
+
+/* One line at the top of «العروض والهدايا»: what customers get right now */
+function offersSummary(st) {
+    const el = $id('offersSummary');
+    if (!el) return;
+    const today = localDay();
+    const promo = st.promo_enabled && !(st.promo_until && st.promo_until < today) && Number(st.promo_percent) > 0;
+    const gift = st.gift_enabled && !(st.gift_until && st.gift_until < today) && st.gift_name && Number(st.gift_price) > 0;
+    el.textContent = [promo ? `🎉 ${st.promo_label || 'خصم'} ${st.promo_percent}% يعمل الآن` : 'لا خصم يعمل الآن',
+        gift ? `🎁 ${st.gift_name} مع كل بوابة` : 'لا هدية الآن'].join(' — ');
+}
+
+async function loadOffers() {
+    try { fillPromo(await api('GET', '/api/admin/settings')); } catch (err) { setStatus('promoStatus', err.message, 'err'); }
+}
+const switchTabBeforeOffers = window.switchTab;
+window.switchTab = function (tabId) {
+    switchTabBeforeOffers(tabId);
+    if (online && tabId === 'offers' && ME && ME.role === 'manager') loadOffers();
+};
 
 async function savePromo() {
     const scope = [...$id('promoScope').querySelectorAll('.promo-kind > label input:checked')].map((c) => c.value);
@@ -1735,7 +1756,7 @@ function applyPermissions() {
     }
     document.querySelectorAll('.sidebar .tab-btn[data-tab]').forEach((b) => {
         const tab = b.dataset.tab;
-        b.hidden = ['users', 'audit', 'backup', 'team'].includes(tab) ? !manager : !canSee(tab);
+        b.hidden = ['users', 'audit', 'backup', 'team', 'offers'].includes(tab) ? !manager : !canSee(tab);
     });
     document.querySelectorAll('.manager-only').forEach((el) => { el.hidden = !manager; });
     // Where customers and sales alerts go: only managers change them (the server ignores them from staff)
