@@ -725,6 +725,7 @@
             <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')" title="متابعة العملاء"><i class="fas fa-headset"></i><span class="t-label">متابعة العملاء</span><span class="count" id="leadsBadge" hidden></span></button>
             <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')" title="العملاء"><i class="fas fa-address-book"></i><span class="t-label">العملاء</span></button>
             <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')" title="طلبات العروض"><i class="fas fa-file-invoice-dollar"></i><span class="t-label">طلبات العروض</span></button>
+            <button class="tab-btn" data-tab="offers" onclick="switchTab('offers')" title="العروض والهدايا" hidden><i class="fas fa-tags"></i><span class="t-label">العروض والهدايا</span></button>
             <button class="tab-btn" data-tab="invoices" onclick="switchTab('invoices')" title="الفواتير والمدفوعات"><i class="fas fa-receipt"></i><span class="t-label">الفواتير والمدفوعات</span></button>
             <button class="tab-btn" data-tab="work_orders" onclick="switchTab('work_orders')" title="أوامر العمل"><i class="fas fa-screwdriver-wrench"></i><span class="t-label">أوامر العمل</span></button>
             <div class="nav-group">الحاسبات</div>
@@ -1795,9 +1796,11 @@
         </div>
 
         <!-- ==================== TAB 5: Quote requests ==================== -->
-        <div id="tab-quotes" class="tab-content">
-            <div class="card manager-only">
-                <div class="card-title"><span class="icon"><i class="fas fa-tags"></i></span> خصم العملاء (عرض موسمي)</div>
+        <!-- ==================== Offers: the customer promotion and the gift (managers) ==================== -->
+        <div id="tab-offers" class="tab-content">
+            <div class="dash-toolbar"><h2>العروض والهدايا</h2><span class="muted" id="offersSummary"></span></div>
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-percent"></i></span> خصم العملاء (عرض موسمي)</div>
                 <p class="status-text" style="margin:0 0 10px">نسبة تُخصم من السعر قبل الضريبة في الحاسبات المختارة، وعلى الأجزاء المختارة فقط من كل بوابة (مثلاً الشرائح وحدها، أو بوابة الأوفرهيد بدون المحرك والتركيب). يراها العميل في الحاسبة، وتظهر في عرض السعر وملف PDF، ويذكرها المساعد الذكي، وتُطبَّق تلقائياً في عروض الموظفين ولا تُحسب من حد خصمهم. ينتهي العرض تلقائياً بعد آخر يوم.</p>
                 <div class="form-grid">
                     <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="promoEnabled"> تفعيل الخصم</label></div>
@@ -1808,7 +1811,7 @@
                 <div class="promo-scope" id="promoScope"></div>
                 <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="savePromo()">حفظ</button><span id="promoStatus" class="status-text"></span></div>
             </div>
-            <div class="card manager-only">
+            <div class="card">
                 <div class="card-title"><span class="icon"><i class="fas fa-gift"></i></span> هدية مع البوابة 🎁</div>
                 <p class="status-text" style="margin:0 0 10px">هدية تُضاف تلقائياً مع كل بوابة (أو طقم مكينة) في الحاسبات المختارة: تظهر بسعرها ثم تُخصم 100%، وتدخل في مجمل الخصم. تظهر للعميل في الحاسبة، وفي عرض السعر وملف PDF، ويذكرها المساعد الذكي، وتُضاف في عروض الموظفين ولا تُحسب من حد خصمهم.</p>
                 <div class="form-grid">
@@ -1824,6 +1827,9 @@
                 </div>
                 <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="saveGift()">حفظ</button><span id="giftStatus" class="status-text"></span></div>
             </div>
+        </div>
+
+        <div id="tab-quotes" class="tab-content">
             <div class="card">
                 <div class="card-title">
                     <span class="icon">Q</span>
