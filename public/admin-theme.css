@@ -418,7 +418,7 @@ button.feed-item:hover { background: #f6f9fc; }
 
 /* ---------------- Panels (sheets): a fixed top bar, easy to close ---------------- */
 .sheet-bar {
-    position: sticky; top: 0; z-index: 5;
+    position: sticky; top: -24px; z-index: 5;   /* the panel's own top padding: nothing scrolls above the bar */
     display: flex; align-items: center; gap: 10px;
     margin: -24px -22px 12px; padding: 14px 22px 10px;
     background: #fff; border-bottom: 1px solid var(--border);
@@ -450,6 +450,7 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
         -webkit-overflow-scrolling: touch;
     }
     .sheet-bar {
+        top: 0;
         margin: -20px -16px 12px; padding: 16px 16px 8px;
         box-shadow: 0 -30px 0 #fff;   /* nothing shows through above it while scrolling */
         touch-action: none;
@@ -461,3 +462,22 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
     .sheet-bar h3 { font-size: 1.05rem !important; }
     .sheet-bar.no-title .sheet-grab { top: -14px; }
 }
+
+/* ---------------- Product descriptions under quote / invoice lines ---------------- */
+.qb-group-items .row { flex-wrap: wrap; }
+.qb-item-note {
+    flex-basis: 100%; width: 100%; resize: vertical; min-height: 30px;
+    margin: 2px 0 4px; padding: 5px 8px; font: inherit; font-size: 0.8rem; color: var(--text);
+    border: 1px dashed var(--border); border-radius: 7px; background: #fbfcfd;
+}
+.qb-item-note:focus { border-style: solid; outline: none; box-shadow: var(--ring); background: #fff; }
+.qb-line .qb-desc { grid-column: 1 / -1; }
+.qb-line .qb-desc input { font-size: 0.82rem; border-style: dashed; }
+.item-desc { display: block; font-size: 0.8em; color: var(--ink-muted, #6b7785); font-weight: 400; line-height: 1.6; margin-top: 2px; white-space: pre-line; }
+.inv-items { margin: 0 0 10px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.inv-items summary { cursor: pointer; font-weight: 700; }
+.inv-items ol { margin: 8px 0 0; padding-inline-start: 20px; font-size: 0.88rem; line-height: 1.8; }
+.inv-items li + li { margin-top: 4px; }
+.oh-type-descs { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.oh-type-desc { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 0.88rem; }
+.oh-type-desc textarea { font: inherit; font-weight: 400; font-size: 0.86rem; padding: 7px 9px; border: 1px solid var(--border); border-radius: 9px; resize: vertical; }

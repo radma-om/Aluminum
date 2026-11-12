@@ -19,6 +19,8 @@ const { getRegion, locations } = require('./doors');
 
 const KINDS = { kit: 'طقم مكينة', part: 'إكسسوار / قطعة' };
 const UNITS = { set: 'طقم', piece: 'قطعة', meter: 'متر' };
+/* The product's description, shown under its line in a quote / invoice / PDF */
+const described = (text) => (text && String(text).trim() ? { description: String(text).trim() } : {});
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
 
 /* Starting sections (key = for databases of version 3.0.0, which had them fixed) */
@@ -183,7 +185,7 @@ function motorPrice(db, { sectionId, kitId, kitCount = 1, parts = [], regionId, 
         kit = items.find((i) => i.kind === 'kit' && i.id === Number(kitId));
         if (!kit) throw err400('المكينة المختارة غير متوفرة');
         if (!count) throw err400('حدد عدد المكائن');
-        lines.push({ ...line(kit.name, kit.description ? 'طقم كامل' : null, 'set', count, kit.sell_price), part: 'kit' });
+        lines.push({ ...line(kit.name, 'طقم كامل', 'set', count, kit.sell_price), part: 'kit', ...described(kit.description) });
     }
     const partNames = [];
     for (const p of Array.isArray(parts) ? parts : []) {
@@ -191,7 +193,7 @@ function motorPrice(db, { sectionId, kitId, kitCount = 1, parts = [], regionId, 
         if (!qty) continue;
         const part = items.find((i) => i.kind === 'part' && i.id === Number(p.id));
         if (!part) throw err400('قطعة غير متوفرة');
-        lines.push({ ...line(part.name, part.description || null, part.unit, qty, part.sell_price), part: 'parts' });
+        lines.push({ ...line(part.name, null, part.unit, qty, part.sell_price), part: 'parts', ...described(part.description) });
         partNames.push(`${part.name} × ${qty}`);
     }
     if (!lines.length) throw err400('اختر مكينة أو قطعة واحدة على الأقل');

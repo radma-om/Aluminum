@@ -125,6 +125,9 @@ function resolveChoice(catalog, { shutterTypeId, variantId, colorId, optionIds =
     return { type, variant, color, accessories };
 }
 
+/* The product's description, shown under its line in a quote / invoice / PDF */
+const described = (text) => (text && String(text).trim() ? { description: String(text).trim().slice(0, 600) } : {});
+
 function priceChoice({ widthCm, heightCm, count = 1 }, choice, catalog, region) {
     const size = validateDoorSize(widthCm, heightCm, count);
     const { settings, products } = catalog;
@@ -135,6 +138,7 @@ function priceChoice({ widthCm, heightCm, count = 1 }, choice, catalog, region) 
     const items = [{
         product_id: slat.id, category: 'slat', part: 'slats', name: `شرائح ${type.name}`,
         type: [variant.label, color && color.name].filter(Boolean).join(' — '),
+        ...described([type.description, variant.description].filter((t) => t && String(t).trim()).join(' — ')),
         unit: line.unit, quantity: Math.round(line.quantity * 1000) / 1000,
         unit_price: line.unitPrice, line_total: round2(line.unitPrice * line.quantity)
     }];
@@ -146,7 +150,8 @@ function priceChoice({ widthCm, heightCm, count = 1 }, choice, catalog, region) 
     for (const { group, option } of accessories) {
         const product = products.get(option.product_id);
         items.push(lineItem(product, group.factor * basisValue(group.basis, size) * size.count, settings, {
-            name: group.name, type: option.label, part: product.category === 'machine' ? 'motor' : 'accessories'
+            name: group.name, type: option.label, part: product.category === 'machine' ? 'motor' : 'accessories',
+            ...described(option.details)
         }));
     }
     if (region && region.installation_fee > 0) items.push({ ...serviceItem('التركيب', region.name, size.count, region.installation_fee), part: 'installation' });

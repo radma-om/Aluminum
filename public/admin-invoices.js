@@ -172,6 +172,11 @@ function showInvoice(inv) {
             ${inv.state !== 'cancelled' ? '<button class="link-btn" onclick="editInvoiceDeposit()">تعديل</button>' : ''}
         </div>` : inv.state !== 'cancelled' ? '<p class="status-text" style="margin:0 0 8px">لا مقدم مطلوب — <button class="link-btn" onclick="editInvoiceDeposit()">تحديد المقدم</button></p>' : ''}
         ${Math.abs(inv.adjustment) >= 0.005 ? `<p class="status-text" style="margin:0 0 8px">مجموع البنود ${money2(inv.quote_subtotal)} — ${inv.adjustment < 0 ? 'خصم' : 'تعديل'} ${money2(inv.adjustment)} — قبل الضريبة ${money2(inv.subtotal)}</p>` : ''}
+        ${(inv.items || []).length ? `<details class="inv-items"><summary>البنود (${inv.items.length})</summary><ol>
+            ${inv.items.map((i) => `<li><b>${esc(i.name)}</b>${i.type ? ' — ' + esc(i.type) : ''}
+                <span class="status-text">${esc(i.quantity)} × ${money2(i.unit_price)} = ${money2(i.line_total)}${i.gift ? ' (هدية)' : ''}</span>
+                ${i.description ? `<span class="item-desc">${esc(i.description)}</span>` : ''}</li>`).join('')}
+        </ol></details>` : ''}
         <p class="sub-heading">الدفعات</p>
         ${inv.payments.length ? `<div class="table-wrapper"><table class="stack-table"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>الطريقة</th><th>المرجع / ملاحظة</th><th></th></tr></thead><tbody>
             ${inv.payments.map((p) => `<tr>

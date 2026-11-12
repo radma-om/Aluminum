@@ -18,7 +18,9 @@ function loadOverhead(db, { includeInactive = false } = {}) {
     const onlyActive = includeInactive ? '' : 'WHERE active = 1';
     return {
         sizes: db.prepare(`SELECT * FROM overhead_sizes ${onlyActive} ORDER BY sort_order, id`).all(),
-        motors: db.prepare(`SELECT * FROM overhead_motors ${onlyActive} ORDER BY sort_order, id`).all()
+        motors: db.prepare(`SELECT * FROM overhead_motors ${onlyActive} ORDER BY sort_order, id`).all(),
+        // Gate type → its description (shown under the gate line of a quote)
+        type_descriptions: Object.fromEntries(db.prepare('SELECT name, description FROM overhead_types WHERE description IS NOT NULL AND description != \'\'').all().map((r) => [r.name, r.description]))
     };
 }
 
@@ -56,6 +58,8 @@ function publicOverhead(db) {
     };
 }
 
+const described = (text) => (text && String(text).trim() ? { description: String(text).trim() } : {});
+
 const service = (name, type, from, to = from) => ({
     product_id: null, category: 'service', name, type, unit: 'service', quantity: 1,
     unit_price: round2(from), line_total: round2(from),
@@ -63,7 +67,7 @@ const service = (name, type, from, to = from) => ({
 });
 
 function overheadPrice(db, { gateType, heightCm, widthCm, motorId, regionId }) {
-    const { sizes, motors } = loadOverhead(db);
+    const { sizes, motors, type_descriptions: typeText } = loadOverhead(db);
     if (!gateType || !sizes.some((s) => s.gate_type === gateType)) throw err400('اختر نوع البوابة');
     const size = sizes.find((s) => s.gate_type === gateType && s.height_cm === Number(heightCm) && s.width_cm === Number(widthCm));
     if (!size) throw err400('اختر المقاس (العرض والارتفاع)');
@@ -76,8 +80,8 @@ function overheadPrice(db, { gateType, heightCm, widthCm, motorId, regionId }) {
 
     const vatPercent = Number(getSettings(db).vat_percent) || 0;
     const items = [
-        { ...service(`بوابة أوفرهيد ${size.gate_type}`, `العرض ${size.width_cm} سم × الارتفاع ${size.height_cm} سم`, size.price_from, size.price_to), part: 'gate' },
-        { ...service('المحرك', motor.name, motor.price), part: 'motor' },
+        { ...service(`بوابة أوفرهيد ${size.gate_type}`, `العرض ${size.width_cm} سم × الارتفاع ${size.height_cm} سم`, size.price_from, size.price_to), part: 'gate', ...described(typeText[size.gate_type]) },
+        { ...service('المحرك', motor.name, motor.price), part: 'motor', ...described(motor.description) },
         { ...service('التركيب', region.name, install), part: 'installation' }
     ];
     const subtotal = round2(items.reduce((sum, i) => sum + i.line_total, 0));

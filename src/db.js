@@ -720,6 +720,12 @@ function migrate(db) {
     // Invoices: the deposit asked of the customer before the work (a % of the total or an amount)
     addColumns('invoices', { deposit_type: 'TEXT', deposit_value: 'REAL', deposit_amount: 'REAL' });
     addColumns('overhead_motors', { cost: 'REAL' });
+    // Product descriptions shown under each line of a quote / invoice / PDF
+    addColumns('overhead_motors', { description: 'TEXT' });
+    db.exec(`CREATE TABLE IF NOT EXISTS overhead_types (
+        name        TEXT PRIMARY KEY,
+        description TEXT
+    )`);
     // How long a quote's price holds (filled for older quotes from their date)
     const hadValidity = db.prepare('PRAGMA table_info(quotes)').all().some((c) => c.name === 'valid_until');
     addColumns('quotes', { valid_until: 'TEXT' });
