@@ -524,7 +524,8 @@ function closeLeadDetail({ fromHistory = false } = {}) {
     const item = document.querySelector('.lead-item.active');
     if (item) item.scrollIntoView({ block: 'center' });
 }
-window.addEventListener('popstate', () => closeLeadDetail({ fromHistory: true }));
+// Back from a panel opened over the customer stays on the customer
+window.addEventListener('popstate', (e) => { if (!(e.state && e.state.leadDetail)) closeLeadDetail({ fromHistory: true }); });
 
 function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: pausedUntil, agent_stop: stop, customer_id: customerId }, keepScroll) {
     const el = $id('leadDetail');

@@ -415,3 +415,49 @@ button.feed-item:hover { background: #f6f9fc; }
 }
 .deposit-box { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; justify-content: space-between; margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: #fff4e0; color: #7a5200; border: 1px solid #f0d9a8; font-size: 0.9rem; }
 .deposit-box.ok { background: #e9f7ee; color: var(--good-text); border-color: #b9e2c8; }
+
+/* ---------------- Panels (sheets): a fixed top bar, easy to close ---------------- */
+.sheet-bar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 10px;
+    margin: -24px -22px 12px; padding: 14px 22px 10px;
+    background: #fff; border-bottom: 1px solid var(--border);
+}
+.sheet-bar h3 { flex: 1; min-width: 0; margin: 0 !important; }
+.sheet-bar .sheet-close {
+    float: none; flex: none; order: 9; margin-inline-start: auto;
+    width: 40px; height: 40px; font-size: 1.5rem;
+    background: #eef2f6; color: var(--text);
+}
+.sheet-bar .sheet-close:active { background: #dfe5ec; }
+.sheet-grab { display: none; }
+/* A panel whose title is in its content: only the × floats in the corner, over nothing */
+.sheet-bar.no-title { height: 0; padding: 0 !important; margin: 0 !important; border: 0; box-shadow: none; background: none; }
+.sheet-bar.no-title .sheet-close { position: absolute; top: -12px; inset-inline-end: -10px; box-shadow: 0 2px 8px rgba(10, 20, 31, 0.18); }
+html.sheet-open, html.sheet-open body { overflow: hidden; }
+.sheet { overscroll-behavior: contain; }
+
+@media (max-width: 900px) {
+    .sheet {
+        padding: calc(env(safe-area-inset-top, 0px) + 28px) 0 0;
+        overflow: hidden;
+    }
+    .sheet-card {
+        max-height: calc(100vh - env(safe-area-inset-top, 0px) - 28px);
+        max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 28px);
+        padding-bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+    .sheet-bar {
+        margin: -20px -16px 12px; padding: 16px 16px 8px;
+        box-shadow: 0 -30px 0 #fff;   /* nothing shows through above it while scrolling */
+        touch-action: none;
+    }
+    .sheet-grab {
+        display: block; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+        width: 44px; height: 5px; border-radius: 3px; background: #cdd5de;
+    }
+    .sheet-bar h3 { font-size: 1.05rem !important; }
+    .sheet-bar.no-title .sheet-grab { top: -14px; }
+}
