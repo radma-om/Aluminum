@@ -125,6 +125,16 @@ function price(db, input, settings) {
                 l.line_total = round2(l.line_total - d.amount);
                 itemDiscounts[k] = { type: d.type, value: d.value };
             }
+            // The employee's own wording of a line's description (empty = no description on that line)
+            const itemNotes = {};
+            for (const [k, v] of Object.entries(line.item_notes && typeof line.item_notes === 'object' ? line.item_notes : {})) {
+                const l = priced[Number(k)];
+                if (!l || typeof v !== 'string') continue;
+                const text = clip(v, 600);
+                if (text === (l.description || '')) continue;
+                if (text) l.description = text; else delete l.description;
+                itemNotes[k] = text;
+            }
             // 3) The employee's discount on the whole gate, spread over its lines
             const d = discountOf(line.discount, round2(priced.reduce((s, l) => s + l.line_total, 0)), where);
             spread(priced, d.amount, (l, part) => { l.group_discount = round2((l.group_discount || 0) + part); });
@@ -141,6 +151,7 @@ function price(db, input, settings) {
             groups.push({ calc: line.calc, label: `${CALCS[line.calc]} — ${label}`, params: line.params || {}, price_level: line.price_level === 'to' ? 'to' : 'from',
                 ...(line.discount && Number(line.discount.value) ? { discount: { type: line.discount.type === 'percent' ? 'percent' : 'amount', value: Number(line.discount.value) } } : {}),
                 ...(Object.keys(itemDiscounts).length ? { item_discounts: itemDiscounts } : {}),
+                ...(Object.keys(itemNotes).length ? { item_notes: itemNotes } : {}),
                 ...(promoAmount ? { promo: promoAmount } : {}),
                 ...(giftAmount ? { gift: giftAmount } : {}),
                 gross: round2(gross + giftAmount), total: round2(priced.reduce((s, l) => s + l.line_total, 0)) });
@@ -162,8 +173,10 @@ function price(db, input, settings) {
         }
         const gross = round2(item.unit_price * quantity);
         const d = discountOf(line.discount, gross, where);
+        const description = clip(line.description, 600);
         return [{
             ...item, quantity,
+            ...(description ? { description } : {}),
             gross,
             ...(d.amount ? { discount: d } : {}),
             line_total: round2(gross - d.amount)

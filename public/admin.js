@@ -466,7 +466,7 @@ async function loadQuotes() {
             <td>${esc(q.customer_name)}${q.customer_city ? '<br><small>' + esc(q.customer_city) + '</small>' : ''}
                 ${q.notes ? '<br><small style="color:var(--text-light)">' + esc(q.notes) + '</small>' : ''}</td>
             <td><a href="https://wa.me/${esc(q.customer_phone)}" target="_blank" rel="noopener">${esc(q.customer_phone)}</a></td>
-            <td class="quote-items">${q.items.map((i) => `${esc(i.name)}${i.type ? ' — ' + esc(i.type) : ''}: ${i.quantity} × ${i.unit_price.toFixed(2)}${i.unit_price_to != null ? ' – ' + i.unit_price_to.toFixed(2) : ''}`).join('<br>')}</td>
+            <td class="quote-items">${q.items.map((i) => `${esc(i.name)}${i.type ? ' — ' + esc(i.type) : ''}: ${i.quantity} × ${i.unit_price.toFixed(2)}${i.unit_price_to != null ? ' – ' + i.unit_price_to.toFixed(2) : ''}${i.description ? `<span class="item-desc">${esc(i.description)}</span>` : ''}`).join('<br>')}</td>
             <td><strong>${q.total.toFixed(2)}${q.details && q.details.range ? ' – ' + q.details.range.total_to.toFixed(2) : ''}</strong></td>
             <td>${esc(SOURCE_NAMES[q.source] || q.source)}</td>
             <td><small>${esc(q.notify_status || '—')}</small></td>
@@ -1226,6 +1226,7 @@ async function loadOverhead() {
     overheadData.sizes.forEach(addOhSizeRow);
     $id('ohMotorRows').innerHTML = '';
     overheadData.motors.forEach(addOhMotorRow);
+    renderOhTypeDescs(overheadData.type_descriptions || {});
     const keep = $id('ohGovFilter').value;
     const govs = [...new Set(overheadData.regions.map((r) => r.governorate).filter(Boolean))];
     $id('ohGovFilter').innerHTML = '<option value="">كل المحافظات</option>' + govs.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
@@ -1246,9 +1247,22 @@ function addOhSizeRow(s = {}) {
     $id('ohSizeRows').appendChild(tr);
 }
 
+/* One description per gate type (the types are those written in the sizes table) */
+function ohTypeDescValues() {
+    return Object.fromEntries([...$id('ohTypeDescs').querySelectorAll('textarea')].map((t) => [t.dataset.type, t.value]));
+}
+function renderOhTypeDescs(saved) {
+    const current = { ...saved, ...($id('ohTypeDescs').children.length ? ohTypeDescValues() : {}) };
+    const types = [...new Set([...$id('ohSizeRows').querySelectorAll('.s-type')].map((i) => i.value.trim()).filter(Boolean))];
+    $id('ohTypeDescs').innerHTML = types.length ? types.map((t) => `<label class="oh-type-desc"><span>${esc(t)}</span>
+        <textarea rows="2" maxlength="600" data-type="${esc(t)}" placeholder="مثال: بوابة مقطعية معزولة بسماكة 40 ملم، ألواح مجلفنة مطلية…">${esc(current[t] || '')}</textarea></label>`).join('')
+        : '<p class="status-text">أضف المقاسات أولاً، ثم يظهر هنا مربع لوصف كل نوع.</p>';
+}
+$id('ohSizeRows').addEventListener('change', (e) => { if (e.target.classList.contains('s-type')) renderOhTypeDescs({}); });
+
 function addOhMotorRow(m = {}) {
     const tr = document.createElement('tr');
-    tr.innerHTML = cell('m-name', m.name, 'text', 240) + cell('m-price', m.price) +
+    tr.innerHTML = cell('m-name', m.name, 'text', 240) + cell('m-desc', m.description, 'text', 280) + cell('m-price', m.price) +
         (overheadData.sees_cost ? cell('m-cost', m.cost) : '') +
         `<td><input class="m-active" type="checkbox" ${m.active === 0 ? '' : 'checked'}></td>
          <td><button class="btn btn-outline btn-sm" onclick="this.closest('tr').remove()">حذف</button></td>`;
@@ -1263,11 +1277,11 @@ async function saveOverhead() {
         ...(overheadData.sees_cost ? { cost: val(tr, 's-cost') } : {})
     }));
     const motors = [...$id('ohMotorRows').children].map((tr) => ({
-        name: val(tr, 'm-name'), price: val(tr, 'm-price'), active: tr.querySelector('.m-active').checked,
+        name: val(tr, 'm-name'), description: val(tr, 'm-desc'), price: val(tr, 'm-price'), active: tr.querySelector('.m-active').checked,
         ...(overheadData.sees_cost ? { cost: val(tr, 'm-cost') } : {})
     }));
     try {
-        await api('PUT', '/api/admin/overhead', { sizes, motors });
+        await api('PUT', '/api/admin/overhead', { sizes, motors, type_descriptions: ohTypeDescValues() });
         setStatus('ohStatus', 'تم الحفظ ✓', 'ok');
         await loadOverhead();
     } catch (err) {

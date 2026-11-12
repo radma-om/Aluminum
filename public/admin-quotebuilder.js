@@ -55,13 +55,13 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
                 const g = groups[i.group];
                 qbLines.push({ calc: g.calc, params: qbScreenParams(g.calc, g.params || {}), price_level: g.price_level || 'from',
                     disc_type: g.discount ? g.discount.type : '', disc_value: g.discount ? g.discount.value : '',
-                    item_discounts: structuredClone(g.item_discounts || {}) });
+                    item_discounts: structuredClone(g.item_discounts || {}), item_notes: structuredClone(g.item_notes || {}) });
                 continue;
             }
             qbLines.push({
                 product_id: i.product_id || '', name: i.name, type: i.type || '', unit: i.unit, quantity: i.quantity,
                 unit_price: i.unit_price, disc_type: i.discount ? i.discount.type : '', disc_value: i.discount ? i.discount.value : '',
-                catalog: Boolean(i.product_id)
+                description: i.description || '', catalog: Boolean(i.product_id)
             });
         }
         if (d.quote_discount) { $id('qbDiscType').value = d.quote_discount.type; $id('qbDiscValue').value = d.quote_discount.value; }
@@ -256,6 +256,7 @@ function renderQbLines() {
             <div><label>قيمته</label><input type="number" data-k="disc_value" min="0" step="0.01" value="${esc(l.disc_value)}" ${l.disc_type ? '' : 'disabled'}></div>
             <div><label>المجموع</label><div class="qb-total" id="qbLineTotal${i}">—</div></div>
             <div><button type="button" class="btn btn-outline btn-sm" onclick="qbRemoveLine(${i})" title="حذف البند">×</button></div>
+            <div class="qb-desc"><input type="text" data-k="description" maxlength="600" placeholder="وصف البند — يظهر للعميل تحت البند في العرض والفاتورة (اختياري)" value="${esc(l.description || '')}"></div>
         </div>`;
     }).join('');
     $id('qbLines').querySelectorAll('.qb-line').forEach((row) => {
@@ -297,6 +298,12 @@ function qbOnCalcChange(e, l) {
         if (t.dataset.f === 'type') cur.type = t.value; else cur.value = t.value;
         if (cur.value === '' || !Number(cur.value)) delete l.item_discounts[k]; else l.item_discounts[k] = cur;
         if (cur.value === '' && t.dataset.f === 'type') l.item_discounts[k] = cur; // keep the chosen type while the value is empty
+        return qbSchedule();
+    }
+    // The employee's wording of a line's description
+    if (t.dataset.inote !== undefined) {
+        l.item_notes = l.item_notes || {};
+        l.item_notes[t.dataset.inote] = t.value;
         return qbSchedule();
     }
     const p = l.params;
@@ -364,9 +371,11 @@ const qbUsed = (l) => (l.calc ? !qbCalcMissing(l) : l.product_id || String(l.nam
 function qbPayload(all = false) {
     const items = qbLines.filter((l) => (all && l.calc) || qbUsed(l)).map((l) => ({
         ...(l.calc ? { calc: l.calc, params: qbCalcParams(l), price_level: l.price_level === 'to' ? 'to' : 'from',
-            ...(l.item_discounts && Object.values(l.item_discounts).some((d) => Number(d.value)) ? { item_discounts: Object.fromEntries(Object.entries(l.item_discounts).filter(([, d]) => Number(d.value)).map(([k, d]) => [k, { type: d.type, value: Number(d.value) }])) } : {}) }
+            ...(l.item_discounts && Object.values(l.item_discounts).some((d) => Number(d.value)) ? { item_discounts: Object.fromEntries(Object.entries(l.item_discounts).filter(([, d]) => Number(d.value)).map(([k, d]) => [k, { type: d.type, value: Number(d.value) }])) } : {}),
+            ...(l.item_notes && Object.keys(l.item_notes).length ? { item_notes: { ...l.item_notes } } : {}) }
             : l.product_id ? { product_id: Number(l.product_id), quantity: Number(l.quantity) }
                 : { name: l.name, unit: l.unit, unit_price: l.unit_price === '' ? '' : Number(l.unit_price), quantity: Number(l.quantity) }),
+        ...(!l.calc && String(l.description || '').trim() ? { description: String(l.description).trim() } : {}),
         ...(l.disc_type && l.disc_value !== '' ? { discount: { type: l.disc_type, value: Number(l.disc_value) } } : {})
     }));
     const t = $id('qbDiscType').value;
@@ -499,8 +508,9 @@ for (const id of ['qbPhone', 'qbName']) {
    Rebuilt after each preview; the field being typed in keeps its focus. */
 function renderQbGroupItems(box, l, lines) {
     const active = document.activeElement && box.contains(document.activeElement) ? document.activeElement : null;
-    const keep = active ? { idx: active.dataset.idisc, f: active.dataset.f, pos: active.selectionStart } : null;
+    const keep = active ? { sel: active.dataset.inote !== undefined ? `[data-inote="${active.dataset.inote}"]` : `[data-idisc="${active.dataset.idisc}"][data-f="${active.dataset.f}"]`, pos: active.selectionStart } : null;
     const disc = l.item_discounts || {};
+    const notes = l.item_notes || {};
     box.innerHTML = lines.map((it, k) => {
         if (it.gift) {
             return `<div class="row gift-row"><span>${esc(it.name)}${it.quantity !== 1 ? ` × ${esc(it.quantity)}` : ''} <small>(خصم 100%)</small></span><span><s>${qbMoney(it.gross)}</s> 0.00</span></div>`;
@@ -513,10 +523,11 @@ function renderQbGroupItems(box, l, lines) {
                     <select data-idisc="${k}" data-f="type"><option value="percent" ${d.type === 'percent' ? 'selected' : ''}>%</option><option value="amount" ${d.type === 'amount' ? 'selected' : ''}>ر.ع</option></select>
                     <input type="number" data-idisc="${k}" data-f="value" min="0" step="0.5" placeholder="خصم" value="${esc(d.value)}">
                 </span></span>
-            <span>${off ? `<s>${qbMoney(it.gross)}</s> ` : ''}${qbMoney(round2q(it.gross - off))}</span></div>`;
+            <span>${off ? `<s>${qbMoney(it.gross)}</s> ` : ''}${qbMoney(round2q(it.gross - off))}</span>
+            <textarea class="qb-item-note" data-inote="${k}" rows="1" maxlength="600" placeholder="وصف البند للعميل (اختياري)">${esc(k in notes ? notes[k] : it.description || '')}</textarea></div>`;
     }).join('');
     if (keep) {
-        const el = box.querySelector(`[data-idisc="${keep.idx}"][data-f="${keep.f}"]`);
+        const el = box.querySelector(keep.sel);
         if (el) { el.focus(); try { if (keep.pos != null) el.setSelectionRange(keep.pos, keep.pos); } catch { /* not a text field */ } }
     }
 }
