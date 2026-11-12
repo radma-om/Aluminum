@@ -324,6 +324,18 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
 
     // ---- Invoice: payments received and the balance ----
     if (inv && inv.status !== 'cancelled') {
+        // The deposit asked of the customer, and what is still due of it
+        if (inv.deposit) {
+            const due = inv.deposit.remaining > 0.004;
+            doc.roundedRect(tX, y - 2, tW, due ? 44 : 24, 5).fill(due ? '#fff4e0' : '#e8f6ee');
+            w.line(due ? inv.deposit.label : `${inv.deposit.label} — مدفوع`, tX + valW + 10, y + 2, tW - valW - 20, { size: 10.5, bold: true, color: due ? '#8a5a00' : '#1b6b3a', fit: true });
+            doc.font('Helvetica-Bold').fontSize(10.5).fillColor(due ? '#8a5a00' : '#1b6b3a').text(money(inv.deposit.amount), tX + 10, y + 5, { width: valW, align: 'left', lineBreak: false });
+            if (due) {
+                w.line(inv.paid > 0.004 ? 'المتبقي من المقدم' : 'يُدفع قبل بدء العمل', tX + valW + 10, y + 22, tW - valW - 20, { size: 9.5, color: '#8a5a00', fit: true });
+                doc.font('Helvetica').fontSize(9.5).fillColor('#8a5a00').text(money(inv.deposit.remaining), tX + 10, y + 25, { width: valW, align: 'left', lineBreak: false });
+            }
+            y += due ? 52 : 32;
+        }
         for (const [label, value, bold] of [['المدفوع', money(inv.paid)], ['المتبقي', money(inv.balance), true]]) {
             w.line(label, tX + valW + 10, y, tW - valW - 10, { size: 10.5, bold });
             doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10.5).fillColor(COLORS.text).text(value, tX, y + 3, { width: valW, align: 'left', lineBreak: false });

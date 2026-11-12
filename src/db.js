@@ -717,6 +717,8 @@ function migrate(db) {
     addColumns('staff_users', { max_discount_percent: 'REAL' });
     // Overhead gates: what a size and a motor cost the company (for the cost & profit calculator; NULL = not entered)
     addColumns('overhead_sizes', { cost: 'REAL' });
+    // Invoices: the deposit asked of the customer before the work (a % of the total or an amount)
+    addColumns('invoices', { deposit_type: 'TEXT', deposit_value: 'REAL', deposit_amount: 'REAL' });
     addColumns('overhead_motors', { cost: 'REAL' });
     // How long a quote's price holds (filled for older quotes from their date)
     const hadValidity = db.prepare('PRAGMA table_info(quotes)').all().some((c) => c.name === 'valid_until');
