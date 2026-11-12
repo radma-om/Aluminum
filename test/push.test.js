@@ -59,6 +59,8 @@ test('installable: manifest, icons, service worker and offline page; the admin p
     assert.match(page.body, /rel="manifest" href="\/manifest.webmanifest"/);
     assert.match(page.body, /apple-touch-icon/);
     assert.match(page.body, /admin-pwa\.js\?v=/);
+    assert.match(page.body, /admin-sheets\.js\?v=/, 'panels close by back / swipe / tap outside');
+    assert.equal((await call('GET', '/admin-sheets.js', null, null)).status, 200);
 });
 
 test('devices: each account its own; checked; a device that signs in with another account moves to it', async (t) => {
