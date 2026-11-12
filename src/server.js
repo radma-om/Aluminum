@@ -1704,9 +1704,9 @@ function createApp(db, { agentClient } = {}) {
     /* ---- Overhead gates: sizes with their price range, motors, installation fee per wilayah ---- */
 
     admin.get('/overhead', (req, res) => {
-        const { sizes, motors } = overhead.loadOverhead(db, { includeInactive: true });
+        const { sizes, motors, type_descriptions: typeDescriptions } = overhead.loadOverhead(db, { includeInactive: true });
         res.json({
-            sizes: hideCost(sizes, req.user), motors: hideCost(motors, req.user), sees_cost: seesCost(req.user),
+            sizes: hideCost(sizes, req.user), motors: hideCost(motors, req.user), sees_cost: seesCost(req.user), type_descriptions: typeDescriptions,
             regions: db.prepare(`SELECT id, name, governorate, active, overhead_installation_fee FROM regions
                                  ORDER BY governorate, name`).all()
         });
@@ -1742,7 +1742,7 @@ function createApp(db, { agentClient } = {}) {
             seen.add(key);
         }
         const motors = (Array.isArray(b.motors) ? b.motors : []).map((m) => {
-            const row = { name: text(m.name, 120), price: num(m.price, 'سعر المحرك'), active: m.active === false || m.active === 0 ? 0 : 1 };
+            const row = { name: text(m.name, 120), price: num(m.price, 'سعر المحرك'), description: text(m.description, 600) || null, active: m.active === false || m.active === 0 ? 0 : 1 };
             if (!row.name) throw httpError(400, 'اسم المحرك مطلوب');
             row.cost = keepCost ? (old.motors.find((o) => o.name === row.name) || {}).cost ?? null : cost(m.cost, `تكلفة ${row.name}`);
             return row;
@@ -1753,11 +1753,21 @@ function createApp(db, { agentClient } = {}) {
             const insSize = db.prepare(`INSERT INTO overhead_sizes (gate_type, height_cm, width_cm, price_from, price_to, cost, active, sort_order)
                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
             sizes.forEach((r, i) => insSize.run(r.gate_type, r.height_cm, r.width_cm, r.price_from, r.price_to, r.cost, r.active, i));
-            const insMotor = db.prepare('INSERT INTO overhead_motors (name, price, cost, active, sort_order) VALUES (?, ?, ?, ?, ?)');
-            motors.forEach((r, i) => insMotor.run(r.name, r.price, r.cost, r.active, i));
+            const insMotor = db.prepare('INSERT INTO overhead_motors (name, price, cost, description, active, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
+            motors.forEach((r, i) => insMotor.run(r.name, r.price, r.cost, r.description, r.active, i));
+            // Gate type descriptions: kept for the types listed; sent only when the editor shows them
+            if (b.type_descriptions && typeof b.type_descriptions === 'object') {
+                db.prepare('DELETE FROM overhead_types').run();
+                const insType = db.prepare('INSERT INTO overhead_types (name, description) VALUES (?, ?)');
+                const types = new Set(sizes.map((s) => s.gate_type));
+                for (const [name, d] of Object.entries(b.type_descriptions)) {
+                    const value = text(d, 600);
+                    if (types.has(name) && value) insType.run(name, value);
+                }
+            }
         });
-        const { sizes: savedSizes, motors: savedMotors } = overhead.loadOverhead(db, { includeInactive: true });
-        res.json({ sizes: hideCost(savedSizes, req.user), motors: hideCost(savedMotors, req.user) });
+        const { sizes: savedSizes, motors: savedMotors, type_descriptions: savedTypes } = overhead.loadOverhead(db, { includeInactive: true });
+        res.json({ sizes: hideCost(savedSizes, req.user), motors: hideCost(savedMotors, req.user), type_descriptions: savedTypes });
     });
 
     /* ---- Gate motors: sections, items (profit % each), extra fees, installation fee per wilayah ---- */

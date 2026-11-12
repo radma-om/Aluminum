@@ -108,6 +108,21 @@ class RtlWriter {
         });
     }
 
+    /* The lines a text wraps into (at most `max`; the last one ends with … when cut) */
+    wrap(text, width, opts = {}, max = 4) {
+        const out = [];
+        for (const para of String(text ?? '').split('\n')) {
+            let current = '';
+            for (const word of para.split(/\s+/).filter(Boolean)) {
+                const candidate = current ? current + ' ' + word : word;
+                if (current && this.width(candidate, opts) > width) { out.push(current); current = word; } else current = candidate;
+            }
+            if (current) out.push(current);
+        }
+        if (out.length > max) { out.length = max; out[max - 1] += ' …'; }
+        return out;
+    }
+
     /* Word-wrapped paragraph; returns the y below it */
     paragraph(text, x, y, width, opts = {}) {
         const size = opts.size || 10;
@@ -234,8 +249,14 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
     header();
     const groups = Array.isArray(details.calc_groups) ? details.calc_groups : [];
     let lastGroup = null;
+    const nameCol = cols.find((c) => c.key === 'name');
+    const DESC = { size: 8, color: COLORS.light };
+    const DESC_LINE = 12;
     quote.items.forEach((item, i) => {
-        if (y > doc.page.height - 190) { doc.addPage(); y = 40; header(); }
+        // The product's description: smaller and lighter under the line's name; the row grows to hold it
+        const desc = item.description ? w.wrap(item.description, nameCol.w - 8, DESC) : [];
+        const rowH = 24 + (desc.length ? desc.length * DESC_LINE + 2 : 0);
+        if (y + rowH > doc.page.height - 166) { doc.addPage(); y = 40; header(); }
         if (item.group !== undefined && item.group !== lastGroup && groups[item.group]) {
             lastGroup = item.group;
             const g = groups[item.group];
@@ -243,7 +264,7 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
             w.line(g.label + (g.discount ? ` — خصم ${g.discount.type === 'percent' ? g.discount.value + '%' : money(g.discount.value)}` : ''), left + 6, y + 5, width - 12, { size: 9.5, bold: true, color: COLORS.primary, fit: true });
             y += 22;
         }
-        if (i % 2 === 1) doc.rect(left, y, width, 24).fill(COLORS.band);
+        if (i % 2 === 1) doc.rect(left, y, width, rowH).fill(COLORS.band);
         const cells = {
             idx: String(i + 1),
             name: item.name + (item.type ? ' — ' + item.type : '') + (item.optional ? ' (إضافة)' : '')
@@ -258,8 +279,9 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
         for (const c of cols) {
             cx -= c.w;
             w.line(cells[c.key], cx + 4, y + 5, c.w - 8, { size: 9.5, align: c.key === 'name' ? 'right' : 'center', fit: true });
+            if (c.key === 'name') desc.forEach((d, k) => w.line(d, cx + 4, y + 22 + k * DESC_LINE, c.w - 8, DESC));
         }
-        y += 24;
+        y += rowH;
     });
     doc.moveTo(left, y).lineTo(right, y).lineWidth(0.5).strokeColor(COLORS.border).stroke();
 
