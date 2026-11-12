@@ -496,12 +496,35 @@ $id('leadItems').addEventListener('keydown', (e) => {
     if (item && e.key === 'Enter') openLead(Number(item.dataset.id));
 });
 
+/* Phones: the list and the customer share one column, so the customer opens in place of the list
+   (with «رجوع إلى القائمة», and the phone's back gesture / button), instead of far below it */
+const crmNarrow = () => window.matchMedia('(max-width: 980px)').matches;
+
 async function openLead(id, { keepScroll = false } = {}) {
     currentLeadId = id;
     document.querySelectorAll('.lead-item').forEach((x) => x.classList.toggle('active', Number(x.dataset.id) === id));
     const data = await api('GET', '/api/admin/leads/' + id);
     renderLeadDetail(data, keepScroll);
+    if (!keepScroll && crmNarrow()) {
+        const crm = document.querySelector('#tab-leads .crm');
+        if (!crm.classList.contains('show-detail')) {
+            crm.classList.add('show-detail');
+            history.pushState({ leadDetail: id }, '');
+        }
+        window.scrollTo({ top: 0 });
+    }
 }
+
+function closeLeadDetail({ fromHistory = false } = {}) {
+    const crm = document.querySelector('#tab-leads .crm');
+    if (!crm || !crm.classList.contains('show-detail')) return;
+    crm.classList.remove('show-detail');
+    if (!fromHistory && history.state && history.state.leadDetail) history.back();
+    // Back where the customer is in the list
+    const item = document.querySelector('.lead-item.active');
+    if (item) item.scrollIntoView({ block: 'center' });
+}
+window.addEventListener('popstate', () => closeLeadDetail({ fromHistory: true }));
 
 function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: pausedUntil, agent_stop: stop, customer_id: customerId }, keepScroll) {
     const el = $id('leadDetail');
@@ -520,6 +543,7 @@ function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: p
     const canReply = phone && leadMeta.can_reply_whatsapp;
 
     el.innerHTML = `
+        <button type="button" class="btn btn-outline btn-sm lead-back" onclick="closeLeadDetail()"><i class="fas fa-arrow-right"></i> رجوع إلى القائمة</button>
         <div class="lead-head">
             ${avatar(lead)}
             <div style="flex:1;min-width:200px">
@@ -664,16 +688,34 @@ window.switchTab = function (tabId) {
     if (tabId === 'leads') { renderLeadFilters(); loadLeads().then(() => { if (currentLeadId) openLead(currentLeadId, { keepScroll: true }); }).catch(() => {}); }
 };
 
-// Keep the follow-up fresh while it is open (new WhatsApp / website messages)
-setInterval(() => {
+// Back to the app (phone unlocked, app brought back from the background): fresh data at once,
+// not the list and times of when it was left
+let lastRefresh = Date.now();
+function refreshVisible() {
     if (!online || document.hidden) return;
+    lastRefresh = Date.now();
     if ($id('tab-leads').classList.contains('active')) {
         loadLeads().catch(() => {});
         if (currentLeadId && !document.activeElement.closest('#leadDetail textarea, #leadDetail input')) openLead(currentLeadId, { keepScroll: true }).catch(() => {});
     } else if ($id('tab-dashboard').classList.contains('active')) {
         loadDashboard();
     }
-}, 30_000);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - lastRefresh > 5000) refreshVisible(); });
+window.addEventListener('pageshow', (e) => { if (e.persisted) refreshVisible(); });
+window.addEventListener('focus', () => { if (Date.now() - lastRefresh > 5000) refreshVisible(); });
+// «منذ 5 د» keeps counting between refreshes
+setInterval(() => {
+    if (document.hidden || !$id('tab-leads').classList.contains('active')) return;
+    document.querySelectorAll('#leadItems .lead-item').forEach((item) => {
+        const l = leadsCache.find((x) => x.id === Number(item.dataset.id));
+        const t = item.querySelector('.lead-time');
+        if (l && t) t.textContent = ago(l.last_activity_at);
+    });
+}, 60_000);
+
+// Keep the follow-up fresh while it is open (new WhatsApp / website messages)
+setInterval(refreshVisible, 30_000);
 
 document.addEventListener('admin-ready', () => {
     // Load the data of the section that opened first (it depends on the account's permissions)

@@ -46,7 +46,12 @@ test('when it runs: switched on, a valid %, the chosen calculators, until its la
     assert.equal(promotions.active({ ...s, promo_scope: ['motors'] }, 'overhead'), null);
     assert.equal(promotions.active({ ...s, promo_until: '2020-01-01' }, 'overhead'), null, 'ended');
     assert.ok(promotions.active({ ...s, promo_until: '2099-12-31' }, 'overhead'));
-    const p = promotions.apply(s, { subtotal: 1000, vat_percent: 5, vat: 50, total: 1050, range: { subtotal_to: 1200, vat_to: 60, total_to: 1260 } }, 'overhead');
+    const items = [
+        { name: 'بوابة', part: 'gate', line_total: 800, line_total_to: 1000 },
+        { name: 'المحرك', part: 'motor', line_total: 150 },
+        { name: 'التركيب', part: 'installation', line_total: 50 }
+    ];
+    const p = promotions.apply(s, { items, subtotal: 1000, vat_percent: 5, vat: 50, total: 1050, range: { subtotal_to: 1200, vat_to: 60, total_to: 1260 } }, 'overhead');
     assert.deepEqual([p.subtotal, p.vat, p.total], [900, 45, 945]);
     assert.deepEqual(p.range, { subtotal_to: 1080, vat_to: 54, total_to: 1134 });
     assert.equal(p.promo.amount, 100);

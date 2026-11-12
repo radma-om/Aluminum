@@ -59,32 +59,43 @@ if (embedded) {
 
 /* ---- Customer discount (a promotion the company switched on) ---- */
 
-/* «🎉 عرض الشتاء: خصم 10% …» under the page title, when it covers this calculator */
+/* «🎉 عرض الشتاء: خصم 10% …» and «🎁 هدية …» under the page title, when they cover this calculator */
 function showPromoBanner(conf, kind) {
     const p = conf && conf.promotion;
-    if (!p || !p.applies_to.some((a) => a.key === kind)) return;
     const header = document.querySelector('.calc-header');
-    if (!header || document.getElementById('promoBanner')) return;
+    if (!p || !header || document.getElementById('promoBanner')) return;
+    const mine = (p.applies_to || []).find((a) => a.key === kind);
+    const gift = p.gift && p.gift.applies_to.some((a) => a.key === kind) ? p.gift : null;
+    const lines = [];
+    if (mine && p.percent) lines.push(`🎉 ${p.label}: خصم ${p.percent}%${mine.parts ? ` على ${mine.parts.join(' و')}` : ''}${p.until ? ` حتى ${p.until}` : ''} — يظهر في السعر تلقائياً`);
+    if (gift) lines.push(`🎁 هدية مع كل بوابة: ${gift.name} (قيمتها ${Number(gift.price).toFixed(2)} ر.ع)${gift.until ? ` حتى ${gift.until}` : ''}`);
+    if (!lines.length) return;
     const div = document.createElement('div');
     div.id = 'promoBanner';
     div.className = 'promo-banner';
-    div.textContent = `🎉 ${p.label}: خصم ${p.percent}% على ${p.applies_to.map((a) => a.name).join(' و')}${p.until ? ` حتى ${p.until}` : ''} — يظهر في السعر تلقائياً`;
+    div.textContent = lines.join(' — ');
     header.appendChild(div);
 }
 
-/* The price before the discount and the discount, for the breakdown (live price or saved quote) */
+/* The price before the discount, the promotion and the gift, for the breakdown (live price or saved quote) */
 function promoRows(p) {
     const pr = p.promo || null;
     const d = p.details || {};
-    const label = pr ? pr.label : d.promo_label;
+    const total = pr ? pr.amount : d.discount_total;
+    if (!(total > 0)) return '';
+    const gift = pr ? (pr.gift ? pr.gift.amount : 0) : Number(d.gift_amount) || 0;
+    const giftName = pr ? (pr.gift ? pr.gift.name : '') : d.gift_name;
+    const label = pr ? (pr.percent ? pr.label : '') : d.promo_label;
     const percent = pr ? pr.percent : d.promo_percent;
-    const cut = pr ? pr.amount : d.discount_total;
-    if (!label || !(cut > 0)) return '';
+    const parts = pr ? pr.parts : d.promo_parts;
     const gross = pr ? pr.gross_subtotal : d.gross_subtotal;
     const grossTo = pr ? pr.gross_subtotal_to : d.gross_subtotal_to;
-    const cutTo = pr ? pr.amount_to : d.discount_total_to;
+    const totalTo = pr ? pr.amount_to : d.discount_total_to;
+    const cut = Math.round((total - gift) * 100) / 100;
+    const cutTo = totalTo != null ? Math.round((totalTo - gift) * 100) / 100 : null;
     const span = (a, b) => (b != null && b !== a ? `${money(a)} - ${money(b)}` : money(a));
-    const safe = String(label).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const safe = (t) => String(t || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     return `<div><span>المجموع قبل الخصم</span><span dir="ltr">${span(gross, grossTo)}</span></div>`
-        + `<div class="promo-row"><span>🎉 ${safe} — خصم ${percent}%</span><span dir="ltr">-${span(cut, cutTo)}</span></div>`;
+        + (label && cut > 0 ? `<div class="promo-row"><span>🎉 ${safe(label)} — خصم ${percent}%${parts && parts.length ? ` (${safe(parts.join(' و'))})` : ''}</span><span dir="ltr">-${span(cut, cutTo)}</span></div>` : '')
+        + (gift > 0 ? `<div class="promo-row"><span>🎁 هدية: ${safe(giftName)} — خصم 100%</span><span dir="ltr">-${money(gift)}</span></div>` : '');
 }

@@ -2,7 +2,14 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="/icons/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="RADMA">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>نظام تسعير شرائح الألمنيوم</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -602,6 +609,15 @@
         .qb-cost .neg { color: #a93226; }
         .qb-cost .pos { color: #1b6b3a; }
         @media (max-width: 700px) { .qb-cost table { font-size: 0.78rem; } .qb-cost th, .qb-cost td { padding: 4px 3px; } }
+        .promo-scope { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 6px 0 4px; }
+        .promo-kind { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: #fff; }
+        .promo-kind > label { font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .promo-parts { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; padding-inline-start: 24px; font-size: 0.86rem; }
+        .promo-parts label { display: inline-flex; align-items: center; gap: 5px; }
+        .promo-kind:not(:has(> label input:checked)) .promo-parts { opacity: 0.45; pointer-events: none; }
+        .qb-item-disc { display: inline-flex; gap: 4px; align-items: center; margin-inline-start: 8px; }
+        .qb-item-disc select, .qb-item-disc input { padding: 2px 4px !important; font-size: 0.78rem !important; border-radius: 6px !important; width: auto; }
+        .qb-item-disc input { width: 64px; }
         .qb-add { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
         .qb-group { border: 2px solid var(--border); border-radius: 10px; padding: 10px; margin: 8px 0; background: var(--bg, #fafbfd); }
         .qb-group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
@@ -691,21 +707,25 @@
         }
     </style>
     <link rel="stylesheet" href="admin-ui.css">
+    <link rel="stylesheet" href="admin-theme.css">
+    <meta name="theme-color" content="#111b26">
 </head>
 <body>
 
     <!-- Side menu (folds to icons; a drawer on phones) -->
     <aside class="sidebar" id="sidebar" aria-label="أقسام اللوحة">
         <div class="sb-brand">
-            <span class="header-icon">AL</span>
-            <span class="t-label">نظام تسعير الألمنيوم</span>
+            <span class="header-icon"><img src="images/logo.png" alt=""></span>
+            <span class="t-label">رادما<small>نظام التسعير والمبيعات</small></span>
         </div>
         <nav class="sb-nav">
             <div class="nav-group">الرئيسية</div>
             <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')" title="لوحة المؤشرات"><i class="fas fa-chart-line"></i><span class="t-label">لوحة المؤشرات</span></button>
+            <button class="tab-btn" data-tab="team" onclick="switchTab('team')" title="أداء الموظفين" hidden><i class="fas fa-ranking-star"></i><span class="t-label">أداء الموظفين</span></button>
             <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')" title="متابعة العملاء"><i class="fas fa-headset"></i><span class="t-label">متابعة العملاء</span><span class="count" id="leadsBadge" hidden></span></button>
             <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')" title="العملاء"><i class="fas fa-address-book"></i><span class="t-label">العملاء</span></button>
             <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')" title="طلبات العروض"><i class="fas fa-file-invoice-dollar"></i><span class="t-label">طلبات العروض</span></button>
+            <button class="tab-btn" data-tab="offers" onclick="switchTab('offers')" title="العروض والهدايا" hidden><i class="fas fa-tags"></i><span class="t-label">العروض والهدايا</span></button>
             <button class="tab-btn" data-tab="invoices" onclick="switchTab('invoices')" title="الفواتير والمدفوعات"><i class="fas fa-receipt"></i><span class="t-label">الفواتير والمدفوعات</span></button>
             <button class="tab-btn" data-tab="work_orders" onclick="switchTab('work_orders')" title="أوامر العمل"><i class="fas fa-screwdriver-wrench"></i><span class="t-label">أوامر العمل</span></button>
             <div class="nav-group">الحاسبات</div>
@@ -742,6 +762,8 @@
                 <button type="button" id="mePwd" onclick="changeMyPassword()" title="تغيير كلمة المرور" hidden><i class="fas fa-key"></i></button>
                 <button type="button" id="me2fa" onclick="openTwoStep()" title="التحقق بخطوتين" hidden><i class="fas fa-shield-halved"></i></button>
             </div>
+            <button type="button" class="hdr-icon" id="installBtn" onclick="installApp()" title="تثبيت التطبيق على الشاشة الرئيسية" hidden><i class="fas fa-mobile-screen-button"></i></button>
+            <button type="button" class="hdr-icon" id="pushBtn" onclick="openPushSheet()" title="الإشعارات" hidden><i class="fas fa-bell"></i></button>
             <button class="logout-btn" onclick="logout()" title="تسجيل الخروج"><i class="fas fa-right-from-bracket"></i> <span class="t-out">خروج</span></button>
         </div>
     </header>
@@ -764,8 +786,23 @@
                 <span class="muted" id="dashUpdated"></span>
             </div>
             <div id="dashBody">
+                <section id="pulse" class="pulse" hidden aria-label="نبض اليوم"></section>
                 <div class="kpi-grid" id="kpiGrid"></div>
                 <div class="attention" id="attention"></div>
+                <div class="dash-grid" id="pulseCharts" hidden style="margin-bottom:16px">
+                    <div class="card span-4">
+                        <div class="chart-head"><h3>مؤشرات الأداء</h3><span class="sub" id="ratesSub"></span></div>
+                        <div class="rings" id="rateRings"></div>
+                    </div>
+                    <div class="card span-4">
+                        <div class="chart-head"><h3>مسار المبيعات</h3><span class="sub">من العرض إلى السداد خلال الفترة</span></div>
+                        <div class="funnel" id="salesFunnel"></div>
+                    </div>
+                    <div class="card span-4">
+                        <div class="chart-head"><h3><span class="live-dot"></span> آخر الأحداث</h3><span class="sub">تتحدث كل 30 ثانية</span></div>
+                        <div class="feed" id="activityFeed"></div>
+                    </div>
+                </div>
                 <div id="dashboardNotifications" class="card" hidden style="margin:16px 0; border:2px solid #e74c3c; background:#fff8f7"></div>
                 <div class="dash-grid">
                     <div class="card span-8">
@@ -892,6 +929,30 @@
                 <div class="form-buttons"><button class="btn btn-outline btn-sm" id="auditMore" onclick="loadAudit(true)" hidden>عرض المزيد</button>
                     <span id="auditStatus" class="status-text"></span></div>
             </div>
+        </div>
+
+        <!-- ==================== Employees' performance (managers) ==================== -->
+        <div id="tab-team" class="tab-content">
+            <div class="dash-toolbar">
+                <h2>أداء الموظفين</h2>
+                <div class="seg" id="teamRange" role="group" aria-label="الفترة">
+                    <button type="button" data-range="today">اليوم</button>
+                    <button type="button" data-range="7">7 أيام</button>
+                    <button type="button" data-range="30" class="on">30 يوماً</button>
+                    <button type="button" data-range="month">هذا الشهر</button>
+                    <button type="button" data-range="last-month">الشهر الماضي</button>
+                    <button type="button" data-range="90">90 يوماً</button>
+                </div>
+            </div>
+            <div class="filter-row team-filters">
+                <label>من <input type="date" id="teamFrom"></label>
+                <label>إلى <input type="date" id="teamTo"></label>
+                <label>الموظف <select id="teamEmployee"><option value="">كل الموظفين</option></select></label>
+                <button class="btn btn-outline btn-sm" onclick="loadTeam()"><i class="fas fa-rotate"></i> تحديث</button>
+                <button class="btn btn-outline btn-sm" onclick="teamCsv()"><i class="fas fa-file-csv"></i> تصدير CSV</button>
+                <span class="status-text" id="teamStatus"></span>
+            </div>
+            <div id="teamBody"></div>
         </div>
 
         <div id="tab-users" class="tab-content">
@@ -1735,23 +1796,40 @@
         </div>
 
         <!-- ==================== TAB 5: Quote requests ==================== -->
-        <div id="tab-quotes" class="tab-content">
-            <div class="card manager-only">
-                <div class="card-title"><span class="icon"><i class="fas fa-tags"></i></span> خصم العملاء (عرض موسمي)</div>
-                <p class="status-text" style="margin:0 0 10px">نسبة تُخصم من السعر قبل الضريبة في الحاسبات المختارة: يراها العميل في الحاسبة، وتظهر في عرض السعر وملف PDF، ويذكرها المساعد الذكي ويحسب بها. ينتهي العرض تلقائياً بعد آخر يوم. عروض الموظفين لا تتأثر (لها خصمها الخاص).</p>
+        <!-- ==================== Offers: the customer promotion and the gift (managers) ==================== -->
+        <div id="tab-offers" class="tab-content">
+            <div class="dash-toolbar"><h2>العروض والهدايا</h2><span class="muted" id="offersSummary"></span></div>
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-percent"></i></span> خصم العملاء (عرض موسمي)</div>
+                <p class="status-text" style="margin:0 0 10px">نسبة تُخصم من السعر قبل الضريبة في الحاسبات المختارة، وعلى الأجزاء المختارة فقط من كل بوابة (مثلاً الشرائح وحدها، أو بوابة الأوفرهيد بدون المحرك والتركيب). يراها العميل في الحاسبة، وتظهر في عرض السعر وملف PDF، ويذكرها المساعد الذكي، وتُطبَّق تلقائياً في عروض الموظفين ولا تُحسب من حد خصمهم. ينتهي العرض تلقائياً بعد آخر يوم.</p>
                 <div class="form-grid">
                     <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="promoEnabled"> تفعيل الخصم</label></div>
                     <div class="form-group"><label>اسم العرض</label><input type="text" id="promoLabel" maxlength="60" placeholder="مثلاً: عرض الشتاء"></div>
                     <div class="form-group"><label>النسبة <span class="unit">(% حتى 50)</span></label><input type="number" id="promoPercent" min="0" max="50" step="0.5"></div>
                     <div class="form-group"><label>آخر يوم <span class="unit">(اختياري)</span></label><input type="date" id="promoUntil"></div>
                 </div>
-                <div class="check-row" id="promoScope">
+                <div class="promo-scope" id="promoScope"></div>
+                <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="savePromo()">حفظ</button><span id="promoStatus" class="status-text"></span></div>
+            </div>
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-gift"></i></span> هدية مع البوابة 🎁</div>
+                <p class="status-text" style="margin:0 0 10px">هدية تُضاف تلقائياً مع كل بوابة (أو طقم مكينة) في الحاسبات المختارة: تظهر بسعرها ثم تُخصم 100%، وتدخل في مجمل الخصم. تظهر للعميل في الحاسبة، وفي عرض السعر وملف PDF، ويذكرها المساعد الذكي، وتُضاف في عروض الموظفين ولا تُحسب من حد خصمهم.</p>
+                <div class="form-grid">
+                    <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="giftEnabled"> تفعيل الهدية</label></div>
+                    <div class="form-group"><label>اسم الهدية</label><input type="text" id="giftName" maxlength="60" placeholder="مثلاً: جهاز GSM opener"></div>
+                    <div class="form-group"><label>سعرها <span class="unit">(ر.ع)</span></label><input type="number" id="giftPrice" min="0" max="1000" step="0.5"></div>
+                    <div class="form-group"><label>آخر يوم <span class="unit">(اختياري)</span></label><input type="date" id="giftUntil"></div>
+                </div>
+                <div class="check-row" id="giftScope">
                     <label><input type="checkbox" value="rolling_shutter"> بوابات الرول شتر</label>
                     <label><input type="checkbox" value="overhead"> بوابات الأوفرهيد</label>
                     <label><input type="checkbox" value="motors"> مكائن البوابات</label>
                 </div>
-                <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="savePromo()">حفظ</button><span id="promoStatus" class="status-text"></span></div>
+                <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="saveGift()">حفظ</button><span id="giftStatus" class="status-text"></span></div>
             </div>
+        </div>
+
+        <div id="tab-quotes" class="tab-content">
             <div class="card">
                 <div class="card-title">
                     <span class="icon">Q</span>
@@ -2159,7 +2237,13 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
                 <div class="form-group"><label>عنوان العميل <span class="unit">(اختياري)</span></label><input type="text" id="invAddress" maxlength="200"></div>
             </div>
             <div class="form-group"><label>ملاحظات على الفاتورة <span class="unit">(اختياري)</span></label><input type="text" id="invNotes" maxlength="1000"></div>
-            <p class="sub-heading">عربون مدفوع الآن <span class="status-text">(اختياري)</span></p>
+            <p class="sub-heading">المقدم المطلوب من العميل <span class="status-text">(يظهر في الفاتورة)</span></p>
+            <div class="form-grid">
+                <div class="form-group"><label>المقدم</label><select id="invAskType"><option value="">بدون مقدم</option><option value="percent">نسبة % من الإجمالي</option><option value="amount">مبلغ (ر.ع)</option></select></div>
+                <div class="form-group"><label>القيمة</label><input type="number" id="invAskValue" min="0" step="0.5" disabled></div>
+                <div class="form-group"><label>المقدم بالريال</label><div class="status-text" id="invAskAmount" style="padding:10px 0;font-weight:700">—</div></div>
+            </div>
+            <p class="sub-heading">دفعة مستلمة الآن <span class="status-text">(اختياري — أي مبلغ دفعه العميل عند الإصدار)</span></p>
             <div class="form-grid">
                 <div class="form-group"><label>المبلغ (ر.ع)</label><input type="number" id="invDeposit" min="0" step="0.01"></div>
                 <div class="form-group"><label>طريقة الدفع</label><select id="invDepositMethod"></select></div>
@@ -2340,6 +2424,29 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
                 <span id="srnStatus" class="status-text"></span>
             </div>
         </form>
+    </div>
+
+    <!-- This device: install the app and notifications -->
+    <div id="pushSheet" class="sheet" hidden>
+        <div class="sheet-card" style="max-width:520px">
+            <button type="button" class="sheet-close" onclick="closeSheet('pushSheet')" aria-label="إغلاق">×</button>
+            <h3><i class="fas fa-bell"></i> الإشعارات والتطبيق</h3>
+            <p class="status-text" style="margin:4px 0 12px">تصلك على هذا الجهاز حتى والتطبيق مغلق:</p>
+            <ul class="push-list">
+                <li>📄 عرض سعر جديد من عميل (الحاسبات، واتساب، الموقع)</li>
+                <li>👤 عميل أُسند إليك، و🙋 عميل يطلب التواصل مع موظف</li>
+                <li>🔧 أمر عمل أُسند إليك أو تغيّر موعده</li>
+                <li>📅 طلب موعد ينتظر الموافقة</li>
+            </ul>
+            <div id="pushState" class="push-state"></div>
+            <div id="pushDevices"></div>
+            <div class="form-buttons">
+                <button type="button" class="btn btn-primary" id="pushOn" onclick="enablePush()"><i class="fas fa-bell"></i> تفعيل الإشعارات على هذا الجهاز</button>
+                <button type="button" class="btn btn-outline" id="pushTest" onclick="testPush()" hidden>إرسال إشعار تجريبي</button>
+                <button type="button" class="btn btn-outline" id="pushOff" onclick="disablePush()" hidden style="color:#a93226">إيقافها على هذا الجهاز</button>
+            </div>
+            <div id="installHelp" class="install-help" hidden></div>
+        </div>
     </div>
 
     <!-- Footer -->
@@ -2852,6 +2959,8 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-security.js"></script>
     <script src="admin-invoices.js"></script>
     <script src="admin-workorders.js"></script>
+    <script src="admin-team.js"></script>
+    <script src="admin-pwa.js"></script>
     <script src="admin-customers.js"></script>
     <script src="admin-quotebuilder.js"></script>
 </body>

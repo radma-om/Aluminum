@@ -83,7 +83,8 @@ async function api(method, url, body) {
 }
 
 async function logout() {
-    // Ends an employee's session on the server too
+    // This device stops receiving this account's notifications, then the session ends on the server too
+    if (typeof pushForget === 'function') await pushForget().catch(() => {});
     await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + storedToken() } }).catch(() => {});
     try { localStorage.removeItem('adminToken'); } catch { /* ignore */ }
     location.reload();
@@ -484,7 +485,7 @@ async function loadQuotes() {
                 ${q.details && q.details.staff_quote && !q.invoice && ['new', 'contacted'].includes(q.status) ? `<br><button class="link-btn" style="margin:4px 0 0" onclick="openQuoteBuilder({ quote: quotesCache.find((x) => x.id === ${q.id}) })">تعديل البنود</button>` : ''}</td>
         </tr>`).join('');
     quotesCache = rows;
-    if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; fillPromo(st); }).catch(() => {});
+    if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; }).catch(() => {});
     $id('quotesEmpty').style.display = rows.length ? 'none' : 'block';
 }
 
@@ -511,26 +512,87 @@ async function extendQuote(id, current) {
     try { await api('PATCH', `/api/admin/quotes/${id}`, { valid_until: next.trim() }); await loadQuotes(); } catch (err) { alert(err.message); }
 }
 
-/* The customer discount (promotion) */
+/* The customer discount (promotion): the calculators it covers and, in each, the parts */
+const PROMO_KINDS = {
+    rolling_shutter: { name: 'بوابات الرول شتر', parts: { slats: 'الشرائح', accessories: 'الإكسسوارات', motor: 'المحرك', installation: 'التركيب', delivery: 'التوصيل' } },
+    overhead: { name: 'بوابات الأوفرهيد', parts: { gate: 'البوابة', motor: 'المحرك', installation: 'التركيب' } },
+    motors: { name: 'مكائن البوابات', parts: { kit: 'المكينة (الطقم)', parts: 'القطع الإضافية', installation: 'التركيب', delivery: 'التوصيل' } }
+};
+const localDay = () => new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
+
 function fillPromo(st) {
     $id('promoEnabled').checked = Boolean(st.promo_enabled);
     $id('promoLabel').value = st.promo_label || '';
     $id('promoPercent').value = st.promo_percent || '';
     $id('promoUntil').value = st.promo_until || '';
-    $id('promoScope').querySelectorAll('input').forEach((c) => { c.checked = (st.promo_scope || []).includes(c.value); });
-    const today = new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
-    const ended = st.promo_enabled && st.promo_until && st.promo_until < today;
+    const parts = st.promo_parts || {};
+    $id('promoScope').innerHTML = Object.entries(PROMO_KINDS).map(([k, kind]) => {
+        const chosen = Array.isArray(parts[k]) && parts[k].length ? parts[k] : Object.keys(kind.parts); // none chosen = all
+        return `<div class="promo-kind"><label><input type="checkbox" value="${k}" ${(st.promo_scope || []).includes(k) ? 'checked' : ''}> ${kind.name}</label>
+            <div class="promo-parts" data-kind="${k}">${Object.entries(kind.parts).map(([p, label]) =>
+                `<label><input type="checkbox" value="${p}" ${chosen.includes(p) ? 'checked' : ''}> ${label}</label>`).join('')}</div></div>`;
+    }).join('');
+    const ended = st.promo_enabled && st.promo_until && st.promo_until < localDay();
     setStatus('promoStatus', !st.promo_enabled ? 'متوقف' : ended ? 'انتهى (مرّ آخر يوم)' : `يعمل الآن: خصم ${st.promo_percent}%`, st.promo_enabled && !ended ? 'ok' : '');
+    fillGift(st);
+    offersSummary(st);
 }
 
+/* One line at the top of «العروض والهدايا»: what customers get right now */
+function offersSummary(st) {
+    const el = $id('offersSummary');
+    if (!el) return;
+    const today = localDay();
+    const promo = st.promo_enabled && !(st.promo_until && st.promo_until < today) && Number(st.promo_percent) > 0;
+    const gift = st.gift_enabled && !(st.gift_until && st.gift_until < today) && st.gift_name && Number(st.gift_price) > 0;
+    el.textContent = [promo ? `🎉 ${st.promo_label || 'خصم'} ${st.promo_percent}% يعمل الآن` : 'لا خصم يعمل الآن',
+        gift ? `🎁 ${st.gift_name} مع كل بوابة` : 'لا هدية الآن'].join(' — ');
+}
+
+async function loadOffers() {
+    try { fillPromo(await api('GET', '/api/admin/settings')); } catch (err) { setStatus('promoStatus', err.message, 'err'); }
+}
+const switchTabBeforeOffers = window.switchTab;
+window.switchTab = function (tabId) {
+    switchTabBeforeOffers(tabId);
+    if (online && tabId === 'offers' && ME && ME.role === 'manager') loadOffers();
+};
+
 async function savePromo() {
+    const scope = [...$id('promoScope').querySelectorAll('.promo-kind > label input:checked')].map((c) => c.value);
+    const parts = {};
+    for (const box of $id('promoScope').querySelectorAll('.promo-parts')) {
+        parts[box.dataset.kind] = [...box.querySelectorAll('input:checked')].map((c) => c.value);
+    }
     const body = {
         promo_enabled: $id('promoEnabled').checked, promo_label: $id('promoLabel').value.trim(),
         promo_percent: Number($id('promoPercent').value) || 0, promo_until: $id('promoUntil').value,
-        promo_scope: [...$id('promoScope').querySelectorAll('input:checked')].map((c) => c.value)
+        promo_scope: scope, promo_parts: parts
     };
-    if (body.promo_enabled && (!body.promo_percent || !body.promo_scope.length)) return setStatus('promoStatus', 'اكتب النسبة واختر حاسبة واحدة على الأقل', 'err');
+    if (body.promo_enabled && (!body.promo_percent || !scope.length)) return setStatus('promoStatus', 'اكتب النسبة واختر حاسبة واحدة على الأقل', 'err');
+    if (body.promo_enabled && scope.some((k) => !parts[k].length)) return setStatus('promoStatus', 'اختر جزءاً واحداً على الأقل لكل حاسبة مختارة', 'err');
     try { fillPromo(await api('PUT', '/api/admin/settings', body)); } catch (err) { setStatus('promoStatus', err.message, 'err'); }
+}
+
+/* The gift (e.g. a GSM opener): its price, given in full with every gate */
+function fillGift(st) {
+    $id('giftEnabled').checked = Boolean(st.gift_enabled);
+    $id('giftName').value = st.gift_name || '';
+    $id('giftPrice').value = st.gift_price || '';
+    $id('giftUntil').value = st.gift_until || '';
+    $id('giftScope').querySelectorAll('input').forEach((c) => { c.checked = (st.gift_scope || []).includes(c.value); });
+    const ended = st.gift_enabled && st.gift_until && st.gift_until < localDay();
+    setStatus('giftStatus', !st.gift_enabled ? 'متوقفة' : ended ? 'انتهت (مرّ آخر يوم)' : `تعمل الآن: ${st.gift_name} (${Number(st.gift_price).toFixed(2)} ر.ع) مع كل بوابة`, st.gift_enabled && !ended ? 'ok' : '');
+}
+
+async function saveGift() {
+    const body = {
+        gift_enabled: $id('giftEnabled').checked, gift_name: $id('giftName').value.trim(),
+        gift_price: Number($id('giftPrice').value) || 0, gift_until: $id('giftUntil').value,
+        gift_scope: [...$id('giftScope').querySelectorAll('input:checked')].map((c) => c.value)
+    };
+    if (body.gift_enabled && (!body.gift_name || !(body.gift_price > 0) || !body.gift_scope.length)) return setStatus('giftStatus', 'اكتب اسم الهدية وسعرها واختر حاسبة واحدة على الأقل', 'err');
+    try { fillPromo(await api('PUT', '/api/admin/settings', body)); } catch (err) { setStatus('giftStatus', err.message, 'err'); }
 }
 
 async function saveQuoteValidity() {
@@ -1694,7 +1756,7 @@ function applyPermissions() {
     }
     document.querySelectorAll('.sidebar .tab-btn[data-tab]').forEach((b) => {
         const tab = b.dataset.tab;
-        b.hidden = ['users', 'audit', 'backup'].includes(tab) ? !manager : !canSee(tab);
+        b.hidden = ['users', 'audit', 'backup', 'team', 'offers'].includes(tab) ? !manager : !canSee(tab);
     });
     document.querySelectorAll('.manager-only').forEach((el) => { el.hidden = !manager; });
     // Where customers and sales alerts go: only managers change them (the server ignores them from staff)

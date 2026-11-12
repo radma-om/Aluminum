@@ -63,8 +63,10 @@ function attentionOf(lead, { staleDays = 3, today = localToday() } = {}) {
         if (lead.next_follow_up > today) return null; // planned: not forgotten
         return { reason: lead.next_follow_up < today ? 'overdue' : 'due', date: lead.next_follow_up };
     }
-    const since = String(lead.last_staff_at || lead.created_at || '').slice(0, 10);
-    if (!since) return null;
+    // Stored times are UTC: the day they fall on is the Muscat day (after 20:00 UTC it is already tomorrow)
+    const sinceMs = storedMs(lead.last_staff_at || lead.created_at);
+    if (!Number.isFinite(sinceMs)) return null;
+    const since = localToday(sinceMs);
     const days = Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(since + 'T00:00:00Z')) / 86400000);
     return days >= Math.max(1, Number(staleDays) || 3) ? { reason: 'stale', days, since } : null;
 }
@@ -131,6 +133,7 @@ function humanRequested(db, key, summary) {
     if (!lead) return;
     if (!['following', 'waiting'].includes(lead.status)) db.prepare("UPDATE leads SET status = 'needs_staff' WHERE id = ?").run(lead.id);
     addMessage(db, lead, 'system', '🙋 طلب التواصل مع موظف: ' + summary);
+    require('./push').humanRequested(db, lead, summary).catch(() => {});
 }
 
 /* Every saved quote joins its customer's lead (calculator, WhatsApp, website) */
@@ -139,6 +142,13 @@ function quoteCreated(db, quote, { key = null, channel = 'calculator' } = {}) {
     if (!lead) return;
     if (quote.customer_phone && !lead.phone) db.prepare('UPDATE leads SET phone = ? WHERE id = ?').run(quote.customer_phone, lead.id);
     addMessage(db, lead, 'system', `📄 عرض سعر ${quote.ref} — ${Number(quote.total).toFixed(2)} ر.ع`);
+    // A new request from a customer whose follow-up was closed (sold / lost) is new business: open again,
+    // so it shows in «المفتوحة» (an employee's own quote reopens it as followed up)
+    if (['won', 'lost'].includes(lead.status)) {
+        const status = quote.source === 'staff' ? 'following' : 'new';
+        db.prepare('UPDATE leads SET status = ? WHERE id = ?').run(status, lead.id);
+        addMessage(db, { ...lead, status }, 'system', `🔄 أُعيد فتح المتابعة (كانت: ${STATUSES[lead.status]}) — طلب عرض سعر جديد`);
+    }
 }
 
 /* ---- Admin ---- */
@@ -164,7 +174,7 @@ function list(db, { status = '', assigned = '', channel = '', q = '', open = fal
             (SELECT text FROM lead_notes WHERE lead_id = l.id ORDER BY id DESC LIMIT 1) AS last_note,
             (SELECT kind FROM agent_pauses WHERE phone = l.phone AND until > datetime('now')) AS agent_stop
         FROM leads l ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-        ORDER BY CASE status WHEN 'needs_staff' THEN 0 WHEN 'new' THEN 1 ELSE 2 END, last_activity_at DESC LIMIT ${attention ? 2000 : 300}`).all(...args)
+        ORDER BY CASE status WHEN 'needs_staff' THEN 0 ELSE 1 END, last_activity_at DESC LIMIT ${attention ? 2000 : 300}`).all(...args)
         .map((l) => ({ ...l, attention: attentionOf(l, { staleDays }), assignment_overdue: assignmentOverdueOf(l) }))
         .filter((l) => (!attention || l.attention) && (!overdue || l.assignment_overdue))
         .slice(0, 300);

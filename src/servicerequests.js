@@ -244,6 +244,7 @@ function requestText(r) {
 
 /* The sales numbers on WhatsApp, and by email whoever runs the work orders (managers and staff with that section) */
 async function notifyStaff(db, r, { mazbot = require('./mazbot'), whatsapp = require('./whatsapp') } = {}) {
+    require('./push').serviceRequest(db, r).catch(() => {});
     const text = requestText(r);
     const settings = getSettings(db);
     for (const to of mazbot.parseRecipients(settings.mazbot_recipients)) {

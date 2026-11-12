@@ -22,7 +22,13 @@ const DEFAULT_SETTINGS = {
     promo_percent: 0,               // نسبة الخصم من السعر قبل الضريبة (حتى 50%)
     promo_label: '',                // اسم العرض، مثل «عرض الشتاء»
     promo_until: '',                // آخر يوم (YYYY-MM-DD) — فارغ: حتى يُوقف
-    promo_scope: ['rolling_shutter', 'overhead', 'motors'], // أقصى خصم يعطيه الموظف (٪ من السعر قبل الخصم) — للمدير بلا حد، ولكل موظف حد خاص اختياري     // صلاحية عرض السعر بالأيام (تظهر في PDF، ويمكن تمديد كل عرض)
+    promo_scope: ['rolling_shutter', 'overhead', 'motors'], // الحاسبات التي يشملها العرض
+    promo_parts: {},                // لكل حاسبة: الأجزاء التي يشملها الخصم (فارغ = كل الأجزاء)، مثل { rolling_shutter: ['slats'] }
+    gift_enabled: false,            // هدية مع كل بوابة (مثل جهاز GSM opener): تظهر بسعرها وتُخصم 100%
+    gift_name: '',
+    gift_price: 0,
+    gift_until: '',
+    gift_scope: ['rolling_shutter', 'overhead', 'motors'],
     follow_up_stale_days: 3,     // عميل مفتوح بلا متابعة من موظف لهذه المدة يظهر في «بحاجة متابعة»
     follow_up_emails: true,      // بريد يومي لكل موظف بعملائه المستحقين + تقرير أسبوعي للمديرين
     // Slat thicknesses of the in-house calculators (pricing and weight tabs): details, mm, kg per meter
@@ -711,6 +717,8 @@ function migrate(db) {
     addColumns('staff_users', { max_discount_percent: 'REAL' });
     // Overhead gates: what a size and a motor cost the company (for the cost & profit calculator; NULL = not entered)
     addColumns('overhead_sizes', { cost: 'REAL' });
+    // Invoices: the deposit asked of the customer before the work (a % of the total or an amount)
+    addColumns('invoices', { deposit_type: 'TEXT', deposit_value: 'REAL', deposit_amount: 'REAL' });
     addColumns('overhead_motors', { cost: 'REAL' });
     // How long a quote's price holds (filled for older quotes from their date)
     const hadValidity = db.prepare('PRAGMA table_info(quotes)').all().some((c) => c.name === 'valid_until');
@@ -839,10 +847,22 @@ function saveSettings(db, patch) {
             upsert.run(key, JSON.stringify(names));
             continue;
         }
-        if (key === 'promo_scope') {
+        if (key === 'promo_scope' || key === 'gift_scope') {
             const allowed = ['rolling_shutter', 'overhead', 'motors'];
-            if (!Array.isArray(patch[key]) || patch[key].some((k) => !allowed.includes(k))) throw badValue('اختيار الحاسبات للعرض غير صالح');
+            if (!Array.isArray(patch[key]) || patch[key].some((k) => !allowed.includes(k))) throw badValue(key === 'gift_scope' ? 'اختيار الحاسبات للهدية غير صالح' : 'اختيار الحاسبات للعرض غير صالح');
             upsert.run(key, JSON.stringify([...new Set(patch[key])]));
+            continue;
+        }
+        if (key === 'promo_parts') {
+            const { PARTS } = require('./promotions');
+            const v = patch[key];
+            if (!v || typeof v !== 'object' || Array.isArray(v)) throw badValue('أجزاء العرض غير صالحة');
+            const clean = {};
+            for (const [kind, parts] of Object.entries(v)) {
+                if (!PARTS[kind] || !Array.isArray(parts) || parts.some((p) => !PARTS[kind][p])) throw badValue('أجزاء العرض غير صالحة');
+                clean[kind] = [...new Set(parts)];
+            }
+            upsert.run(key, JSON.stringify(clean));
             continue;
         }
         if (key === 'slat_thicknesses') {
@@ -861,6 +881,11 @@ function saveSettings(db, patch) {
             throw badValue('تاريخ نهاية العرض غير صالح');
         }
         if (key === 'promo_label' && String(value).length > 60) throw badValue('اسم العرض طويل (60 حرفاً كحد أقصى)');
+        if (key === 'gift_name' && String(value).trim().length > 60) throw badValue('اسم الهدية طويل (60 حرفاً كحد أقصى)');
+        if (key === 'gift_price' && !(value >= 0 && value <= 1000)) throw badValue('سعر الهدية بين 0 و1000 ر.ع');
+        if (key === 'gift_until' && value && !(/^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z')))) {
+            throw badValue('تاريخ نهاية الهدية غير صالح');
+        }
         if (key === 'staff_max_discount_percent' && !(value >= 0 && value <= 100)) {
             throw badValue('حد الخصم يجب أن يكون بين 0 و100%');
         }

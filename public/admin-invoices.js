@@ -47,7 +47,7 @@ async function loadInvoices() {
                 <td data-label="الإجمالي">${money2(i.total)}</td>
                 <td data-label="المدفوع">${money2(i.paid)}</td>
                 <td data-label="المتبقي"><strong>${money2(i.balance)}</strong></td>
-                <td data-label="الحالة"><span class="badge st-${esc(i.state)}">${esc(i.state_label)}</span></td>
+                <td data-label="الحالة"><span class="badge st-${esc(i.state)}">${esc(i.state_label)}</span>${i.deposit && !i.deposit.paid && i.state !== 'cancelled' ? `<br><small style="color:#8a5a00">بانتظار المقدم ${money2(i.deposit.remaining)}</small>` : ''}</td>
                 <td data-label=""><button class="btn btn-outline btn-sm" onclick="openInvoice(${i.id})">عرض</button></td>
             </tr>`).join('') || '<tr><td colspan="8">لا توجد فواتير بعد — أصدر أول فاتورة من «طلبات العروض».</td></tr>';
         setStatus('invStatus', '');
@@ -72,7 +72,10 @@ async function newInvoice(quoteId) {
         : 'المبلغ النهائي قبل الضريبة <span class="unit">(اختياري — للخصم)</span>';
     $id('invFinal').required = Boolean(range);
     $id('invIssue').value = todayLocal();
-    for (const id of ['invDue', 'invFinal', 'invAddress', 'invNotes', 'invDeposit']) $id(id).value = '';
+    for (const id of ['invDue', 'invFinal', 'invAddress', 'invNotes', 'invDeposit', 'invAskValue']) $id(id).value = '';
+    $id('invAskType').value = '';
+    $id('invAskValue').disabled = true;
+    invAskPreview();
     fillMethods('invDepositMethod');
     setStatus('invNewStatus', '');
     $id('invNewSheet').hidden = false;
@@ -84,7 +87,8 @@ async function submitNewInvoice() {
         customer_address: $id('invAddress').value.trim(), notes: $id('invNotes').value.trim()
     };
     if ($id('invFinal').value !== '') body.final_subtotal = Number($id('invFinal').value);
-    if (Number($id('invDeposit').value) > 0) body.deposit = { amount: Number($id('invDeposit').value), method: $id('invDepositMethod').value, note: 'عربون' };
+    if (Number($id('invDeposit').value) > 0) body.deposit = { amount: Number($id('invDeposit').value), method: $id('invDepositMethod').value, note: 'دفعة عند الإصدار' };
+    if ($id('invAskType').value && Number($id('invAskValue').value) > 0) body.deposit_required = { type: $id('invAskType').value, value: Number($id('invAskValue').value) };
     try {
         const inv = await api('POST', `/api/admin/quotes/${invQuote.id}/invoice`, body);
         closeSheet('invNewSheet');
@@ -93,6 +97,44 @@ async function submitNewInvoice() {
     } catch (err) {
         setStatus('invNewStatus', err.message, 'err');
     }
+}
+
+/* The invoice total as it will be issued (the final amount if typed, with the quote's VAT) */
+function invTotalPreview() {
+    if (!invQuote) return 0;
+    const final = $id('invFinal').value;
+    if (final === '') return Number(invQuote.total) || 0;
+    return Math.round(Number(final) * (1 + (Number(invQuote.vat_percent) || 0) / 100) * 100) / 100;
+}
+
+/* The deposit asked, in rials, while it is typed */
+function invAskPreview() {
+    const type = $id('invAskType').value;
+    const value = Number($id('invAskValue').value);
+    $id('invAskValue').disabled = !type;
+    if (!type) { $id('invAskValue').value = ''; $id('invAskAmount').textContent = '—'; return; }
+    $id('invAskValue').placeholder = type === 'percent' ? 'مثلاً 50' : 'مثلاً 200';
+    const total = invTotalPreview();
+    const amount = type === 'percent' ? total * value / 100 : value;
+    $id('invAskAmount').textContent = value > 0 ? `${money2(amount)} ر.ع من ${money2(total)}` : '—';
+    $id('invAskAmount').style.color = amount > total + 0.0005 ? '#a93226' : '';
+}
+for (const id of ['invAskType', 'invAskValue', 'invFinal']) {
+    $id(id).addEventListener('input', invAskPreview);
+    $id(id).addEventListener('change', invAskPreview);
+}
+
+/* Change or remove the deposit asked of an issued invoice */
+async function editInvoiceDeposit() {
+    const d = invCurrent.deposit;
+    const v = prompt('المقدم المطلوب: اكتب نسبة مثل 50% أو مبلغاً مثل 200 — اتركه فارغاً لإلغائه:', d ? (d.type === 'percent' ? d.value + '%' : money2(d.value)) : '');
+    if (v === null) return;
+    const t = v.trim().replace('٪', '%');
+    const body = !t ? { deposit_required: null } : { deposit_required: { type: t.endsWith('%') ? 'percent' : 'amount', value: Number(t.replace('%', '')) } };
+    try {
+        showInvoice(await api('PATCH', `/api/admin/invoices/${invCurrent.id}`, body));
+        loadInvoices().catch(() => {});
+    } catch (err) { alert(err.message); }
 }
 
 /* ---- One invoice ---- */
@@ -108,7 +150,11 @@ function showInvoice(inv) {
     invCurrent = inv;
     const manager = ME && ME.role === 'manager';
     const link = location.origin + inv.pdf_url;
-    const wa = `https://wa.me/${encodeURIComponent(String(inv.customer_phone).replace(/\D/g, ''))}?text=${encodeURIComponent(`فاتورة رقم ${inv.number} — الإجمالي ${money2(inv.total)} ر.ع، المتبقي ${money2(inv.balance)} ر.ع\n${link}`)}`;
+    const dep = inv.deposit;
+    const waText = `فاتورة رقم ${inv.number} — الإجمالي ${money2(inv.total)} ر.ع`
+        + (dep && dep.remaining > 0.004 ? `\n${dep.label}: ${money2(dep.amount)} ر.ع${inv.paid > 0.004 ? ` (المتبقي منه ${money2(dep.remaining)} ر.ع)` : ''}` : '')
+        + `\nالمتبقي على الفاتورة: ${money2(inv.balance)} ر.ع\n${link}`;
+    const wa = `https://wa.me/${encodeURIComponent(String(inv.customer_phone).replace(/\D/g, ''))}?text=${encodeURIComponent(waText)}`;
     $id('invDetail').innerHTML = `
         <h3><i class="fas fa-receipt"></i> ${esc(inv.number)} <span class="badge st-${esc(inv.state)}">${esc(inv.state_label)}</span></h3>
         <p class="status-text" style="margin:0">${esc(inv.customer_name)} — <span dir="ltr">${esc(inv.customer_phone)}</span>
@@ -120,6 +166,11 @@ function showInvoice(inv) {
             <div><small>المدفوع</small><strong>${money2(inv.paid)}</strong></div>
             <div><small>المتبقي</small><strong>${money2(inv.balance)}</strong></div>
         </div>
+        ${dep ? `<div class="deposit-box ${dep.paid ? 'ok' : ''}">
+            <span><i class="fas ${dep.paid ? 'fa-circle-check' : 'fa-hourglass-half'}"></i> ${esc(dep.label)}: <b>${money2(dep.amount)} ر.ع</b></span>
+            <span>${dep.paid ? 'تم دفع المقدم ✓' : inv.paid > 0.004 ? `المتبقي من المقدم: <b>${money2(dep.remaining)} ر.ع</b>` : 'لم يُدفع بعد'}</span>
+            ${inv.state !== 'cancelled' ? '<button class="link-btn" onclick="editInvoiceDeposit()">تعديل</button>' : ''}
+        </div>` : inv.state !== 'cancelled' ? '<p class="status-text" style="margin:0 0 8px">لا مقدم مطلوب — <button class="link-btn" onclick="editInvoiceDeposit()">تحديد المقدم</button></p>' : ''}
         ${Math.abs(inv.adjustment) >= 0.005 ? `<p class="status-text" style="margin:0 0 8px">مجموع البنود ${money2(inv.quote_subtotal)} — ${inv.adjustment < 0 ? 'خصم' : 'تعديل'} ${money2(inv.adjustment)} — قبل الضريبة ${money2(inv.subtotal)}</p>` : ''}
         <p class="sub-heading">الدفعات</p>
         ${inv.payments.length ? `<div class="table-wrapper"><table class="stack-table"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>الطريقة</th><th>المرجع / ملاحظة</th><th></th></tr></thead><tbody>
@@ -140,7 +191,8 @@ function showInvoice(inv) {
         </div>`;
     $id('invPayForm').hidden = inv.state === 'cancelled' || inv.balance <= 0.0005;
     fillMethods('payMethod');
-    $id('payAmount').value = inv.balance > 0 ? money2(inv.balance) : '';
+    // Suggested amount: what is left of the deposit, otherwise the balance — the employee types what was actually paid
+    $id('payAmount').value = dep && dep.remaining > 0.004 ? money2(Math.min(dep.remaining, inv.balance)) : inv.balance > 0 ? money2(inv.balance) : '';
     $id('payDate').value = todayLocal();
     $id('payRef').value = '';
     setStatus('payStatus', '');

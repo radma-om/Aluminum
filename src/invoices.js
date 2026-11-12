@@ -11,6 +11,9 @@
      cancelled invoice keeps its number and stays in the list.
    - Payments (deposit, instalments) are recorded against the invoice; the
      paid amount, the balance and the state (unpaid / partial / paid) follow.
+   - The deposit asked (المقدم المطلوب): a % of the total or an amount, set
+     when issuing (and changeable later). The customer sees it on the
+     invoice; any payment counts towards it first, whatever its size.
    ============================================================= */
 const crypto = require('node:crypto');
 const leads = require('./leads');
@@ -18,6 +21,7 @@ const leads = require('./leads');
 const METHODS = { cash: 'نقداً', bank: 'تحويل بنكي', card: 'بطاقة', cheque: 'شيك', other: 'أخرى' };
 const PAY_STATES = { unpaid: 'غير مدفوعة', partial: 'مدفوعة جزئياً', paid: 'مدفوعة', cancelled: 'ملغاة' };
 const EPS = 0.0005;
+const DEPOSIT_TYPES = { percent: 'نسبة', amount: 'مبلغ' };
 
 const err = (status, message) => Object.assign(new Error(message), { status });
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -42,13 +46,21 @@ function withPayments(db, row) {
     const paid = round2(payments.reduce((s, p) => s + p.amount, 0));
     const balance = row.status === 'cancelled' ? 0 : round2(row.total - paid);
     const state = row.status === 'cancelled' ? 'cancelled' : paid <= EPS ? 'unpaid' : balance <= EPS ? 'paid' : 'partial';
-    const { items_json, details_json, ...rest } = row;
+    const { items_json, details_json, deposit_type, deposit_value, deposit_amount, ...rest } = row;
+    // The deposit asked: how much of it is paid, and what is left of it
+    const deposit = deposit_amount > EPS ? {
+        type: deposit_type, value: deposit_value, amount: round2(deposit_amount),
+        label: deposit_type === 'percent' ? `المقدم المطلوب (${Number(deposit_value)}%)` : 'المقدم المطلوب',
+        remaining: round2(Math.max(0, deposit_amount - paid)),
+        paid: paid >= deposit_amount - EPS
+    } : null;
     return {
         ...rest,
         items: JSON.parse(items_json || '[]'),
         details: details_json ? JSON.parse(details_json) : null,
         adjustment: round2(row.subtotal - row.quote_subtotal),
-        payments, paid, balance, state, state_label: PAY_STATES[state]
+        payments, paid, balance, state, state_label: PAY_STATES[state],
+        deposit
     };
 }
 
@@ -60,6 +72,18 @@ function nextNumber(db, year) {
     const prefix = `INV-${year}-`;
     const last = db.prepare("SELECT MAX(CAST(substr(number, ?) AS INTEGER)) AS n FROM invoices WHERE number LIKE ?").get(prefix.length + 1, prefix + '%').n || 0;
     return prefix + String(last + 1).padStart(4, '0');
+}
+
+/* { type: 'percent' | 'amount', value } on the invoice total → what is stored (null = no deposit asked) */
+function cleanDeposit(input, total) {
+    if (!input || input.value === '' || input.value === null || input.value === undefined || !Number(input.value)) return null;
+    const type = input.type === 'amount' ? 'amount' : 'percent';
+    const value = round2(input.value);
+    if (!Number.isFinite(value) || value <= 0) throw err(400, 'قيمة المقدم غير صالحة');
+    if (type === 'percent' && value > 100) throw err(400, 'نسبة المقدم لا تتجاوز 100%');
+    const amount = round2(type === 'percent' ? total * value / 100 : value);
+    if (amount > total + EPS) throw err(400, 'المقدم المطلوب أكبر من إجمالي الفاتورة');
+    return { type, value, amount };
 }
 
 function cleanPayment(input) {
@@ -100,17 +124,20 @@ function createFromQuote(db, quote, input = {}, author = null) {
     if (dueDate && (!isDate(dueDate) || dueDate < issueDate)) throw err(400, 'تاريخ الاستحقاق غير صالح (يجب ألا يسبق تاريخ الفاتورة)');
     const deposit = input.deposit && Number(input.deposit.amount) > 0 ? cleanPayment(input.deposit) : null;
     if (deposit && deposit.amount > total + EPS) throw err(400, 'العربون أكبر من إجمالي الفاتورة');
+    const asked = cleanDeposit(input.deposit_required, total);
 
     const id = tx(db, () => {
         const number = nextNumber(db, issueDate.slice(0, 4));
         const info = db.prepare(`INSERT INTO invoices (number, quote_id, access_key, customer_name, customer_phone, customer_city, customer_address,
-                                    items_json, details_json, quote_subtotal, subtotal, vat_percent, vat, total, issue_date, due_date, notes, created_by)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+                                    items_json, details_json, quote_subtotal, subtotal, vat_percent, vat, total, issue_date, due_date, notes, created_by,
+                                    deposit_type, deposit_value, deposit_amount)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
             .run(number, quote.id, crypto.randomBytes(16).toString('hex'), quote.customer_name, quote.customer_phone, quote.customer_city || null,
                 String(input.customer_address || '').trim().slice(0, 200) || null,
                 JSON.stringify(quote.items), quote.details ? JSON.stringify(quote.details) : null,
                 round2(quote.subtotal), subtotal, vatPercent, vat, total, issueDate, dueDate,
-                String(input.notes || '').trim().slice(0, 1000) || null, author);
+                String(input.notes || '').trim().slice(0, 1000) || null, author,
+                asked ? asked.type : null, asked ? asked.value : null, asked ? asked.amount : null);
         const invoiceId = Number(info.lastInsertRowid);
         if (deposit) {
             db.prepare('INSERT INTO payments (invoice_id, amount, method, paid_on, reference, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -169,6 +196,11 @@ function update(db, invoiceId, patch) {
     }
     if (patch.notes !== undefined) set.notes = String(patch.notes || '').trim().slice(0, 1000) || null;
     if (patch.customer_address !== undefined) set.customer_address = String(patch.customer_address || '').trim().slice(0, 200) || null;
+    if (patch.deposit_required !== undefined) {
+        if (inv.status === 'cancelled') throw err(400, 'الفاتورة ملغاة');
+        const d = cleanDeposit(patch.deposit_required, inv.total);
+        Object.assign(set, { deposit_type: d ? d.type : null, deposit_value: d ? d.value : null, deposit_amount: d ? d.amount : null });
+    }
     if (Object.keys(set).length) {
         db.prepare(`UPDATE invoices SET ${Object.keys(set).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(set), inv.id);
     }
@@ -203,4 +235,4 @@ function summary(db, { today = leads.localToday() } = {}) {
     return { month, issued_count: issued.n, issued_value: round2(issued.v), collected: round2(collected), outstanding: round2(owed), overdue };
 }
 
-module.exports = { createFromQuote, addPayment, deletePayment, cancel, update, list, get, byNumber, activeForQuote, summary, METHODS, PAY_STATES };
+module.exports = { createFromQuote, addPayment, deletePayment, cancel, update, list, get, byNumber, activeForQuote, summary, METHODS, PAY_STATES, DEPOSIT_TYPES };

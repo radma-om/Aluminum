@@ -33,6 +33,8 @@ const invoices = require('./invoices');
 const workorders = require('./workorders');
 const servicerequests = require('./servicerequests');
 const costs = require('./costs');
+const team = require('./team');
+const push = require('./push');
 const autoreply = require('./autoreply');
 const customers = require('./customers');
 const staffquotes = require('./staffquotes');
@@ -307,6 +309,8 @@ function saveQuote(db, { customer_name, customer_phone, customer_city, notes, so
 
     const { access_key, ...publicQuote } = quote;
     webhooks.emit(db, 'quote.created', publicQuote);
+    // A customer's quote: a notification on the phones of whoever handles quotes (never blocks the reply)
+    push.quoteFromCustomer(db, quote).catch(() => {});
     return quote;
 }
 
@@ -1246,7 +1250,7 @@ function createApp(db, { agentClient } = {}) {
     admin.get('/invoices', (req, res) => res.json({
         invoices: invoices.list(db, { q: String(req.query.q || '').trim(), state: String(req.query.state || ''), from: String(req.query.from || ''), to: String(req.query.to || '') })
             .filter((inv) => staff.seesQuote(db, req.user, inv)).map(invoicePublic),
-        summary: invoices.summary(db), methods: invoices.METHODS, states: invoices.PAY_STATES
+        summary: invoices.summary(db), methods: invoices.METHODS, states: invoices.PAY_STATES, deposit_types: invoices.DEPOSIT_TYPES
     }));
     admin.get('/invoices/:id', (req, res) => res.json(invoicePublic(invoiceFor(req, req.params.id))));
     admin.get('/invoices/:id/pdf', (req, res) => sendInvoicePdf(res, invoiceFor(req, req.params.id)));
@@ -1405,7 +1409,15 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Dashboard figures ---- */
 
-    admin.get('/dashboard', (req, res) => res.json(dashboard.build(db, { days: req.query.days, user: req.user })));
+    admin.get('/dashboard', (req, res) => res.json({
+        ...dashboard.build(db, { days: req.query.days, user: req.user }),
+        // Today's pulse, the rates and the latest events: the whole company's figures, for managers
+        pulse: req.user.role === 'manager' ? team.pulse(db, { days: req.query.days }) : null
+    }));
+    /* Employees' performance between two dates (managers only: the route is not mapped to a section) */
+    admin.get('/team', (req, res) => res.json(team.report(db, {
+        from: String(req.query.from || ''), to: String(req.query.to || ''), employee: String(req.query.employee || '')
+    })));
 
     /* ---- Customer follow-up (WhatsApp, website chat, calculators) ---- */
 
@@ -1472,9 +1484,28 @@ function createApp(db, { agentClient } = {}) {
     });
 
     admin.patch('/leads/:id', (req, res) => {
-        leadFor(req, req.params.id);
-        res.json(withPause(leads.update(db, req.params.id, req.body || {}, staffName(req))));
+        const { lead: before } = leadFor(req, req.params.id);
+        const out = leads.update(db, req.params.id, req.body || {}, staffName(req));
+        const after = db.prepare('SELECT * FROM leads WHERE id = ?').get(before.id);
+        if (after && after.assigned_to && after.assigned_to !== before.assigned_to) push.leadAssigned(db, after, staffName(req)).catch(() => {});
+        res.json(withPause(out));
     });
+
+    /* ---- This device's notifications (any signed-in account, the technicians included) ---- */
+    admin.get('/me/push', (req, res) => res.json({ public_key: push.publicKey(db), devices: push.devices(db, req.user) }));
+    admin.post('/me/push', (req, res) => {
+        const b = req.body || {};
+        res.status(201).json({ devices: push.subscribe(db, req.user, b.subscription, String(b.device || req.get('user-agent') || '')) });
+    });
+    admin.delete('/me/push', (req, res) => res.json({ devices: push.unsubscribe(db, req.user, (req.body || {}).endpoint) }));
+    admin.post('/me/push/test', asyncRoute(async (req, res) => {
+        if (!push.devices(db, req.user).length) throw httpError(400, 'لا يوجد جهاز مشترك لهذا الحساب — فعّل الإشعارات أولاً');
+        const report = [];
+        const sent = await push.send(db, [push.keyOf(req.user)], { title: '🔔 تجربة الإشعارات', body: 'وصلت الإشعارات إلى هذا الجهاز ✓', url: '/admin', tag: 'test' }, { report });
+        // Nothing was accepted: say what the push service answered
+        if (!sent) throw httpError(502, 'لم تقبل خدمة الإشعارات الإرسال: ' + (report.map((r) => `${r.device || 'جهاز'}: ${r.error}`).join(' — ') || 'الجهاز لم يعد مشتركاً، فعّل الإشعارات من جديد'));
+        res.json({ sent, failed: report, devices: push.devices(db, req.user) });
+    }));
 
     admin.post('/leads/:id/notes', (req, res) => {
         leadFor(req, req.params.id);

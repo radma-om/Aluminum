@@ -183,7 +183,7 @@ function motorPrice(db, { sectionId, kitId, kitCount = 1, parts = [], regionId, 
         kit = items.find((i) => i.kind === 'kit' && i.id === Number(kitId));
         if (!kit) throw err400('المكينة المختارة غير متوفرة');
         if (!count) throw err400('حدد عدد المكائن');
-        lines.push(line(kit.name, kit.description ? 'طقم كامل' : null, 'set', count, kit.sell_price));
+        lines.push({ ...line(kit.name, kit.description ? 'طقم كامل' : null, 'set', count, kit.sell_price), part: 'kit' });
     }
     const partNames = [];
     for (const p of Array.isArray(parts) ? parts : []) {
@@ -191,7 +191,7 @@ function motorPrice(db, { sectionId, kitId, kitCount = 1, parts = [], regionId, 
         if (!qty) continue;
         const part = items.find((i) => i.kind === 'part' && i.id === Number(p.id));
         if (!part) throw err400('قطعة غير متوفرة');
-        lines.push(line(part.name, part.description || null, part.unit, qty, part.sell_price));
+        lines.push({ ...line(part.name, part.description || null, part.unit, qty, part.sell_price), part: 'parts' });
         partNames.push(`${part.name} × ${qty}`);
     }
     if (!lines.length) throw err400('اختر مكينة أو قطعة واحدة على الأقل');
@@ -202,13 +202,13 @@ function motorPrice(db, { sectionId, kitId, kitCount = 1, parts = [], regionId, 
     if (kit && installation) {
         if (base != null) {
             const fee = Number(base) + (Number(section.install_extra) || 0);
-            lines.push({ ...line('التركيب', region.name, 'service', count, fee), category: 'service' });
+            lines.push({ ...line('التركيب', region.name, 'service', count, fee), category: 'service', part: 'installation' });
             installNote = 'شامل التركيب';
         } else {
             installNote = 'رسوم التركيب لهذه الولاية تُحدد بعد المعاينة';
         }
     }
-    if (region.delivery_fee > 0) lines.push({ ...line('التوصيل', region.name, 'service', 1, region.delivery_fee), category: 'service' });
+    if (region.delivery_fee > 0) lines.push({ ...line('التوصيل', region.name, 'service', 1, region.delivery_fee), category: 'service', part: 'delivery' });
 
     const settings = getSettings(db);
     const vatPercent = Number(settings.vat_percent) || 0;
@@ -227,7 +227,7 @@ function motorPrice(db, { sectionId, kitId, kitCount = 1, parts = [], regionId, 
             kit: kit ? kit.name : null, kit_count: kit ? count : 0, parts: partNames,
             region: region.name, governorate: region.governorate
         }
-    }, 'motors');
+    }, 'motors', { units: kit ? count : 0 });
 }
 
 module.exports = {

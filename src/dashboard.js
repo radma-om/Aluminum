@@ -32,7 +32,10 @@ const canFollow = (row) => row.role === 'manager' || parseJson(row.permissions_j
 
 function build(db, { days = 30, user = null } = {}) {
     const n = Math.max(1, Math.min(365, parseInt(days, 10) || 30));
-    const today = new Date();
+    // Days are Muscat days (UTC+4): "today" and each stored UTC time are shifted before taking the date
+    const today = new Date(Date.now() + 4 * 3600_000);
+    const local = (s) => new Date(Date.parse(String(s).replace(' ', 'T') + 'Z') + 4 * 3600_000).toISOString().slice(0, 10);
+    const utcOf = (d) => new Date(Date.parse(d + 'T00:00:00Z') - 4 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
     const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - (n - 1)));
     const prevStart = new Date(start.getTime() - n * 86400000);
     const from = day(start);
@@ -41,8 +44,8 @@ function build(db, { days = 30, user = null } = {}) {
     const employee = user && user.role !== 'manager' ? user.display_name : null;
 
     const rows = db.prepare('SELECT id, total, status, source, customer_city, details_json, created_at FROM quotes WHERE created_at >= ? ORDER BY id')
-        .all(previousFrom + ' 00:00:00')
-        .map((q) => ({ ...q, details: parseJson(q.details_json), date: q.created_at.slice(0, 10) }))
+        .all(utcOf(previousFrom))
+        .map((q) => ({ ...q, details: parseJson(q.details_json), date: local(q.created_at) }))
         .filter((q) => !employee || quoteOwner(q) === employee);
     const current = rows.filter((q) => q.date >= from);
     const previous = rows.filter((q) => q.date < from);
@@ -66,19 +69,20 @@ function build(db, { days = 30, user = null } = {}) {
     const leadRows = db.prepare('SELECT * FROM leads').all().filter((l) => !employee || l.assigned_to === employee);
     const open = leadRows.filter((l) => leads.OPEN_STATUSES.includes(l.status));
     const todayStr = day(today);
-    const newLeads = (fromDate, toDate) => leadRows.filter((l) => l.created_at.slice(0, 10) >= fromDate && (!toDate || l.created_at.slice(0, 10) < toDate)).length;
+    const newLeads = (fromDate, toDate) => leadRows.filter((l) => local(l.created_at) >= fromDate && (!toDate || local(l.created_at) < toDate)).length;
     const settings = getSettings(db);
     const attention = leads.needingAttention(db, { staleDays: settings.follow_up_stale_days })
         .filter((l) => !employee || l.assigned_to === employee);
     const overdue = leads.overdueAssignments(db, { mineOf: employee });
 
-    const periodEnd = tomorrow + ' 00:00:00';
+    const periodEnd = utcOf(tomorrow);
+    const periodStart = utcOf(from);
     const assignmentRows = db.prepare('SELECT * FROM lead_assignments WHERE created_at >= ? AND created_at < ? ORDER BY id')
-        .all(from + ' 00:00:00', periodEnd);
+        .all(periodStart, periodEnd);
     const noteRows = db.prepare("SELECT author, kind, created_at FROM lead_notes WHERE author IS NOT NULL AND author != 'النظام' AND created_at >= ? AND created_at < ?")
-        .all(from + ' 00:00:00', periodEnd);
+        .all(periodStart, periodEnd);
     const messageRows = db.prepare("SELECT author, created_at FROM lead_messages WHERE role = 'staff' AND author IS NOT NULL AND created_at >= ? AND created_at < ?")
-        .all(from + ' 00:00:00', periodEnd);
+        .all(periodStart, periodEnd);
     const invoiceRows = db.prepare("SELECT created_by, details_json, total, issue_date FROM invoices WHERE status = 'issued' AND issue_date >= ? AND issue_date < ?")
         .all(from, tomorrow)
         .map((invoice) => ({
