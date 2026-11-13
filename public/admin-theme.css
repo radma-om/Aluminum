@@ -481,3 +481,47 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
 .oh-type-descs { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .oh-type-desc { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 0.88rem; }
 .oh-type-desc textarea { font: inherit; font-weight: 400; font-size: 0.86rem; padding: 7px 9px; border: 1px solid var(--border); border-radius: 9px; resize: vertical; }
+
+/* ---------------- Work orders board: the technician's day, the office follows the technicians ---------------- */
+.wo-board { margin: 0 0 14px; }
+.wo-board:empty { display: none; }
+.wo-board-head { font-weight: 700; margin-bottom: 8px; color: var(--primary-dark, #1b3a5c); }
+.wo-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.wo-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; border-radius: 12px; border: 1px solid var(--border); background: #fff; cursor: pointer; font: inherit; }
+.wo-tile strong { font-size: 1.45rem; line-height: 1.1; }
+.wo-tile span { font-size: 0.78rem; color: var(--text-light); }
+.wo-tile.run { border-color: #b6d4f2; background: #f2f8ff; }
+.wo-tile.late { border-color: #f1c0bb; background: #fdf3f2; color: #a93226; }
+.wo-tile.soon { border-color: #f5d9a8; background: #fffaf0; }
+.wo-tile.zero { opacity: 0.55; }
+.wo-jobs { display: grid; gap: 6px; }
+.wo-job { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; text-align: right; width: 100%;
+    padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: #fff; cursor: pointer; font: inherit; }
+.wo-job-main { display: flex; flex-direction: column; min-width: 0; }
+.wo-job-main small { color: var(--text-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wo-job-no { font-size: 0.75rem; color: var(--text-light); direction: ltr; }
+.wo-left { min-width: 92px; text-align: center; font-weight: 700; font-size: 0.85rem; padding: 6px 8px; border-radius: 9px; background: #eef2f6; white-space: nowrap; }
+.wo-job.run .wo-left { background: #dcebfb; color: #1b4f86; }
+.wo-job.late { border-color: #f1c0bb; }
+.wo-job.late .wo-left { background: #fbe1de; color: #a93226; }
+.wo-job.soon .wo-left { background: #fdeccc; color: #8a5a00; }
+.wo-feed { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; background: #fbfcfd; }
+.wo-feed summary { cursor: pointer; font-weight: 700; }
+.wo-feed-row { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: right; padding: 8px 0; border: 0; border-top: 1px dashed var(--border); background: none; cursor: pointer; font: inherit; }
+.wo-feed-row:first-of-type { border-top: 0; }
+.wo-feed-row.new .wo-feed-meta b::after { content: ' ●'; color: #e67e22; }
+.wo-feed-meta { font-size: 0.8rem; color: var(--text-light); }
+.wo-feed-text { white-space: pre-line; font-size: 0.9rem; }
+.wo-report { margin: 6px 0; padding: 8px 10px; border-radius: 10px; background: #f2f8ff; border: 1px solid #d3e5f8; font-size: 0.88rem; }
+.wo-report small { color: var(--text-light); margin-inline-start: 6px; }
+.wo-report div { white-space: pre-line; margin-top: 2px; }
+.wo-ev { padding: 3px 0; white-space: pre-line; }
+.wo-ev.tech { color: #1b4f86; font-weight: 600; }
+@media (max-width: 600px) {
+    .wo-job { grid-template-columns: auto 1fr; }
+    .wo-job-no { display: none; }
+    .wo-tiles { grid-template-columns: repeat(auto-fit, minmax(66px, 1fr)); gap: 6px; }
+    .wo-tile { padding: 8px 4px; }
+    .wo-tile strong { font-size: 1.25rem; }
+    .wo-left { min-width: 80px; }
+}
