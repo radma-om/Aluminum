@@ -242,7 +242,12 @@ function summary(db, { today = leads.localToday(), mineOf = null } = {}) {
     const month = today.slice(0, 7);
     const scope = mineOf
         ? ` AND NOT EXISTS (SELECT 1 FROM leads scope_lead
-                           WHERE scope_lead.phone = i.customer_phone
+                           WHERE (
+                             scope_lead.phone = i.customer_phone
+                             OR (length(scope_lead.phone) = 8 AND '968' || scope_lead.phone = i.customer_phone)
+                             OR (length(i.customer_phone) = 8 AND '968' || i.customer_phone = scope_lead.phone)
+                             OR (length(scope_lead.phone) = 11 AND substr(scope_lead.phone, 1, 3) = '968' AND substr(scope_lead.phone, 4) = i.customer_phone)
+                           )
                              AND scope_lead.assigned_to IS NOT NULL
                              AND TRIM(scope_lead.assigned_to) <> ''
                              AND scope_lead.assigned_to <> ?)`

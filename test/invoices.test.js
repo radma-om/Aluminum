@@ -159,7 +159,10 @@ test('staff without the invoices section cannot see invoices; the customer scope
     staff.create(db, { username: 'sales', display_name: 'سالم', password: 'pass-12345', permissions: ['quotes', 'leads'] });
     staff.create(db, { username: 'mine', display_name: 'مريم', password: 'pass-12345', permissions: ['invoices', 'quotes', 'leads'], leads_scope: 'mine' });
     const q = quote(db, 100);
-    db.prepare("UPDATE leads SET assigned_to = 'سالم' WHERE phone = '96891234567'").run();
+    // Legacy follow-up rows may store the local 8-digit form while quotes and
+    // invoices use the normalized 968… form. The employee scope must still
+    // recognize the ownership and keep the invoice hidden from other staff.
+    db.prepare("UPDATE leads SET phone = '91234567', assigned_to = 'سالم' WHERE phone = '96891234567'").run();
     const inv = (await call('POST', `/api/admin/quotes/${q.id}/invoice`, {})).body;
     const sales = await login('sales', 'pass-12345');
     assert.equal((await call('GET', '/api/admin/invoices', null, sales)).status, 403);

@@ -161,6 +161,19 @@ test('permissions and scope: the customers section, and «عملاؤه فقط» 
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM customers').get().n, 2);
 });
 
+test('customer scope matches legacy local phone numbers', async (t) => {
+    const { db, call } = await start(t);
+    quote(db, '96893333333', 'عميل قديم');
+    db.prepare("UPDATE leads SET phone = '93333333', assigned_to = 'مريم' WHERE phone = '96893333333'").run();
+    staff.create(db, {
+        username: 'salem-legacy', display_name: 'سالم', password: 'pass-12345',
+        permissions: ['customers'], leads_scope: 'mine'
+    });
+    const token = (await call('POST', '/api/auth/login', { username: 'salem-legacy', password: 'pass-12345' })).body.token;
+    const list = (await call('GET', '/api/admin/customers', null, token)).body.customers;
+    assert.deepEqual(list, [], 'a legacy local phone assigned to another employee stays hidden');
+});
+
 test('a limited employee cannot open a customer when the second phone belongs to another employee', async (t) => {
     const { db, call } = await start(t);
     quote(db, '96891111111', 'عميل برقمين');

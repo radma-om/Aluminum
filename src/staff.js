@@ -361,12 +361,24 @@ function allowedRegionFields(user, body) {
 /* Follow-up limited to one's own customers: assigned to them, or not assigned yet */
 const seesLead = (user, lead) => user.leads_scope !== 'mine' || !lead.assigned_to || lead.assigned_to === user.display_name;
 
+/* Older records may contain an Omani number without its 968 country code. Keep
+   both forms in the ownership lookup so a formatting difference never makes a
+   record owned by another employee appear unassigned. */
+const phoneForms = (value) => {
+    let digits = String(value || '').replace(/\D/g, '').replace(/^00/, '');
+    if (!digits) return [];
+    const forms = new Set([digits]);
+    if (digits.length === 8) forms.add('968' + digits);
+    if (/^968\d{8}$/.test(digits)) forms.add(digits.slice(3));
+    return [...forms];
+};
+
 /* The same scope covers every record linked by phone. With no matching follow-up it counts as
    unassigned. Conflicting ownership fails closed: one unassigned or owned phone must never unlock
    another phone assigned to a different employee. */
 function seesPhones(db, user, values) {
     if (user.leads_scope !== 'mine') return true;
-    const phones = [...new Set((values || []).map((v) => String(v || '').replace(/\D/g, '')).filter(Boolean))];
+    const phones = [...new Set((values || []).flatMap(phoneForms))];
     if (!phones.length) return true;
     const placeholders = phones.map(() => '?').join(', ');
     const owners = db.prepare(`SELECT assigned_to FROM leads WHERE phone IN (${placeholders})`).all(...phones);
