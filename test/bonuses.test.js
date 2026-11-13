@@ -115,3 +115,53 @@ test('the manager: the month, setting targets, approving (kept as it was); an em
     assert.equal(back.body.people[0].commission, 350, '(8000 − 1000) × 5%');
     assert.equal((await call('GET', '/api/admin/bonuses?month=2026-13')).status, 400);
 });
+
+test('the month runs 1st to last day; pace and statistics; it closes by itself when it ends and everyone is told', async () => {
+    const db = openDatabase(':memory:');
+    const push = require('../src/push');
+    const sent = [];
+    push.setSenderForTests(async (sub, payload) => { sent.push({ endpoint: sub.endpoint, ...JSON.parse(payload) }); });
+    const ahmed = staff.create(db, { username: 'ahmedo', display_name: 'أحمد عثمان عمر', password: 'pass-12345', permissions: ['quotes'] });
+    bonuses.setPlan(db, ahmed.id, { target: 7000, percent: 2.5 });
+    const p = bonuses.period('2026-02', Date.parse('2026-02-10T06:00:00Z'));
+    assert.deepEqual([p.from, p.to, p.days, p.days_passed, p.days_left, p.current], ['2026-02-01', '2026-02-28', 28, 10, 18, true]);
+
+    // Last month: 8000 of goods → 25; this month: 4000 by now
+    const last = bonuses.addMonths(month, -1);
+    const lastInv = sale(db, 'أحمد عثمان عمر', 8000, 400);
+    db.prepare('UPDATE invoices SET issue_date = ? WHERE id = ?').run(last + '-15', lastInv.id);
+    sale(db, 'أحمد عثمان عمر', 4000);
+    const s = bonuses.statement(db, month);
+    const me = s.people.find((x) => x.user_id === ahmed.id);
+    assert.equal(me.left_to_target, 3000);
+    assert.equal(s.stats.with_target, 1);
+    assert.equal(s.stats.reached, 0);
+    if (s.period.days_passed >= 3) assert.equal(me.projected, Math.round(4000 / s.period.days_passed * s.period.days * 100) / 100);
+
+    // The employee's own card: the % reached, the days left, last month's commission
+    const mine = bonuses.mine(db, { id: ahmed.id, role: 'staff' }, month);
+    assert.equal(mine.progress, 57.1);
+    assert.equal(mine.period.to.slice(0, 7), month);
+    assert.deepEqual([mine.previous.month, mine.previous.commission], [last, 25]);
+
+    // A device for the general manager and for Ahmed
+    await push.subscribe(db, { owner: true }, { endpoint: 'https://push.example.com/send/boss', keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } });
+    await push.subscribe(db, { id: ahmed.id }, { endpoint: 'https://push.example.com/send/ahmed', keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } });
+    // The 1st of this month: last month closes as it stood, once
+    const closed = bonuses.closeEndedMonth(db);
+    assert.equal(closed.approved.by, 'إغلاق تلقائي بنهاية الشهر');
+    assert.equal(closed.totals.commission, 25);
+    await new Promise((r) => setTimeout(r, 30));
+    const to = (who) => sent.find((m) => m.endpoint.endsWith(who));
+    assert.match(to('boss').title, /أُغلق كشف عمولات/);
+    assert.match(to('ahmed').title, /عمولتك لشهر/);
+    assert.match(to('ahmed').body, /25\.00 ر\.ع — حققت 114\.3% من هدفك/);
+    assert.equal(bonuses.closeEndedMonth(db), null, 'once');
+    // The manager reopened it: not closed again by itself
+    bonuses.unapprove(db, last);
+    assert.equal(bonuses.closeEndedMonth(db), null);
+    // The history: six months side by side
+    const h = bonuses.history(db, month);
+    assert.equal(h.length, 6);
+    assert.deepEqual(h.slice(-2).map((x) => x.commission), [25, 0]);
+});

@@ -1431,7 +1431,16 @@ function createApp(db, { agentClient } = {}) {
     })));
 
     /* ---- Monthly commissions (managers only: the route is not mapped to a section); each employee sees their own ---- */
-    admin.get('/bonuses', (req, res) => res.json(bonuses.statement(db, String(req.query.month || bonuses.thisMonth()))));
+    admin.get('/bonuses', (req, res) => {
+        const month = String(req.query.month || bonuses.thisMonth());
+        const s = bonuses.statement(db, month);
+        res.json({ ...s, history: bonuses.history(db, month) });
+    });
+    // The dashboard: this month in a few figures (managers)
+    admin.get('/bonuses/summary', (req, res) => {
+        const s = bonuses.statement(db, bonuses.thisMonth());
+        res.json({ period: s.period, stats: s.stats, totals: s.totals, set_up: s.people.some((p) => p.percent > 0) });
+    });
     admin.put('/bonuses/plan/:userId', (req, res) => res.json(bonuses.setPlan(db, req.params.userId, req.body || {})));
     admin.post('/bonuses/:month/approve', (req, res) => res.json(bonuses.approve(db, req.params.month, staffName(req))));
     admin.delete('/bonuses/:month/approve', (req, res) => res.json(bonuses.unapprove(db, req.params.month)));

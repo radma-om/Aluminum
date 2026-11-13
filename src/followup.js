@@ -219,6 +219,7 @@ async function tick(db, nowMs = Date.now()) {
     const local = localNow(nowMs);
     const today = local.toISOString().slice(0, 10);
     const done = {};
+    try { if (require('./bonuses').closeEndedMonth(db, nowMs)) done.bonus_closed = true; } catch (err) { console.error('[bonuses] close', err.message); }
     if (!getSettings(db).follow_up_emails || !mailer.isConfigured() || local.getUTCHours() < SEND_HOUR) return done;
     if (lastRun(db, 'follow_up_daily') !== today) {
         setRun(db, 'follow_up_daily', today); // before sending: a failure is not retried every hour
