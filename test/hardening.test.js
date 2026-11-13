@@ -108,6 +108,9 @@ test('staff cannot divert customers or sales alerts: WhatsApp number, sales reci
     assert.equal('company_whatsapp' in r.body, false);
     assert.equal('mazbot_recipients' in r.body, false);
     assert.equal('public_base_url' in r.body, false);
+    // This is a pricing input, not an integration setting: changing it would
+    // alter material quantities and every affected quote.
+    assert.equal((await call('PUT', '/api/admin/settings', { sqm_to_linear: 999 }, staffToken)).status, 403);
     // Customers' «تابع عبر واتساب» link still goes to the company number
     const cfg = await call('GET', '/api/public/chat/config', null, null);
     assert.equal(cfg.body.whatsapp, '96871111111');

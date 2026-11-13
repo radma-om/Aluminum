@@ -22,6 +22,24 @@ const OWNER_KEY = 'owner';
 const keyOf = (user) => (user && user.owner ? OWNER_KEY : user && user.id ? `u:${user.id}` : null);
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
+/* Browser push subscriptions are bearer-like addresses.  Only accept the
+   services used by the supported browsers; otherwise a signed-in user could
+   make the server send HTTPS requests to an arbitrary host (SSRF). */
+const PUSH_SERVICES = [
+    [/^(?:[a-z0-9-]+\.)?push\.apple\.com$/i, 'Apple'],
+    [/^(?:fcm|android)\.googleapis\.com$/i, 'Google'],
+    [/^(?:[a-z0-9-]+\.)?push\.services\.mozilla\.com$/i, 'Mozilla'],
+    [/^(?:[a-z0-9-]+\.)?notify\.windows\.com$/i, 'Microsoft']
+];
+const pushService = (url) => PUSH_SERVICES.find(([re]) => re.test(url.hostname.replace(/\.$/, '')));
+const endpointUrl = (endpoint) => {
+    const raw = String(endpoint || '');
+    let url;
+    try { url = new URL(raw); } catch { return null; }
+    if (url.protocol !== 'https:' || url.username || url.password || url.port || raw.length > 1000 || !pushService(url)) return null;
+    return url;
+};
+
 let sender = (subscription, payload, options) => webpush.sendNotification(subscription, payload, options);
 function setSenderForTests(fn) { sender = fn; }
 
@@ -73,9 +91,9 @@ function subscribe(db, user, sub, device = '') {
     const endpoint = String(sub && sub.endpoint || '');
     const keys = (sub && sub.keys) || {};
     if (!key) throw Object.assign(new Error('الحساب غير معروف'), { status: 400 });
-    let url;
-    try { url = new URL(endpoint); } catch { url = null; }
-    if (!url || url.protocol !== 'https:' || endpoint.length > 1000) throw Object.assign(new Error('اشتراك الإشعارات غير صالح'), { status: 400 });
+    if (!endpointUrl(endpoint)) {
+        throw Object.assign(new Error('اشتراك الإشعارات غير صالح'), { status: 400 });
+    }
     if (!/^[A-Za-z0-9_-]{20,200}$/.test(String(keys.p256dh || '')) || !/^[A-Za-z0-9_-]{8,100}$/.test(String(keys.auth || ''))) {
         throw Object.assign(new Error('اشتراك الإشعارات غير صالح'), { status: 400 });
     }
@@ -95,11 +113,10 @@ function unsubscribe(db, user, endpoint) {
 
 function devices(db, user) {
     ensureTables(db);
-    const SERVICES = [[/push\.apple\.com$/, 'Apple'], [/googleapis\.com$/, 'Google'], [/mozilla\.com$/, 'Mozilla'], [/notify\.windows\.com$/, 'Microsoft']];
     return db.prepare(`SELECT id, device, endpoint, created_at, last_sent_at, last_error, last_error_at FROM push_subscriptions
                        WHERE user_key = ? ORDER BY id`).all(keyOf(user)).map(({ endpoint, ...d }) => {
         const host = (() => { try { return new URL(endpoint).hostname; } catch { return ''; } })();
-        const svc = SERVICES.find(([re]) => re.test(host));
+        const svc = PUSH_SERVICES.find(([re]) => re.test(host.replace(/\.$/, '')));
         // The endpoint itself is a secret address: only its last characters, to tell this device apart
         return { ...d, service: svc ? svc[1] : host, tail: endpoint.slice(-12) };
     });
@@ -130,7 +147,11 @@ async function send(db, userKeys, message, { report = null } = {}) {
         ensureTables(db);
         const keys = [...new Set(userKeys.filter(Boolean))];
         if (!keys.length) return 0;
-        const subs = db.prepare(`SELECT * FROM push_subscriptions WHERE user_key IN (${keys.map(() => '?').join(', ')})`).all(...keys);
+        const stored = db.prepare(`SELECT * FROM push_subscriptions WHERE user_key IN (${keys.map(() => '?').join(', ')})`).all(...keys);
+        // Remove records saved before endpoint validation was introduced.  This
+        // also makes the send path safe if the database was edited directly.
+        const subs = stored.filter((s) => endpointUrl(s.endpoint));
+        for (const s of stored) if (!endpointUrl(s.endpoint)) db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(s.id);
         if (!subs.length) return 0;
         const { publicKey: pub, privateKey } = vapid(db);
         const payload = JSON.stringify({

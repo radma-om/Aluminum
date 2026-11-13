@@ -105,6 +105,20 @@ test('a technician sees only their orders, cannot edit or cancel, and closes the
     assert.match(db.prepare("SELECT text FROM lead_messages ORDER BY id DESC").get().text, /اكتمل أمر تركيب/);
 });
 
+test('an own-customer office cannot create a work order for another employee phone', async (t) => {
+    const { db, call, login } = await start(t);
+    invoiceFor(db);
+    saveQuote(db, { customer_name: 'مريم', customer_phone: '96895555555', source: 'web', priced: { items: [], subtotal: 10, vat_percent: 5, vat: 0.5, total: 10.5 } });
+    db.prepare("UPDATE leads SET assigned_to = 'سالم' WHERE phone = '96891234567'").run();
+    db.prepare("UPDATE leads SET assigned_to = 'مريم' WHERE phone = '96895555555'").run();
+    staff.create(db, { username: 'office-scope', display_name: 'سالم', password: 'pass-12345', permissions: ['work_orders'], leads_scope: 'mine' });
+    const token = await login('office-scope', 'pass-12345');
+    const foreign = await call('POST', '/api/admin/work-orders', { customer_name: 'مريم', customer_phone: '96895555555', description: 'صيانة' }, token);
+    assert.equal(foreign.status, 404);
+    const own = await call('POST', '/api/admin/work-orders', { customer_name: 'خالد', customer_phone: '96891234567', description: 'صيانة' }, token);
+    assert.equal(own.status, 201, JSON.stringify(own.body));
+});
+
 test('the customer was not there: the technician sends it back for a new appointment', async (t) => {
     const { db, call, login } = await start(t);
     const a = staff.create(db, { username: 'tech1', display_name: 'سعيد', email: 'tech@example.com', password: 'pass-12345', role: 'technician' });

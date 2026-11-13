@@ -892,6 +892,18 @@ function saveSettings(db, patch) {
         if (numeric && !Number.isFinite(value)) {
             throw badValue(`قيمة غير صالحة للحقل ${key}`);
         }
+        // Pricing inputs must never turn a quote into a negative or zero
+        // quantity/amount. Keep the broad upper limits editable for each
+        // business, but reject values that make the formulas nonsensical.
+        if (['lme', 'manufacturing', 'painting', 'profit_percent', 'motors_profit_percent'].includes(key) && value < 0) {
+            throw badValue(`قيمة غير صالحة للحقل ${key}`);
+        }
+        if (['exchange_rate', 'sqm_to_linear'].includes(key) && value <= 0) {
+            throw badValue(`قيمة غير صالحة للحقل ${key}`);
+        }
+        if (key === 'vat_percent' && (value < 0 || value > 100)) {
+            throw badValue('نسبة الضريبة يجب أن تكون بين 0 و100%');
+        }
         if (key === 'promo_percent' && !(value >= 0 && value <= 50)) throw badValue('نسبة خصم العملاء بين 0 و50%');
         if (key === 'promo_until' && value && !(/^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z')))) {
             throw badValue('تاريخ نهاية العرض غير صالح');

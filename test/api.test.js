@@ -151,4 +151,7 @@ test('slat thicknesses of the in-house calculators: details and weight per meter
     }
     // Other settings saved alongside are untouched by the list
     assert.strictEqual((await call('GET', '/api/admin/settings')).body.lme, s.lme);
+    for (const bad of [{ exchange_rate: 0 }, { sqm_to_linear: 0 }, { vat_percent: -1 }, { vat_percent: 101 }, { profit_percent: -1 }]) {
+        assert.strictEqual((await call('PUT', '/api/admin/settings', bad)).status, 400, JSON.stringify(bad));
+    }
 });

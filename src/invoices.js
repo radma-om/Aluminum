@@ -127,6 +127,10 @@ function createFromQuote(db, quote, input = {}, author = null) {
     const asked = cleanDeposit(input.deposit_required, total);
 
     const id = tx(db, () => {
+        // Re-check while the write lock is held. The initial check above is
+        // only a fast failure path; it cannot protect against two concurrent
+        // requests issuing the same quote.
+        if (activeForQuote(db, quote.id)) throw err(400, 'لهذا العرض فاتورة سارية — ألغها أولاً إذا أردت إصدار فاتورة جديدة');
         const number = nextNumber(db, issueDate.slice(0, 4));
         const info = db.prepare(`INSERT INTO invoices (number, quote_id, access_key, customer_name, customer_phone, customer_city, customer_address,
                                     items_json, details_json, quote_subtotal, subtotal, vat_percent, vat, total, issue_date, due_date, notes, created_by,
@@ -156,14 +160,18 @@ function createFromQuote(db, quote, input = {}, author = null) {
 }
 
 function addPayment(db, invoiceId, input, author = null) {
-    const inv = get(db, invoiceId);
-    if (!inv) throw err(404, 'الفاتورة غير موجودة');
-    if (inv.status === 'cancelled') throw err(400, 'الفاتورة ملغاة — لا تُسجَّل عليها دفعات');
     const p = cleanPayment(input);
-    if (p.amount > inv.balance + EPS) throw err(400, `المبلغ أكبر من المتبقي على الفاتورة (${inv.balance.toFixed(2)} ر.ع)`);
-    db.prepare('INSERT INTO payments (invoice_id, amount, method, paid_on, reference, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(inv.id, p.amount, p.method, p.paid_on, p.reference, p.note, author);
-    return get(db, inv.id);
+    tx(db, () => {
+        // Read the balance after acquiring the write lock. Otherwise two
+        // simultaneous payments can both pass the stale balance check.
+        const inv = get(db, invoiceId);
+        if (!inv) throw err(404, 'الفاتورة غير موجودة');
+        if (inv.status === 'cancelled') throw err(400, 'الفاتورة ملغاة — لا تُسجَّل عليها دفعات');
+        if (p.amount > inv.balance + EPS) throw err(400, `المبلغ أكبر من المتبقي على الفاتورة (${inv.balance.toFixed(2)} ر.ع)`);
+        db.prepare('INSERT INTO payments (invoice_id, amount, method, paid_on, reference, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            .run(inv.id, p.amount, p.method, p.paid_on, p.reference, p.note, author);
+    });
+    return get(db, invoiceId);
 }
 
 function deletePayment(db, invoiceId, paymentId) {
@@ -174,15 +182,19 @@ function deletePayment(db, invoiceId, paymentId) {
 
 /* Cancelling keeps the number (the sequence has no gaps); refused while payments remain */
 function cancel(db, invoiceId, reason, author = null) {
-    const inv = get(db, invoiceId);
-    if (!inv) throw err(404, 'الفاتورة غير موجودة');
-    if (inv.status === 'cancelled') throw err(400, 'الفاتورة ملغاة من قبل');
-    if (inv.payments.length) throw err(400, 'على الفاتورة دفعات مسجّلة — احذفها أولاً (أو سجّل استرداد المبلغ) ثم ألغِ الفاتورة');
     const why = String(reason || '').trim().slice(0, 300);
     if (!why) throw err(400, 'اكتب سبب الإلغاء');
-    db.prepare("UPDATE invoices SET status = 'cancelled', cancel_reason = ?, cancelled_at = datetime('now') WHERE id = ?")
-        .run(why + (author ? ` (${author})` : ''), inv.id);
-    return get(db, inv.id);
+    tx(db, () => {
+        // Check payments and change status atomically so a payment cannot be
+        // inserted after the check but before cancellation.
+        const inv = get(db, invoiceId);
+        if (!inv) throw err(404, 'الفاتورة غير موجودة');
+        if (inv.status === 'cancelled') throw err(400, 'الفاتورة ملغاة من قبل');
+        if (inv.payments.length) throw err(400, 'على الفاتورة دفعات مسجّلة — احذفها أولاً (أو سجّل استرداد المبلغ) ثم ألغِ الفاتورة');
+        db.prepare("UPDATE invoices SET status = 'cancelled', cancel_reason = ?, cancelled_at = datetime('now') WHERE id = ?")
+            .run(why + (author ? ` (${author})` : ''), inv.id);
+    });
+    return get(db, invoiceId);
 }
 
 function update(db, invoiceId, patch) {
@@ -222,16 +234,33 @@ function list(db, { q = '', state = '', from = '', to = '' } = {}) {
     return state ? rows.filter((r) => r.state === state) : rows;
 }
 
-/* This month's figures for the panel (issued, collected, still owed overall) */
-function summary(db, { today = leads.localToday() } = {}) {
+/* This month's figures for the panel (issued, collected, still owed overall).
+   When mineOf is set, match the same customer scope as staff.seesPhones: an
+   invoice is visible unless one of the customer's leads is assigned to another
+   employee. */
+function summary(db, { today = leads.localToday(), mineOf = null } = {}) {
     const month = today.slice(0, 7);
-    const issued = db.prepare("SELECT COUNT(*) AS n, IFNULL(SUM(total), 0) AS v FROM invoices WHERE status = 'issued' AND substr(issue_date, 1, 7) = ?").get(month);
+    const scope = mineOf
+        ? ` AND NOT EXISTS (SELECT 1 FROM leads scope_lead
+                           WHERE (
+                             scope_lead.phone = i.customer_phone
+                             OR (length(scope_lead.phone) = 8 AND '968' || scope_lead.phone = i.customer_phone)
+                             OR (length(i.customer_phone) = 8 AND '968' || i.customer_phone = scope_lead.phone)
+                             OR (length(scope_lead.phone) = 11 AND substr(scope_lead.phone, 1, 3) = '968' AND substr(scope_lead.phone, 4) = i.customer_phone)
+                           )
+                             AND scope_lead.assigned_to IS NOT NULL
+                             AND TRIM(scope_lead.assigned_to) <> ''
+                             AND scope_lead.assigned_to <> ?)`
+        : '';
+    const args = (values) => mineOf ? [...values, mineOf] : values;
+    const issued = db.prepare(`SELECT COUNT(*) AS n, IFNULL(SUM(i.total), 0) AS v FROM invoices i
+                               WHERE i.status = 'issued' AND substr(i.issue_date, 1, 7) = ?${scope}`).get(...args([month]));
     const collected = db.prepare(`SELECT IFNULL(SUM(p.amount), 0) AS v FROM payments p JOIN invoices i ON i.id = p.invoice_id
-                                  WHERE i.status = 'issued' AND substr(p.paid_on, 1, 7) = ?`).get(month).v;
+                                  WHERE i.status = 'issued' AND substr(p.paid_on, 1, 7) = ?${scope}`).get(...args([month])).v;
     const owed = db.prepare(`SELECT IFNULL(SUM(i.total - IFNULL((SELECT SUM(amount) FROM payments WHERE invoice_id = i.id), 0)), 0) AS v
-                             FROM invoices i WHERE i.status = 'issued'`).get().v;
+                             FROM invoices i WHERE i.status = 'issued'${scope}`).get(...args([])).v;
     const overdue = db.prepare(`SELECT COUNT(*) AS n FROM invoices i WHERE i.status = 'issued' AND i.due_date IS NOT NULL AND i.due_date < ?
-                                AND i.total - IFNULL((SELECT SUM(amount) FROM payments WHERE invoice_id = i.id), 0) > ?`).get(today, EPS).n;
+                                AND i.total - IFNULL((SELECT SUM(amount) FROM payments WHERE invoice_id = i.id), 0) > ?${scope}`).get(...args([today, EPS])).n;
     return { month, issued_count: issued.n, issued_value: round2(issued.v), collected: round2(collected), outstanding: round2(owed), overdue };
 }
 

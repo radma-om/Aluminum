@@ -22,7 +22,7 @@ push.setSenderForTests(async (sub, payload) => {
     sent.push({ endpoint: sub.endpoint, ...JSON.parse(payload) });
 });
 const settle = () => new Promise((r) => setTimeout(r, 30));
-const device = (name) => ({ endpoint: `https://push.example.com/send/${name}`, keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } });
+const device = (name) => ({ endpoint: `https://fcm.googleapis.com/send/${name}`, keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } });
 
 async function start(t) {
     sent.length = 0;
@@ -72,7 +72,12 @@ test('devices: each account its own; checked; a device that signs in with anothe
     assert.match(k.body.public_key, /^[A-Za-z0-9_-]{80,}$/);
     assert.equal((await call('GET', '/api/admin/me/push')).body.public_key, k.body.public_key, 'one key pair for the system');
     assert.equal((await call('POST', '/api/admin/me/push', { subscription: { endpoint: 'http://insecure.example.com/x', keys: device('a').keys } }, tok)).status, 400);
+    assert.equal((await call('POST', '/api/admin/me/push', { subscription: { endpoint: 'https://127.0.0.1/send/internal', keys: device('a').keys } }, tok)).status, 400);
+    assert.equal((await call('POST', '/api/admin/me/push', { subscription: { endpoint: 'https://push.example.com/send/unknown', keys: device('a').keys } }, tok)).status, 400);
     assert.equal((await call('POST', '/api/admin/me/push', { subscription: { endpoint: device('a').endpoint, keys: { p256dh: '<script>', auth: 'x' } } }, tok)).status, 400);
+    db.prepare(`INSERT INTO push_subscriptions (user_key, endpoint, p256dh, auth, device) VALUES (?, ?, ?, ?, ?)`).run('owner', 'https://push.example.com/send/legacy', 'B'.repeat(87), 'A'.repeat(22), 'old browser');
+    assert.equal(await push.send(db, ['owner'], { title: 'legacy', body: 'legacy' }), 0, 'old arbitrary endpoints are never sent to');
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM push_subscriptions WHERE endpoint LIKE '%legacy'").get().n, 0);
     const ok = await call('POST', '/api/admin/me/push', { subscription: device('phone'), device: 'iPhone — Safari (التطبيق)' }, tok);
     assert.equal(ok.status, 201);
     assert.equal(ok.body.devices.length, 1);
@@ -154,7 +159,7 @@ test('when nothing arrives: the push service\'s answer is kept per device and sh
     assert.match(r.body.error, /BadJwtToken/);
     const d = (await call('GET', '/api/admin/me/push')).body.devices[0];
     assert.match(d.last_error, /^403/);
-    assert.equal(d.service, 'push.example.com');
+    assert.equal(d.service, 'Google');
     assert.equal(d.tail, device('refused').endpoint.slice(-12));
     assert.ok(!('endpoint' in d), 'the full address is never sent back');
     // The host cannot reach the push service

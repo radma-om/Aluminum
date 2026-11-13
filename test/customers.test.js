@@ -161,6 +161,33 @@ test('permissions and scope: the customers section, and «عملاؤه فقط» 
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM customers').get().n, 2);
 });
 
+test('customer scope matches legacy local phone numbers', async (t) => {
+    const { db, call } = await start(t);
+    quote(db, '96893333333', 'عميل قديم');
+    db.prepare("UPDATE leads SET phone = '93333333', assigned_to = 'مريم' WHERE phone = '96893333333'").run();
+    staff.create(db, {
+        username: 'salem-legacy', display_name: 'سالم', password: 'pass-12345',
+        permissions: ['customers'], leads_scope: 'mine'
+    });
+    const token = (await call('POST', '/api/auth/login', { username: 'salem-legacy', password: 'pass-12345' })).body.token;
+    const list = (await call('GET', '/api/admin/customers', null, token)).body.customers;
+    assert.deepEqual(list, [], 'a legacy local phone assigned to another employee stays hidden');
+});
+
+test('customer creation and second-phone edits respect the employee scope', async (t) => {
+    const { db, call } = await start(t);
+    db.prepare("INSERT INTO leads (contact_key, channel, name, phone, assigned_to) VALUES ('tel:96895555555', 'whatsapp', 'مريم', '96895555555', 'مريم')").run();
+    staff.create(db, {
+        username: 'salem-customer-scope', display_name: 'سالم', password: 'pass-12345',
+        permissions: ['customers'], leads_scope: 'mine'
+    });
+    const token = (await call('POST', '/api/auth/login', { username: 'salem-customer-scope', password: 'pass-12345' }, null)).body.token;
+    assert.equal((await call('POST', '/api/admin/customers', { name: 'مريم', phone: '95555555' }, token)).status, 404);
+    const own = (await call('POST', '/api/admin/customers', { name: 'عميل جديد', phone: '93333333' }, token)).body;
+    assert.ok(own.id);
+    assert.equal((await call('PATCH', `/api/admin/customers/${own.id}`, { phone2: '95555555' }, token)).status, 404);
+});
+
 test('a limited employee cannot open a customer when the second phone belongs to another employee', async (t) => {
     const { db, call } = await start(t);
     quote(db, '96891111111', 'عميل برقمين');

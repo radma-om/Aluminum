@@ -389,11 +389,20 @@ async function notifySales(db, quote) {
     return status;
 }
 
-/* This system's own address as the customer reaches it (https unless local) */
-function systemOrigin(req) {
+/* This system's own address as the customer reaches it.
+   Prefer the manager-configured origin: Host is client-controlled and must not
+   decide where customer-facing PDF links send people. A local request-origin
+   fallback keeps development instances usable before public_base_url is set. */
+function systemOrigin(req, db) {
+    const configured = String(db ? getSettings(db).public_base_url || '' : '').trim().replace(/\/+$/, '');
+    try {
+        const u = new URL(configured);
+        const localHost = /^(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)$/i.test(u.hostname);
+        if (u.protocol === 'https:' || (u.protocol === 'http:' && localHost)) return u.origin;
+    } catch { /* no configured public origin — use only a local request fallback */ }
     const host = req.get('host') || '';
-    const local = /^(localhost|127\.|\[::1\])/.test(host);
-    return `${local ? req.protocol : 'https'}://${host}`;
+    const local = /^(localhost|127(?:\.\d{1,3}){3}|\[?::1\])(?::\d+)?$/i.test(host);
+    return local ? `${req.protocol === 'https:' ? 'https' : 'http'}://${host}` : '';
 }
 
 function sendPdf(res, quote, settings) {
@@ -709,7 +718,7 @@ function createApp(db, { agentClient } = {}) {
         const quotes = result.events.filter((e) => e.type === 'quote_created').map(({ quote }) => {
             notifySales(db, quote).catch((err) => console.error('[mazbot]', err.message));
             return {
-                ref: quote.ref, pdf_url: systemOrigin(req) + quote.pdf_url, total: quote.total,
+                ref: quote.ref, pdf_url: systemOrigin(req, db) + quote.pdf_url, total: quote.total,
                 total_to: quote.details && quote.details.range ? quote.details.range.total_to : null
             };
         });
@@ -786,7 +795,12 @@ function createApp(db, { agentClient } = {}) {
         const base = String(getSettings(db).public_base_url || '').trim().replace(/\/+$/, '');
         try {
             const u = new URL(base);
-            return ['https:', 'http:'].includes(u.protocol) ? `${u.origin}/admin` : null;
+            // Password-reset tokens must not travel over clear-text HTTP. Keep a
+            // small localhost exception so development/test instances can still
+            // exercise the flow without weakening production deployments.
+            const localHost = /^(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)$/i.test(u.hostname);
+            if (u.protocol !== 'https:' && !(u.protocol === 'http:' && localHost)) return null;
+            return `${u.origin}/admin`;
         } catch { return null; }
     };
     const forgotLimit = rateLimit({ windowMs: 60 * 60_000, max: 5 });
@@ -891,7 +905,7 @@ function createApp(db, { agentClient } = {}) {
         if (user.role === 'manager') return settings;
         const keys = new Set();
         const add = (list) => list.forEach((key) => keys.add(key));
-        if (staff.can(user, 'pricing')) add(['lme', 'manufacturing', 'painting', 'exchange_rate', 'profit_percent', 'vat_percent', 'tax_mode']);
+        if (staff.can(user, 'pricing')) add(['lme', 'manufacturing', 'painting', 'exchange_rate', 'profit_percent', 'vat_percent', 'tax_mode', 'sqm_to_linear']);
         if (staff.can(user, 'pricing') || staff.can(user, 'weight')) add(['slat_thicknesses']);
         if (staff.can(user, 'motors')) add(['motors_profit_percent']);
         if (staff.can(user, 'agent')) add(['agent_knowledge', 'agent_instructions']);
@@ -1177,6 +1191,10 @@ function createApp(db, { agentClient } = {}) {
         const phone = customers.normalizePhone(b.customer_phone);
         const name = clip(b.customer_name, 120);
         if (phone.length < 8) throw httpError(400, 'اكتب رقم جوال العميل');
+        // A limited employee may type a phone instead of selecting a customer
+        // record. Apply the same customer scope here so this shortcut cannot
+        // create activity for another employee's customer.
+        if (!staff.seesCustomer(db, req.user, { phone })) throw httpError(404, 'العميل غير موجود');
         if (!name) throw httpError(400, 'اكتب اسم العميل');
         return { name, phone, city: clip(b.customer_city, 80) || null };
     };
@@ -1251,7 +1269,8 @@ function createApp(db, { agentClient } = {}) {
     admin.get('/invoices', (req, res) => res.json({
         invoices: invoices.list(db, { q: String(req.query.q || '').trim(), state: String(req.query.state || ''), from: String(req.query.from || ''), to: String(req.query.to || '') })
             .filter((inv) => staff.seesQuote(db, req.user, inv)).map(invoicePublic),
-        summary: invoices.summary(db), methods: invoices.METHODS, states: invoices.PAY_STATES, deposit_types: invoices.DEPOSIT_TYPES
+        summary: invoices.summary(db, { mineOf: req.user.leads_scope === 'mine' ? req.user.display_name : null }),
+        methods: invoices.METHODS, states: invoices.PAY_STATES, deposit_types: invoices.DEPOSIT_TYPES
     }));
     admin.get('/invoices/:id', (req, res) => res.json(invoicePublic(invoiceFor(req, req.params.id))));
     admin.get('/invoices/:id/pdf', (req, res) => sendInvoicePdf(res, invoiceFor(req, req.params.id)));
@@ -1295,10 +1314,20 @@ function createApp(db, { agentClient } = {}) {
         const stop = autoreply.stateOf(db, p.customer.phone);
         res.json({ ...p, agent_stop: stop ? { kind: stop.kind, forever: stop.forever, until: stop.until } : null });
     });
-    admin.post('/customers', (req, res) => res.status(201).json(customers.create(db, req.body || {})));
+    admin.post('/customers', (req, res) => {
+        const b = req.body || {};
+        if (!staff.seesCustomer(db, req.user, { phone: customers.normalizePhone(b.phone) })) {
+            throw httpError(404, 'العميل غير موجود');
+        }
+        res.status(201).json(customers.create(db, b));
+    });
     admin.patch('/customers/:id', (req, res) => {
         customerFor(req, req.params.id);
-        res.json(customers.update(db, req.params.id, req.body || {}));
+        const b = req.body || {};
+        if (b.phone2 && !staff.seesCustomer(db, req.user, { phone: customers.normalizePhone(b.phone2) })) {
+            throw httpError(404, 'العميل غير موجود');
+        }
+        res.json(customers.update(db, req.params.id, b));
     });
     admin.post('/customers/:id/merge', (req, res) => {
         customerFor(req, req.params.id);
@@ -1353,6 +1382,9 @@ function createApp(db, { agentClient } = {}) {
         } else if (b.quote_id) {
             source = { quote: parseQuote(quoteFor(req, b.quote_id)) };
         }
+        if (!source && !staff.seesCustomer(db, req.user, { phone: customers.normalizePhone(b.customer_phone) })) {
+            throw httpError(404, 'العميل غير موجود');
+        }
         const order = workorders.create(db, b, staffName(req), { source });
         webhooks.emit(db, 'work_order.created', order);
         res.status(201).json(order);
@@ -1404,6 +1436,9 @@ function createApp(db, { agentClient } = {}) {
     });
     admin.post('/service-requests', (req, res) => {
         officeOnly(req);
+        if (!staff.seesCustomer(db, req.user, { phone: customers.normalizePhone((req.body || {}).customer_phone) })) {
+            throw httpError(404, 'العميل غير موجود');
+        }
         const r = servicerequests.create(db, req.body || {}, { source: 'staff', author: staffName(req) });
         res.status(201).json(r);
     });
@@ -1512,6 +1547,10 @@ function createApp(db, { agentClient } = {}) {
 
     admin.patch('/leads/:id', (req, res) => {
         const { lead: before } = leadFor(req, req.params.id);
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, 'assigned_to')) {
+            const assigned = String((req.body || {}).assigned_to || '').trim();
+            if (assigned && !assignableStaff().includes(assigned)) throw httpError(400, 'الموظف المعيّن غير موجود أو غير مفعّل');
+        }
         const out = leads.update(db, req.params.id, req.body || {}, staffName(req));
         const after = db.prepare('SELECT * FROM leads WHERE id = ?').get(before.id);
         if (after && after.assigned_to && after.assigned_to !== before.assigned_to) push.leadAssigned(db, after, staffName(req)).catch(() => {});
@@ -1799,15 +1838,20 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Gate motors: sections, items (profit % each), extra fees, installation fee per wilayah ---- */
 
-    const motorsAdmin = () => ({
-        sections: motors.loadSections(db, { includeInactive: true }),
-        items: motors.loadItems(db, { includeInactive: true }),
-        extra_fees: motors.loadExtraFees(db, { includeInactive: true }),
-        profit_percent: motors.profitPercent(getSettings(db)),
-        kinds: motors.KINDS, units: motors.UNITS,
-        regions: db.prepare(`SELECT id, name, governorate, active, motor_installation_fee, overhead_installation_fee, installation_fee
-                             FROM regions ORDER BY governorate, name`).all()
-    });
+    const motorsAdmin = (user) => {
+        const items = motors.loadItems(db, { includeInactive: true });
+        const visibleItems = seesCost(user) ? items : items.map(({ cost, ...item }) => item);
+        return {
+            sections: motors.loadSections(db, { includeInactive: true }),
+            items: visibleItems,
+            extra_fees: motors.loadExtraFees(db, { includeInactive: true }),
+            profit_percent: motors.profitPercent(getSettings(db)),
+            sees_cost: seesCost(user),
+            kinds: motors.KINDS, units: motors.UNITS,
+            regions: db.prepare(`SELECT id, name, governorate, active, motor_installation_fee, overhead_installation_fee, installation_fee
+                                 FROM regions ORDER BY governorate, name`).all()
+        };
+    };
 
     const motorMoney = (v, label) => {
         if (v === '' || v == null) return null;
@@ -1830,7 +1874,7 @@ function createApp(db, { agentClient } = {}) {
         });
     };
 
-    admin.get('/motors', (req, res) => res.json(motorsAdmin()));
+    admin.get('/motors', (req, res) => res.json(motorsAdmin(req.user)));
 
     /* Sections: name, description, installation extra (added to the wilayah's base fee) */
     admin.put('/motors/sections', (req, res) => {
@@ -1853,13 +1897,15 @@ function createApp(db, { agentClient } = {}) {
             for (const x of removed) db.prepare('DELETE FROM motor_extra_fees WHERE section_id = ?').run(x.id);
             replaceRows('motor_sections', ['name', 'description', 'install_extra', 'active'], rows);
         });
-        res.json(motorsAdmin());
+        res.json(motorsAdmin(req.user));
     });
 
     /* Items (kits and accessories, each with its profit %), possible extra fees, default profit */
     admin.put('/motors', (req, res) => {
         const b = req.body || {};
         const sectionIds = new Set(motors.loadSections(db, { includeInactive: true }).map((x) => x.id));
+        const oldItems = motors.loadItems(db, { includeInactive: true });
+        const keepCost = !seesCost(req.user);
         const items = (Array.isArray(b.items) ? b.items : []).map((m) => {
             const row = {
                 id: Number(m.id) || null,
@@ -1867,7 +1913,10 @@ function createApp(db, { agentClient } = {}) {
                 kind: motors.KINDS[m.kind] ? m.kind : 'kit',
                 name: text(m.name, 200), description: text(m.description, 1000),
                 unit: motors.UNITS[m.unit] ? m.unit : 'piece',
-                cost: motorMoney(m.cost, 'التكلفة'), price: motorMoney(m.price, 'سعر البيع'),
+                cost: keepCost
+                    ? (oldItems.find((old) => old.id === Number(m.id)) || {}).cost ?? null
+                    : motorMoney(m.cost, 'التكلفة'),
+                price: motorMoney(m.price, 'سعر البيع'),
                 profit_percent: motorMoney(m.profit_percent, 'نسبة الربح'),
                 active: isOn(m.active), link: text(m.link, 500)
             };
@@ -1893,7 +1942,7 @@ function createApp(db, { agentClient } = {}) {
             if (fees) replaceRows('motor_extra_fees', ['section_id', 'name', 'amount', 'active'], fees);
         });
         if (profit != null) saveSettings(db, { motors_profit_percent: profit });
-        res.json(motorsAdmin());
+        res.json(motorsAdmin(req.user));
     });
 
     /* Start the motors installation fees from the overhead (or shutter) ones — only where empty */
@@ -1901,7 +1950,7 @@ function createApp(db, { agentClient } = {}) {
         const from = (req.body || {}).from === 'shutter' ? 'installation_fee' : 'overhead_installation_fee';
         const info = db.prepare(`UPDATE regions SET motor_installation_fee = ${from}
                                  WHERE motor_installation_fee IS NULL AND ${from} IS NOT NULL`).run();
-        res.json({ ...motorsAdmin(), copied: Number(info.changes) });
+        res.json({ ...motorsAdmin(req.user), copied: Number(info.changes) });
     });
 
     admin.get('/governorates', (req, res) => res.json(db.prepare('SELECT * FROM governorates ORDER BY sort_order, name').all()));
@@ -2090,7 +2139,7 @@ function createApp(db, { agentClient } = {}) {
         res.json(await whatsappCheck.simulate(db, req.body || {}, {
             saveQuote: (q) => saveQuote(db, q),
             notifySales: (quote) => notifySales(db, quote),
-            baseUrl: systemOrigin(req)
+            baseUrl: systemOrigin(req, db)
         }));
     }));
 
@@ -2268,7 +2317,7 @@ function createApp(db, { agentClient } = {}) {
         mazbotInbox.handleEvent(db, eventId, event, {
             saveQuote: (q) => saveQuote(db, q),
             notifySales: (quote) => notifySales(db, quote),
-            baseUrl: systemOrigin(req)
+            baseUrl: systemOrigin(req, db)
         });
         return;
     });

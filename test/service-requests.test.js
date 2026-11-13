@@ -174,4 +174,10 @@ test('the panel: list, approve, decline, record by phone; technicians and other 
     assert.equal((await call('GET', '/api/admin/service-requests', null, await login('tech'))).status, 403);
     assert.equal((await call('GET', '/api/admin/service-requests', null, await login('sales'))).status, 403);
     assert.equal((await call('GET', '/api/admin/service-requests', null, await login('office'))).status, 200);
+
+    const foreign = leads.touch(db, { key: leads.phoneKey('96895555555'), channel: 'calculator', name: 'مريم', phone: '96895555555' });
+    db.prepare("UPDATE leads SET assigned_to = 'مريم' WHERE id = ?").run(foreign.id);
+    staff.create(db, { username: 'office-scope', display_name: 'سالم', password: 'pass-12345', permissions: ['work_orders'], leads_scope: 'mine' });
+    const scoped = await login('office-scope');
+    assert.equal((await call('POST', '/api/admin/service-requests', { kind: 'maintenance', customer_name: 'مريم', customer_phone: '96895555555', description: 'صيانة' }, scoped)).status, 404);
 });

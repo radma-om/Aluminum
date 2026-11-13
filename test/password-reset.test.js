@@ -73,6 +73,7 @@ test('a staff member resets a forgotten password from an emailed link (once, the
     const again = await call('POST', '/api/auth/reset', { token, password: 'another-pass-789' }, null);
     assert.equal(again.status, 400, 'a link works once');
     assert.match(again.body.error, /غير صالح أو منتهي/);
+    assert.equal(db.prepare('SELECT used_at FROM password_resets WHERE token_hash = ?').get(staff.sha256(token)).used_at != null, true, 'the link is marked spent');
 
     const actions = (await call('GET', '/api/admin/audit')).body.entries.map((e) => e.action);
     assert.ok(actions.includes('طلب رابط استعادة كلمة المرور'));
@@ -147,6 +148,13 @@ test('without mail settings or the public address, the reset is refused and the 
     assert.equal((await b.call('POST', '/api/auth/forgot', { identifier: 'x' }, null)).status, 503);
     const warn = (await b.call('GET', '/api/admin/system-status')).body.warnings.map((w) => w.text).join('\n');
     assert.match(warn, /الرابط العام للنظام» فارغ/);
+});
+
+test('password reset refuses an insecure non-local public address', async (t) => {
+    const { call } = await start(t, { baseUrl: 'http://calc.example.com' });
+    const r = await call('POST', '/api/auth/forgot', { identifier: 'x' }, null);
+    assert.equal(r.status, 503);
+    assert.match(r.body.error, /غير مفعّلة/);
 });
 
 test('account emails are validated, unique, and kept in backups', async (t) => {

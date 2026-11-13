@@ -1212,7 +1212,7 @@ npm start
 
 1. **أنشئ التطبيق:** في hPanel افتح **Websites** ← **Add Website** ← **Node.js web app** ← **Import Git repository**، ثم اربط GitHub واختر المستودع `radma-om/Aluminum`.
 2. **إعدادات النشر:**
-   - الفرع: `claude/offline-industrial-app-hBMUY` (الفرع الرئيسي)
+   - الفرع: `main` (الفرع الرئيسي)
    - إصدار Node.js: **22 أو أحدث**. هذا ضروري، لأن النظام لا يعمل على الإصدارات الأقدم.
    - أمر البناء: اتركه فارغاً، أو `npm install`
    - ملف التشغيل (Entry file): `app.js`

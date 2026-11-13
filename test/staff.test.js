@@ -83,6 +83,7 @@ test('an employee signs in and only reaches the sections given to them', async (
     const saved = await call('PUT', '/api/admin/settings', { lme: 2500, company_name: 'تغيير غير مسموح', agent_instructions: 'x' }, token);
     assert.strictEqual(saved.status, 200);
     assert.strictEqual(saved.body.lme, 2500);
+    assert.equal(typeof (await call('GET', '/api/admin/settings', null, token)).body.sqm_to_linear, 'number');
     assert.notStrictEqual(saved.body.company_name, 'تغيير غير مسموح');
     assert.notStrictEqual(saved.body.agent_instructions, 'x');
     assert.strictEqual((await call('PUT', '/api/admin/settings', { company_name: 'x' }, token)).status, 403);
@@ -187,6 +188,7 @@ test('follow-up: notes carry the account name; "own customers" employees never s
     // The author is the account, whatever name the browser sends
     const noted = await call('POST', `/api/admin/leads/${mine.id}/notes`, { kind: 'report', text: 'اتصلت بالعميل' }, salem, { 'X-Staff-Name': encodeURIComponent('مريم') });
     assert.strictEqual(noted.body.notes[0].author, 'سالم');
+    assert.strictEqual((await call('PATCH', `/api/admin/leads/${mine.id}`, { assigned_to: 'اسم غير معتمد' }, salem)).status, 400);
     // Hand over to Mariam: Salem no longer sees the customer; Mariam (all customers) does
     await call('PATCH', `/api/admin/leads/${mine.id}`, { assigned_to: 'مريم', handover_text: 'يحتاج زيارة' }, salem);
     assert.strictEqual((await call('GET', `/api/admin/leads/${mine.id}`, null, salem)).status, 404);
