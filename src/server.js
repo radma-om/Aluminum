@@ -905,7 +905,7 @@ function createApp(db, { agentClient } = {}) {
         if (user.role === 'manager') return settings;
         const keys = new Set();
         const add = (list) => list.forEach((key) => keys.add(key));
-        if (staff.can(user, 'pricing')) add(['lme', 'manufacturing', 'painting', 'exchange_rate', 'profit_percent', 'vat_percent', 'tax_mode']);
+        if (staff.can(user, 'pricing')) add(['lme', 'manufacturing', 'painting', 'exchange_rate', 'profit_percent', 'vat_percent', 'tax_mode', 'sqm_to_linear']);
         if (staff.can(user, 'pricing') || staff.can(user, 'weight')) add(['slat_thicknesses']);
         if (staff.can(user, 'motors')) add(['motors_profit_percent']);
         if (staff.can(user, 'agent')) add(['agent_knowledge', 'agent_instructions']);

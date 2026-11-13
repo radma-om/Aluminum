@@ -83,6 +83,7 @@ test('an employee signs in and only reaches the sections given to them', async (
     const saved = await call('PUT', '/api/admin/settings', { lme: 2500, company_name: 'تغيير غير مسموح', agent_instructions: 'x' }, token);
     assert.strictEqual(saved.status, 200);
     assert.strictEqual(saved.body.lme, 2500);
+    assert.equal(typeof (await call('GET', '/api/admin/settings', null, token)).body.sqm_to_linear, 'number');
     assert.notStrictEqual(saved.body.company_name, 'تغيير غير مسموح');
     assert.notStrictEqual(saved.body.agent_instructions, 'x');
     assert.strictEqual((await call('PUT', '/api/admin/settings', { company_name: 'x' }, token)).status, 403);
