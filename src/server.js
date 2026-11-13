@@ -34,6 +34,7 @@ const workorders = require('./workorders');
 const servicerequests = require('./servicerequests');
 const costs = require('./costs');
 const team = require('./team');
+const bonuses = require('./bonuses');
 const push = require('./push');
 const autoreply = require('./autoreply');
 const customers = require('./customers');
@@ -1428,6 +1429,13 @@ function createApp(db, { agentClient } = {}) {
     admin.get('/team', (req, res) => res.json(team.report(db, {
         from: String(req.query.from || ''), to: String(req.query.to || ''), employee: String(req.query.employee || '')
     })));
+
+    /* ---- Monthly commissions (managers only: the route is not mapped to a section); each employee sees their own ---- */
+    admin.get('/bonuses', (req, res) => res.json(bonuses.statement(db, String(req.query.month || bonuses.thisMonth()))));
+    admin.put('/bonuses/plan/:userId', (req, res) => res.json(bonuses.setPlan(db, req.params.userId, req.body || {})));
+    admin.post('/bonuses/:month/approve', (req, res) => res.json(bonuses.approve(db, req.params.month, staffName(req))));
+    admin.delete('/bonuses/:month/approve', (req, res) => res.json(bonuses.unapprove(db, req.params.month)));
+    admin.get('/me/bonus', (req, res) => res.json({ bonus: bonuses.mine(db, req.user, String(req.query.month || bonuses.thisMonth())) }));
 
     /* ---- Customer follow-up (WhatsApp, website chat, calculators) ---- */
 
