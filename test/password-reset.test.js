@@ -73,6 +73,7 @@ test('a staff member resets a forgotten password from an emailed link (once, the
     const again = await call('POST', '/api/auth/reset', { token, password: 'another-pass-789' }, null);
     assert.equal(again.status, 400, 'a link works once');
     assert.match(again.body.error, /غير صالح أو منتهي/);
+    assert.equal(db.prepare('SELECT used_at FROM password_resets WHERE token_hash = ?').get(staff.sha256(token)).used_at != null, true, 'the link is marked spent');
 
     const actions = (await call('GET', '/api/admin/audit')).body.entries.map((e) => e.action);
     assert.ok(actions.includes('طلب رابط استعادة كلمة المرور'));

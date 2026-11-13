@@ -116,7 +116,7 @@ function create(db, input) {
 
 /* All-or-nothing: an account change and the end of its sessions happen together, or not at all */
 function tx(db, fn) {
-    db.exec('BEGIN');
+    db.exec('BEGIN IMMEDIATE');
     try {
         const r = fn();
         db.exec('COMMIT');
@@ -228,20 +228,25 @@ function requestReset(db, identifier, ip) {
 /* The link's code + a new password. Ends every session; two-step sign-in stays as it is. */
 function resetPassword(db, token, password) {
     const hash = sha256(String(token || ''));
-    const reset = db.prepare(`SELECT r.*, u.active FROM password_resets r JOIN staff_users u ON u.id = r.user_id
-                              WHERE r.token_hash = ?`).get(hash);
-    if (!reset || reset.used_at || !reset.active || db.prepare("SELECT datetime('now') >= ? AS late").get(reset.expires_at).late) {
-        throw err(400, 'رابط الاستعادة غير صالح أو منتهي (صالح 30 دقيقة ولمرة واحدة) — اطلب رابطاً جديداً');
-    }
     validatePassword(password);
     const newHash = hashPassword(password);
-    tx(db, () => {
+    const userId = tx(db, () => {
+        // Re-read and consume the token while the write lock is held. This
+        // closes the race where two simultaneous requests could both observe
+        // an unused reset link before either one marked it as spent.
+        const reset = db.prepare(`SELECT r.*, u.active FROM password_resets r JOIN staff_users u ON u.id = r.user_id
+                                  WHERE r.token_hash = ?`).get(hash);
+        if (!reset || reset.used_at || !reset.active || db.prepare("SELECT datetime('now') >= ? AS late").get(reset.expires_at).late) {
+            throw err(400, 'رابط الاستعادة غير صالح أو منتهي (صالح 30 دقيقة ولمرة واحدة) — اطلب رابطاً جديداً');
+        }
+        const spent = db.prepare("UPDATE password_resets SET used_at = datetime('now') WHERE token_hash = ? AND used_at IS NULL").run(hash);
+        if (!spent.changes) throw err(400, 'رابط الاستعادة غير صالح أو منتهي (صالح 30 دقيقة ولمرة واحدة) — اطلب رابطاً جديداً');
         db.prepare('UPDATE staff_users SET password_hash = ? WHERE id = ?').run(newHash, reset.user_id);
-        db.prepare("UPDATE password_resets SET used_at = datetime('now') WHERE token_hash = ?").run(hash);
         db.prepare('DELETE FROM password_resets WHERE user_id = ? AND token_hash != ?').run(reset.user_id, hash);
         db.prepare('DELETE FROM staff_sessions WHERE user_id = ?').run(reset.user_id);
+        return reset.user_id;
     });
-    return toUser(db.prepare('SELECT * FROM staff_users WHERE id = ?').get(reset.user_id));
+    return toUser(db.prepare('SELECT * FROM staff_users WHERE id = ?').get(userId));
 }
 
 /* ------------------------------ Two-step sign-in ------------------------------ */
