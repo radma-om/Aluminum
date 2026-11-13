@@ -389,11 +389,20 @@ async function notifySales(db, quote) {
     return status;
 }
 
-/* This system's own address as the customer reaches it (https unless local) */
-function systemOrigin(req) {
+/* This system's own address as the customer reaches it.
+   Prefer the manager-configured origin: Host is client-controlled and must not
+   decide where customer-facing PDF links send people. A local request-origin
+   fallback keeps development instances usable before public_base_url is set. */
+function systemOrigin(req, db) {
+    const configured = String(db ? getSettings(db).public_base_url || '' : '').trim().replace(/\/+$/, '');
+    try {
+        const u = new URL(configured);
+        const localHost = /^(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)$/i.test(u.hostname);
+        if (u.protocol === 'https:' || (u.protocol === 'http:' && localHost)) return u.origin;
+    } catch { /* no configured public origin — use only a local request fallback */ }
     const host = req.get('host') || '';
-    const local = /^(localhost|127\.|\[::1\])/.test(host);
-    return `${local ? req.protocol : 'https'}://${host}`;
+    const local = /^(localhost|127(?:\.\d{1,3}){3}|\[?::1\])(?::\d+)?$/i.test(host);
+    return local ? `${req.protocol === 'https:' ? 'https' : 'http'}://${host}` : '';
 }
 
 function sendPdf(res, quote, settings) {
@@ -709,7 +718,7 @@ function createApp(db, { agentClient } = {}) {
         const quotes = result.events.filter((e) => e.type === 'quote_created').map(({ quote }) => {
             notifySales(db, quote).catch((err) => console.error('[mazbot]', err.message));
             return {
-                ref: quote.ref, pdf_url: systemOrigin(req) + quote.pdf_url, total: quote.total,
+                ref: quote.ref, pdf_url: systemOrigin(req, db) + quote.pdf_url, total: quote.total,
                 total_to: quote.details && quote.details.range ? quote.details.range.total_to : null
             };
         });
@@ -2095,7 +2104,7 @@ function createApp(db, { agentClient } = {}) {
         res.json(await whatsappCheck.simulate(db, req.body || {}, {
             saveQuote: (q) => saveQuote(db, q),
             notifySales: (quote) => notifySales(db, quote),
-            baseUrl: systemOrigin(req)
+            baseUrl: systemOrigin(req, db)
         }));
     }));
 
@@ -2273,7 +2282,7 @@ function createApp(db, { agentClient } = {}) {
         mazbotInbox.handleEvent(db, eventId, event, {
             saveQuote: (q) => saveQuote(db, q),
             notifySales: (quote) => notifySales(db, quote),
-            baseUrl: systemOrigin(req)
+            baseUrl: systemOrigin(req, db)
         });
         return;
     });
