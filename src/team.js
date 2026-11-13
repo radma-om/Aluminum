@@ -135,20 +135,20 @@ function load(db, from, to) {
 }
 
 /* Hours from each assignment to the employee's first own action on that customer (the mean; null when none was answered) */
-function responseHours(db, assignments, name) {
+function responseHours(db, assignments, name, to = null) {
     const first = db.prepare(`SELECT MIN(at) AS at FROM (
-        SELECT created_at AS at FROM lead_notes WHERE lead_id = ? AND author = ? AND created_at >= ?
-        UNION ALL SELECT created_at FROM lead_messages WHERE lead_id = ? AND role = 'staff' AND author = ? AND created_at >= ?)`);
+        SELECT created_at AS at FROM lead_notes WHERE lead_id = ? AND author = ? AND created_at >= ? AND date(created_at, '${TZ}') <= COALESCE(?, '9999-12-31')
+        UNION ALL SELECT created_at FROM lead_messages WHERE lead_id = ? AND role = 'staff' AND author = ? AND created_at >= ? AND date(created_at, '${TZ}') <= COALESCE(?, '9999-12-31'))`);
     const hours = [];
     let waiting = 0;
     for (const a of assignments.filter((x) => x.to_employee === name && x.assigned_by !== name)) {
-        const at = first.get(a.lead_id, name, a.created_at, a.lead_id, name, a.created_at).at;
+        const at = first.get(a.lead_id, name, a.created_at, to, a.lead_id, name, a.created_at, to).at;
         if (at) hours.push((ms(at) - ms(a.created_at)) / 3600000); else waiting++;
     }
     return { answered: hours.length, waiting, hours: hours.length ? Math.round((hours.reduce((s, h) => s + h, 0) / hours.length) * 10) / 10 : null };
 }
 
-function figures(db, data, name) {
+function figures(db, data, name, to = null) {
     const mine = (rows) => rows.filter((r) => r.name === name);
     const quotes = mine(data.quotes);
     const invoices = mine(data.invoices);
@@ -159,7 +159,7 @@ function figures(db, data, name) {
     const discounted = quotes.filter((q) => q.staff_quote && q.discount_percent > 0);
     const sum = (rows, k = 'total') => round2(rows.reduce((s, r) => s + Number(r[k] || 0), 0));
     const days = new Set([...quotes, ...invoices, ...payments, ...notes, ...replies, ...jobs, ...mine(data.ordersMade)].map((r) => r.date));
-    const response = responseHours(db, data.assignments, name);
+    const response = responseHours(db, data.assignments, name, to);
     return {
         quote_count: quotes.length, quote_value: sum(quotes),
         accepted_count: quotes.filter(won).length, win_rate: pct(quotes.filter(won).length, quotes.length),
@@ -215,8 +215,8 @@ function report(db, { from, to, employee = '', today = leads.localToday() } = {}
 
     const staff = [...names].map(([name, account]) => {
         const assigned = allLeads.filter((l) => l.assigned_to === name);
-        const f = figures(db, data, name);
-        const p = figures(db, before, name);
+        const f = figures(db, data, name, end);
+        const p = figures(db, before, name, prevEnd);
         return {
             name, id: account ? account.id : null, username: account ? account.username : null,
             role: account ? account.role : null, role_label: account ? ROLES[account.role] || account.role : 'حساب محذوف',
@@ -232,7 +232,7 @@ function report(db, { from, to, employee = '', today = leads.localToday() } = {}
     }).filter((s) => s.active || s.quote_count || s.invoice_count || s.collected || s.replies || s.reports || s.jobs_done || s.open_customers)
         .sort((a, b) => b.invoice_value - a.invoice_value || b.quote_value - a.quote_value || (b.replies + b.reports) - (a.replies + a.reports) || a.name.localeCompare(b.name, 'ar'));
 
-    const previousRows = [...names.keys()].map((name) => figures(db, before, name));
+    const previousRows = [...names.keys()].map((name) => figures(db, before, name, prevEnd));
     const out = {
         from: start, to: end, days: length, previous_from: prevStart, previous_to: prevEnd,
         staff, totals: totalsOf(staff), previous_totals: totalsOf(previousRows)

@@ -71,6 +71,20 @@ test('the report: each employee\'s quotes, invoices, money received, follow-up a
     assert.equal(r.totals.collected, 200);
     assert.equal(r.previous_totals.quote_value, 0);
 
+    // A response after the selected period must not close an assignment in it.
+    const lateLead = leads.touch(db, { key: leads.phoneKey('96894444444'), channel: 'calculator', name: 'عميل لاحق', phone: '96894444444' });
+    leads.update(db, lateLead.id, { assigned_to: 'مريم' }, 'المدير العام');
+    const tomorrow = addDays(1);
+    db.prepare('UPDATE lead_assignments SET created_at = ? WHERE lead_id = ?').run(today + ' 10:00:00', lateLead.id);
+    leads.addNote(db, lateLead.id, { kind: 'report', text: 'رد خارج الفترة' }, 'مريم');
+    db.prepare('UPDATE lead_notes SET created_at = ? WHERE lead_id = ? AND author = ?').run(tomorrow + ' 10:00:00', lateLead.id, 'مريم');
+    const bounded = team.report(db, { from: today, to: today });
+    const boundedMaryam = bounded.staff.find((s) => s.name === 'مريم');
+    assert.equal(boundedMaryam.assignments_received, 2);
+    assert.equal(boundedMaryam.assignments_answered, 1);
+    assert.equal(boundedMaryam.assignments_waiting, 1);
+    assert.ok(boundedMaryam.response_hours >= 1.9 && boundedMaryam.response_hours <= 2.1, String(boundedMaryam.response_hours));
+
     // A period before today's work: nothing in it, and it is the "previous" of the next one
     const old = team.report(db, { from: addDays(-20), to: addDays(-10) });
     assert.equal(old.totals.quote_count, 0);

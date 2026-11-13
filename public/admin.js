@@ -1324,6 +1324,7 @@ const sectionMap = () => Object.fromEntries(motorsData.sections.map((x) => [x.id
 
 async function loadMotors(data) {
     motorsData = data || await api('GET', '/api/admin/motors');
+    document.querySelectorAll('.mt-cost').forEach((el) => { el.hidden = motorsData.sees_cost === false; });
     $id('mtProfit').value = motorsData.profit_percent;
     $id('mtSectionRows').innerHTML = '';
     motorsData.sections.forEach(addMtSectionRow);
@@ -1373,7 +1374,7 @@ function addMtRow(m = {}) {
         <td><select class="i-kind">${options(motorsData.kinds, m.kind || 'kit')}</select></td>` +
         cell('i-name', m.name, 'text', 200) + cell('i-desc', m.description, 'text', 260) +
         `<td><select class="i-unit">${options(motorsData.units, m.unit || (m.kind === 'part' ? 'piece' : 'set'))}</select></td>` +
-        cell('i-cost', m.cost, 'number', 90) +
+        (motorsData.sees_cost === false ? '' : cell('i-cost', m.cost, 'number', 90)) +
         `<td><input class="i-profit" type="number" min="0" step="0.5" value="${esc(m.profit_percent ?? '')}" placeholder="${esc(motorsData.profit_percent)}" style="width:70px"></td>` +
         cell('i-price', m.price, 'number', 90) +
         `<td class="i-sell" dir="ltr">${m.sell_price != null ? Number(m.sell_price).toFixed(2) : '—'}</td>
@@ -1404,7 +1405,9 @@ async function saveMotors() {
     const id = (tr) => (tr.dataset.id ? Number(tr.dataset.id) : null);
     const items = [...$id('mtRows').children].map((tr) => ({
         id: id(tr), section_id: Number(val(tr, 'i-section')), kind: val(tr, 'i-kind'), name: val(tr, 'i-name'),
-        description: val(tr, 'i-desc'), unit: val(tr, 'i-unit'), cost: val(tr, 'i-cost'), profit_percent: val(tr, 'i-profit'),
+        description: val(tr, 'i-desc'), unit: val(tr, 'i-unit'),
+        ...(motorsData.sees_cost === false ? {} : { cost: val(tr, 'i-cost') }),
+        profit_percent: val(tr, 'i-profit'),
         price: val(tr, 'i-price'), link: val(tr, 'i-link'), active: tr.querySelector('.i-active').checked
     }));
     const extra_fees = [...$id('mtFeeRows').children].map((tr) => ({

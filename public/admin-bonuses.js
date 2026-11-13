@@ -114,7 +114,13 @@ function bonusCsv() {
     if (!bonusData) return;
     const rows = [['الشهر', 'الاسم', 'النوع', 'الهدف', 'النسبة %', 'المبيعات / التركيب', 'فوق الهدف', 'العمولة', 'العدد']];
     for (const p of bonusData.people) rows.push([bonusData.month, p.name, p.kind === 'sales' ? 'مبيعات' : 'فني', p.target ?? '', p.percent, p.base, p.over ?? '', p.commission, p.count]);
-    const csv = '﻿' + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    // Keep employee names from becoming formulas when the CSV is opened in Excel.
+    const cell = (v) => {
+        const t = String(v ?? '');
+        const safe = /^[=+\-@]/.test(t) && typeof v === 'string' ? "'" + t : t;
+        return `"${safe.replace(/"/g, '""')}"`;
+    };
+    const csv = '﻿' + rows.map((r) => r.map(cell).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     a.download = `commissions-${bonusData.month}.csv`;

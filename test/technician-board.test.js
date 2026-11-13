@@ -14,7 +14,7 @@ process.env.ADMIN_TOKEN = OWNER;
 const sent = [];
 push.setSenderForTests(async (sub, payload) => { sent.push({ endpoint: sub.endpoint, ...JSON.parse(payload) }); });
 const settle = () => new Promise((r) => setTimeout(r, 30));
-const device = (name) => ({ endpoint: `https://push.example.com/send/${name}`, keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } });
+const device = (name) => ({ endpoint: `https://fcm.googleapis.com/send/${name}`, keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } });
 const local = (iso) => new Date(Date.parse(iso) + 4 * 3600_000).toISOString().slice(0, 16).replace('T', ' ');
 
 test('the time of a job, from the free text the office writes (Muscat time)', () => {

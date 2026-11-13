@@ -12,7 +12,9 @@ async function start(agentClient) {
     const server = http.createServer(createApp(db, { agentClient }));
     await new Promise((r) => server.listen(0, r));
     const base = `http://127.0.0.1:${server.address().port}`;
-    const chat = (body) => fetch(base + '/api/public/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const chat = (body, extraHeaders = {}) => fetch(base + '/api/public/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...extraHeaders }, body: JSON.stringify(body)
+    });
     return { db, server, base, chat };
 }
 
@@ -76,7 +78,7 @@ test('website visitors get prices and a quote; the agent must ask for the mobile
     const app = await start(client);
     db = app.db;
     t.after(() => app.server.close());
-    saveSettings(db, { website_chat_enabled: true });
+    saveSettings(db, { website_chat_enabled: true, public_base_url: 'https://trusted.example' });
 
     replies.push('أحتاج رقم جوالك لإرسال عرض السعر');
     const first = await (await app.chat({ session_id: SESSION, message: 'أريد عرض سعر أوفرهيد' })).json();
@@ -84,16 +86,17 @@ test('website visitors get prices and a quote; the agent must ask for the mobile
     assert.deepStrictEqual(first.quotes, []);
 
     replies.push('تم تجهيز عرض السعر ✅');
-    const second = await (await app.chat({ session_id: SESSION, message: 'رقمي 99887766' })).json();
+    const second = await (await app.chat({ session_id: SESSION, message: 'رقمي 99887766' }, { Host: 'evil.example.net' })).json();
     assert.strictEqual(second.reply, 'تم تجهيز عرض السعر ✅');
     assert.strictEqual(second.quotes.length, 1);
     assert.strictEqual(second.quotes[0].total, 609);
     assert.strictEqual(second.quotes[0].total_to, 630);
-    assert.match(second.quotes[0].pdf_url, /^http:\/\/127\.0\.0\.1:\d+\/quotes\/Q.+\.pdf\?k=/);
+    assert.match(second.quotes[0].pdf_url, /^https:\/\/trusted\.example\/quotes\/Q.+\.pdf\?k=/);
     const quote = db.prepare("SELECT * FROM quotes WHERE source = 'website'").get();
     assert.strictEqual(quote.customer_phone, '96899887766');
     // The PDF link works
-    assert.strictEqual((await fetch(second.quotes[0].pdf_url)).status, 200);
+    const pdf = new URL(second.quotes[0].pdf_url);
+    assert.strictEqual((await fetch(app.base + pdf.pathname + pdf.search)).status, 200);
 });
 
 test('when the AI fails, visitors get a polite message and the admin sees the real reason', async (t) => {

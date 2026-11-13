@@ -90,7 +90,13 @@ function list(db, { q = '', owes = false, limit = 300, mineOf = null } = {}) {
     if (mineOf) {
         where.push(`NOT EXISTS (
             SELECT 1 FROM leads ownership
-            WHERE ownership.phone IN (customers.phone, customers.phone2)
+            WHERE (
+                ownership.phone IN (customers.phone, customers.phone2)
+                OR (length(ownership.phone) = 8 AND ('968' || ownership.phone) IN (customers.phone, customers.phone2))
+                OR (length(customers.phone) = 8 AND ownership.phone = '968' || customers.phone)
+                OR (length(customers.phone2) = 8 AND ownership.phone = '968' || customers.phone2)
+                OR (length(ownership.phone) = 11 AND substr(ownership.phone, 1, 3) = '968' AND substr(ownership.phone, 4) IN (customers.phone, customers.phone2))
+            )
               AND IFNULL(ownership.assigned_to, '') NOT IN ('', ?)
         )`);
         args.push(String(mineOf));

@@ -1,10 +1,19 @@
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
 const http = require('node:http');
+const path = require('node:path');
 const { openDatabase } = require('../src/db');
 const { createApp } = require('../src/server');
 
 process.env.ADMIN_TOKEN = 'test-token';
+
+test('team employee rows do not interpolate names into inline JavaScript', () => {
+    const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin-team.js'), 'utf8');
+    assert.doesNotMatch(js, /onclick="openTeamEmployee\('\$\{esc\(s\.name\)/);
+    assert.match(js, /data-employee="\$\{esc\(s\.name\)\}"/);
+    assert.match(js, /row\.addEventListener\('click', open\)/);
+});
 
 async function start() {
     const server = http.createServer(createApp(openDatabase(':memory:')));

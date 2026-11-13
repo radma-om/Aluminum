@@ -122,6 +122,19 @@ test('an employee creates a quote for a customer within their limit; over it is 
     assert.ok(!actions.some((a) => /preview/.test(a)), 'previews are not logged');
 });
 
+test('an own-customer employee cannot create a quote by typing another employee phone', async (t) => {
+    const { db, call, login } = await start(t);
+    saveQuote(db, { customer_name: 'عميل سالم', customer_phone: '96891111111', source: 'web', priced: { items: [], subtotal: 10, vat_percent: 5, vat: 0.5, total: 10.5 } });
+    saveQuote(db, { customer_name: 'عميل مريم', customer_phone: '96892222222', source: 'web', priced: { items: [], subtotal: 10, vat_percent: 5, vat: 0.5, total: 10.5 } });
+    db.prepare("UPDATE leads SET assigned_to = 'سالم' WHERE phone = '96891111111'").run();
+    db.prepare("UPDATE leads SET assigned_to = 'مريم' WHERE phone = '96892222222'").run();
+    staff.create(db, { username: 'salem-scope', display_name: 'سالم', password: 'pass-12345', permissions: ['quotes'], leads_scope: 'mine' });
+    const token = await login('salem-scope');
+    const body = { customer_name: 'عميل مريم', customer_phone: '96892222222', items: [{ name: 'خدمة', unit: 'service', quantity: 1, unit_price: 50 }] };
+    assert.equal((await call('POST', '/api/admin/quotes', body, token)).status, 404);
+    assert.equal((await call('POST', '/api/admin/quotes', { ...body, customer_name: 'عميل سالم', customer_phone: '96891111111' }, token)).status, 201);
+});
+
 test('the same limit applies when an invoice lowers the amount', async (t) => {
     const { db, call, login } = await start(t);
     staff.create(db, { username: 'acc', display_name: 'المحاسب', password: 'pass-12345', permissions: ['quotes', 'invoices'] });
