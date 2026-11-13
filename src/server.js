@@ -1330,6 +1330,16 @@ function createApp(db, { agentClient } = {}) {
             pending_requests: req.user.role === 'technician' ? 0 : servicerequests.list(db, { status: 'pending' }).filter((r) => staff.seesQuote(db, req.user, r)).length
         });
     });
+    // The technician: the jobs that matter now with the time left; the office: the same for everyone + the technicians' latest reports
+    admin.get('/work-orders/board', (req, res) => {
+        const tech = req.user.role === 'technician';
+        const visible = (o) => tech || staff.seesQuote(db, req.user, o);
+        const orders = workorders.list(db, { open: true, user: req.user }).filter(visible);
+        res.json({
+            ...workorders.board(db, orders),
+            feed: tech ? [] : workorders.technicianFeed(db, { limit: 60 }).filter(visible).slice(0, 15)
+        });
+    });
     admin.get('/work-orders/:id', (req, res) => res.json(orderFor(req, req.params.id)));
     admin.post('/work-orders', (req, res) => {
         officeOnly(req);

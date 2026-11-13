@@ -29,8 +29,9 @@ function tx(db, fn) {
     try { const r = fn(); db.exec('COMMIT'); return r; } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 
-const event = (db, orderId, text, author) => {
-    db.prepare('INSERT INTO work_order_events (order_id, author, text) VALUES (?, ?, ?)').run(orderId, clip(author, 80) || null, clip(text, 2000));
+const event = (db, orderId, text, author, byTechnician = false) => {
+    db.prepare('INSERT INTO work_order_events (order_id, author, text, by_technician) VALUES (?, ?, ?, ?)')
+        .run(orderId, clip(author, 80) || null, clip(text, 2000), byTechnician ? 1 : 0);
     db.prepare("UPDATE work_orders SET updated_at = datetime('now') WHERE id = ?").run(orderId);
 };
 
@@ -200,7 +201,7 @@ function setStatus(db, id, status, note, user) {
     tx(db, () => {
         db.prepare(`UPDATE work_orders SET status = ?${status === 'done' ? ", completion_note = ?, completed_at = datetime('now')" : ''} WHERE id = ?`)
             .run(...(status === 'done' ? [status, text, order.id] : [status, order.id]));
-        event(db, order.id, `الحالة: ${STATUSES[order.status]} ← ${STATUSES[status]}${text ? `\n${text}` : ''}`, author);
+        event(db, order.id, `الحالة: ${STATUSES[order.status]} ← ${STATUSES[status]}${text ? `\n${text}` : ''}`, author, tech);
         if (status === 'done') {
             // An installation done is the quote done; the customer hears about it in the follow-up log
             if (order.quote_id && order.kind === 'installation') db.prepare("UPDATE quotes SET status = 'done' WHERE id = ? AND status != 'rejected'").run(order.quote_id);
@@ -210,7 +211,22 @@ function setStatus(db, id, status, note, user) {
     });
     const updated = get(db, order.id);
     if (status === 'done') notifyDone(db, updated).catch(() => {});
+    if (tech) technicianReported(db, updated, { status, text, author });
     return updated;
+}
+
+/* The technician reported something: the office hears it (phone), and the salesperson sees it in the customer's log */
+const REPORT_TITLES = {
+    in_progress: '▶️ بدأ الفني العمل', done: '✅ أنهى الفني العمل', new: '↩️ الفني يطلب موعداً جديداً', note: '📝 تقرير من الفني'
+};
+function technicianReported(db, order, { status = 'note', text = '', author = '' }) {
+    const title = REPORT_TITLES[status] || REPORT_TITLES.note;
+    require('./push').workOrderReport(db, order, { title, text, author }).catch(() => {});
+    // «done» already writes its own line in the customer's log
+    if (status !== 'done') {
+        const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(order.customer_phone);
+        if (lead) leads.addMessage(db, lead, 'system', `${title} — ${order.kind_label} ${order.number}${author ? ` (${author})` : ''}${text ? `: ${text}` : ''}`);
+    }
 }
 
 function addNote(db, id, text, user) {
@@ -218,8 +234,11 @@ function addNote(db, id, text, user) {
     if (!order || (user.role === 'technician' && order.technician_id !== user.id)) throw err(404, 'أمر العمل غير موجود');
     const t = clip(text, 2000);
     if (!t) throw err(400, 'اكتب الملاحظة');
-    event(db, order.id, t, user.display_name);
-    return get(db, order.id);
+    const tech = user.role === 'technician';
+    event(db, order.id, t, user.display_name, tech);
+    const updated = get(db, order.id);
+    if (tech) technicianReported(db, updated, { text: t, author: user.display_name });
+    return updated;
 }
 
 function cancel(db, id, reason, author) {
@@ -247,7 +266,11 @@ function list(db, { status = '', technician = '', q = '', open = false, user = n
         const like = `%${clip(q, 60)}%`;
         args.push(like, like, `%${q.replace(/\D/g, '') || q}%`, like);
     }
-    return db.prepare(`SELECT w.*, u.display_name AS technician_name FROM work_orders w LEFT JOIN staff_users u ON u.id = w.technician_id
+    return db.prepare(`SELECT w.*, u.display_name AS technician_name,
+                              e.text AS tech_last_text, e.author AS tech_last_author, e.created_at AS tech_last_at,
+                              (SELECT COUNT(*) FROM work_order_events x WHERE x.order_id = w.id AND x.by_technician = 1) AS tech_reports
+                       FROM work_orders w LEFT JOIN staff_users u ON u.id = w.technician_id
+                       LEFT JOIN work_order_events e ON e.id = (SELECT MAX(id) FROM work_order_events WHERE order_id = w.id AND by_technician = 1)
                        ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
                        ORDER BY CASE w.status WHEN 'in_progress' THEN 0 WHEN 'scheduled' THEN 1 WHEN 'new' THEN 2 ELSE 3 END,
                                 IFNULL(w.scheduled_date, '9999'), w.id DESC LIMIT 300`).all(...args)
@@ -343,7 +366,70 @@ function weekFigures(db, fromUtc, toUtc) {
     };
 }
 
+/* ----------------------- The technician's board ----------------------- */
+
+const MUSCAT_MS = 4 * 3600_000;
+const ARABIC_DIGITS = { '٠': 0, '١': 1, '٢': 2, '٣': 3, '٤': 4, '٥': 5, '٦': 6, '٧': 7, '٨': 8, '٩': 9 };
+/* When the job is due, from the date and the free-text time the office wrote ("9 صباحاً", "4:30 م", "14:00", "عصراً").
+   exact = a clock time was understood; otherwise the start of the working day (8:00) */
+function dueAt(date, timeText) {
+    if (!isDate(date)) return null;
+    const t = String(timeText || '').replace(/[٠-٩]/g, (d) => ARABIC_DIGITS[d]).trim();
+    let h = null; let m = 0;
+    const hm = t.match(/(\d{1,2})(?:[:.](\d{2}))?/);
+    if (hm && Number(hm[1]) <= 23) {
+        h = Number(hm[1]); m = Number(hm[2] || 0);
+        const pm = /مساء|عصر|ليل|(^|[\s\d])م($|[\s.])|pm/i.test(t) || (/ظهر/.test(t) && h < 7);
+        if (pm && h < 12) h += 12;
+        if (/صباح|فجر|(^|[\s\d])ص($|[\s.])|am/i.test(t) && h === 12) h = 0;
+        if (m > 59) m = 0;
+    } else if (/صباح/.test(t)) h = 9;
+    else if (/ظهر/.test(t)) h = 12;
+    else if (/عصر/.test(t)) h = 16;
+    else if (/مساء|ليل/.test(t)) h = 18;
+    // A clock time is exact; a part of the day («عصراً») or nothing is approximate
+    const exact = Boolean(hm && Number(hm[1]) <= 23);
+    const [y, mo, d] = date.split('-').map(Number);
+    return { at: new Date(Date.UTC(y, mo - 1, d, h ?? 8, h === null ? 0 : m) - MUSCAT_MS).toISOString(), exact };
+}
+
+/* The open orders that matter most now: under way, late, today, the next days — with the time left */
+function board(db, orders, { now = Date.now() } = {}) {
+    const today = new Date(now + MUSCAT_MS).toISOString().slice(0, 10);
+    const weekEnd = new Date(now + MUSCAT_MS + 7 * 86400_000).toISOString().slice(0, 10);
+    const open = orders.filter((o) => ['new', 'scheduled', 'in_progress'].includes(o.status));
+    const withDue = open.map((o) => {
+        const due = o.scheduled_date ? dueAt(o.scheduled_date, o.scheduled_time) : null;
+        const late = o.status !== 'in_progress' && o.scheduled_date && (o.scheduled_date < today || (due && due.exact && Date.parse(due.at) < now));
+        return { ...o, due_at: due ? due.at : null, due_exact: due ? due.exact : false, minutes_left: due ? Math.round((Date.parse(due.at) - now) / 60000) : null, late: Boolean(late) };
+    });
+    const rank = (o) => (o.status === 'in_progress' ? 0 : o.late ? 1 : o.scheduled_date === today ? 2 : o.due_at ? 3 : 4);
+    const top = withDue.filter((o) => o.status === 'in_progress' || o.late || (o.scheduled_date && o.scheduled_date <= weekEnd))
+        .sort((a, b) => rank(a) - rank(b) || String(a.due_at || '9').localeCompare(String(b.due_at || '9')))
+        .slice(0, 8);
+    return {
+        today, now: new Date(now).toISOString(),
+        counts: {
+            in_progress: withDue.filter((o) => o.status === 'in_progress').length,
+            late: withDue.filter((o) => o.late).length,
+            today: withDue.filter((o) => o.scheduled_date === today).length,
+            week: withDue.filter((o) => o.scheduled_date && o.scheduled_date >= today && o.scheduled_date <= weekEnd).length,
+            unscheduled: withDue.filter((o) => !o.scheduled_date).length
+        },
+        top
+    };
+}
+
+/* The technicians' latest reports and status changes, for the office */
+function technicianFeed(db, { limit = 20 } = {}) {
+    return db.prepare(`SELECT e.id, e.order_id, e.author, e.text, e.created_at, w.number, w.customer_name, w.customer_phone, w.kind, w.status,
+                              w.quote_id, w.invoice_id, w.created_by
+                       FROM work_order_events e JOIN work_orders w ON w.id = e.order_id
+                       WHERE e.by_technician = 1 ORDER BY e.id DESC LIMIT ?`).all(Math.min(100, Number(limit) || 20))
+        .map((r) => ({ ...r, kind_label: KINDS[r.kind] || r.kind, status_label: STATUSES[r.status] || r.status }));
+}
+
 module.exports = {
     create, update, setStatus, addNote, cancel, list, get, technicians, describe,
-    technicianDigests, sendTechnicianDigests, weekFigures, KINDS, STATUSES
+    technicianDigests, sendTechnicianDigests, weekFigures, dueAt, board, technicianFeed, KINDS, STATUSES
 };
