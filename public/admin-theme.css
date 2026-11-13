@@ -564,3 +564,4 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
 .my-bonus-gauge strong { font-size: 1.8rem; line-height: 1; }
 .my-bonus-gauge span { color: var(--text-light); font-size: 0.85rem; }
 .bonus-best { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 0.9rem; }
+.bonus-sub tr.pending td { color: var(--text-light); }
