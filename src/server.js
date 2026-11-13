@@ -1314,10 +1314,20 @@ function createApp(db, { agentClient } = {}) {
         const stop = autoreply.stateOf(db, p.customer.phone);
         res.json({ ...p, agent_stop: stop ? { kind: stop.kind, forever: stop.forever, until: stop.until } : null });
     });
-    admin.post('/customers', (req, res) => res.status(201).json(customers.create(db, req.body || {})));
+    admin.post('/customers', (req, res) => {
+        const b = req.body || {};
+        if (!staff.seesCustomer(db, req.user, { phone: customers.normalizePhone(b.phone) })) {
+            throw httpError(404, 'العميل غير موجود');
+        }
+        res.status(201).json(customers.create(db, b));
+    });
     admin.patch('/customers/:id', (req, res) => {
         customerFor(req, req.params.id);
-        res.json(customers.update(db, req.params.id, req.body || {}));
+        const b = req.body || {};
+        if (b.phone2 && !staff.seesCustomer(db, req.user, { phone: customers.normalizePhone(b.phone2) })) {
+            throw httpError(404, 'العميل غير موجود');
+        }
+        res.json(customers.update(db, req.params.id, b));
     });
     admin.post('/customers/:id/merge', (req, res) => {
         customerFor(req, req.params.id);
