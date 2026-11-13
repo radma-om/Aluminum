@@ -41,8 +41,10 @@ test('the report: each employee\'s quotes, invoices, money received, follow-up a
     // Follow-up: a customer is handed to Maryam, who answers two hours later
     const lead = db.prepare("SELECT * FROM leads WHERE phone = '96893333333'").get();
     leads.update(db, lead.id, { assigned_to: 'مريم' }, 'المدير العام');
-    db.prepare("UPDATE lead_assignments SET created_at = datetime('now', '-2 hours') WHERE lead_id = ?").run(lead.id);
+    // Fixed times inside today's Muscat day (08:00 and 10:00 Muscat), so the test does not depend on the hour it runs
+    db.prepare('UPDATE lead_assignments SET created_at = ? WHERE lead_id = ?').run(today + ' 04:00:00', lead.id);
     leads.addNote(db, lead.id, { kind: 'report', text: 'تم الاتصال بالعميل' }, 'مريم');
+    db.prepare('UPDATE lead_notes SET created_at = ? WHERE lead_id = ? AND author = ?').run(today + ' 06:00:00', lead.id, 'مريم');
 
     const r = team.report(db, { from: addDays(-6), to: today });
     assert.equal(r.days, 7);

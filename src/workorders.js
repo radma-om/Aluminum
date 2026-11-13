@@ -252,6 +252,28 @@ function cancel(db, id, reason, author) {
     return get(db, order.id);
 }
 
+/* An invoice cancelled: its open work orders go with it (done ones stay — the work happened).
+   The technician hears it on the phone, the reason is in each order's history. */
+function cancelForInvoice(db, invoice, author = null) {
+    if (!invoice || !invoice.id) return [];
+    const open = db.prepare("SELECT id FROM work_orders WHERE invoice_id = ? AND status IN ('new', 'scheduled', 'in_progress')").all(invoice.id);
+    const why = `أُلغيت الفاتورة ${invoice.number || ''}${invoice.cancel_reason ? ` — ${invoice.cancel_reason}` : ''}`;
+    return open.map(({ id }) => {
+        db.prepare("UPDATE work_orders SET status = 'cancelled' WHERE id = ?").run(id);
+        event(db, id, `أُلغي تلقائياً: ${why}`, author);
+        const order = get(db, id);
+        require('./push').workOrderCancelled(db, order, why).catch(() => {});
+        return order;
+    });
+}
+
+/* Orders left open on invoices cancelled before this rule existed (run at start; does nothing once clean) */
+function cancelOrphans(db) {
+    const rows = db.prepare(`SELECT DISTINCT i.id, i.number, i.cancel_reason FROM work_orders w JOIN invoices i ON i.id = w.invoice_id
+                             WHERE i.status = 'cancelled' AND w.status IN ('new', 'scheduled', 'in_progress')`).all();
+    return rows.flatMap((inv) => cancelForInvoice(db, inv, 'النظام'));
+}
+
 /* The list: a technician sees only theirs; open orders by date first */
 function list(db, { status = '', technician = '', q = '', open = false, user = null } = {}) {
     const where = [];
@@ -431,5 +453,5 @@ function technicianFeed(db, { limit = 20 } = {}) {
 
 module.exports = {
     create, update, setStatus, addNote, cancel, list, get, technicians, describe,
-    technicianDigests, sendTechnicianDigests, weekFigures, dueAt, board, technicianFeed, KINDS, STATUSES
+    technicianDigests, sendTechnicianDigests, weekFigures, cancelForInvoice, cancelOrphans, dueAt, board, technicianFeed, KINDS, STATUSES
 };
