@@ -16,7 +16,7 @@ const month = bonuses.thisMonth();
 const today = new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
 
 /* A quote of goods + installation + delivery, priced by `owner`, invoiced today */
-function sale(db, owner, goods, install = 0, delivery = 0) {
+function sale(db, owner, goods, install = 0, delivery = 0, paid = 0.5) {
     const items = [{ name: 'شرائح', unit: 'm2', quantity: 1, unit_price: goods, line_total: goods, part: 'slats' }];
     if (install) items.push({ name: 'التركيب', type: 'السيب', unit: 'service', quantity: 1, unit_price: install, line_total: install, part: 'installation' });
     if (delivery) items.push({ name: 'التوصيل', type: 'السيب', unit: 'service', quantity: 1, unit_price: delivery, line_total: delivery, part: 'delivery' });
@@ -25,7 +25,10 @@ function sale(db, owner, goods, install = 0, delivery = 0) {
         priced: { items, subtotal: total, vat_percent: 5, vat: total * 0.05, total: total * 1.05 }, details: { staff_quote: true, created_by: owner } });
     const row = db.prepare('SELECT * FROM quotes WHERE id = ?').get(q.id);
     const quote = { ...row, items: JSON.parse(row.items_json), details: JSON.parse(row.details_json) };
-    return invoices.createFromQuote(db, quote, { issue_date: today }, 'المكتب');
+    const inv = invoices.createFromQuote(db, quote, { issue_date: today }, 'المكتب');
+    // Half of it paid today: it counts this month (pass paid = 0 to leave it unpaid)
+    if (paid > 0) invoices.addPayment(db, inv.id, { amount: Math.round(inv.total * paid * 100) / 100, method: 'cash', paid_on: today }, 'المكتب');
+    return invoices.get(db, inv.id);
 }
 
 test('a salesperson: the % of what goes over the target, without installation and delivery', () => {
@@ -43,7 +46,7 @@ test('a salesperson: the % of what goes over the target, without installation an
     assert.equal(me.invoices[0].excluded, 350);
 
     // A discount on the invoice: the goods' share of the final amount
-    const inv = sale(db, 'أحمد عثمان عمر', 900, 100);
+    const inv = sale(db, 'أحمد عثمان عمر', 900, 100, 0, 0);
     invoices.cancel(db, inv.id, 'خطأ', 'المدير');
     assert.equal(bonuses.statement(db, month).people.find((p) => p.user_id === ahmed.id).base, 8000, 'a cancelled invoice does not count');
 
@@ -130,6 +133,7 @@ test('the month runs 1st to last day; pace and statistics; it closes by itself w
     const last = bonuses.addMonths(month, -1);
     const lastInv = sale(db, 'أحمد عثمان عمر', 8000, 400);
     db.prepare('UPDATE invoices SET issue_date = ? WHERE id = ?').run(last + '-15', lastInv.id);
+    db.prepare('UPDATE payments SET paid_on = ? WHERE invoice_id = ?').run(last + '-20', lastInv.id);
     sale(db, 'أحمد عثمان عمر', 4000);
     const s = bonuses.statement(db, month);
     const me = s.people.find((x) => x.user_id === ahmed.id);
@@ -164,4 +168,34 @@ test('the month runs 1st to last day; pace and statistics; it closes by itself w
     const h = bonuses.history(db, month);
     assert.equal(h.length, 6);
     assert.deepEqual(h.slice(-2).map((x) => x.commission), [25, 0]);
+});
+
+
+test('a salesperson\'s invoice counts once half of it is paid — in the month that happened', () => {
+    const db = openDatabase(':memory:');
+    const ahmed = staff.create(db, { username: 'ahmedo', display_name: 'أحمد عثمان عمر', password: 'pass-12345', permissions: ['quotes'] });
+    bonuses.setPlan(db, ahmed.id, { target: 1000, percent: 10 });
+    const me = () => bonuses.statement(db, month).people.find((p) => p.user_id === ahmed.id);
+    // Issued, nothing paid: waiting
+    const inv = sale(db, 'أحمد عثمان عمر', 3000, 0, 0, 0);
+    assert.deepEqual([me().base, me().pending, me().pending_base], [0, 1, 3000]);
+    // 49% paid: still waiting
+    invoices.addPayment(db, inv.id, { amount: Math.round(inv.total * 0.49 * 100) / 100, method: 'cash', paid_on: today }, 'المكتب');
+    assert.equal(me().base, 0);
+    assert.equal(me().pending_invoices[0].paid_percent, 49);
+    // Reaches 50%: counted, with the invoice's full value (goods) — commission (3000 − 1000) × 10%
+    invoices.addPayment(db, inv.id, { amount: Math.round(inv.total * 0.01 * 100) / 100 + 0.01, method: 'cash', paid_on: today }, 'المكتب');
+    assert.deepEqual([me().base, me().pending, me().commission], [3000, 0, 200]);
+    assert.equal(me().invoices[0].qualified_on, today);
+    // An invoice of last month paid half this month counts this month, not last month
+    const late = sale(db, 'أحمد عثمان عمر', 2000, 0, 0, 0);
+    const last = bonuses.addMonths(month, -1);
+    db.prepare('UPDATE invoices SET issue_date = ? WHERE id = ?').run(last + '-25', late.id);
+    invoices.addPayment(db, late.id, { amount: late.total, method: 'bank', paid_on: today }, 'المكتب');
+    assert.equal(me().base, 5000);
+    assert.equal(bonuses.statement(db, last).people.find((p) => p.user_id === ahmed.id).base, 0);
+    // The employee sees what is waiting, not the invoices
+    const mine = bonuses.mine(db, { id: ahmed.id, role: 'staff' }, month);
+    assert.equal(mine.pending, 0);
+    assert.ok(!('pending_invoices' in mine));
 });

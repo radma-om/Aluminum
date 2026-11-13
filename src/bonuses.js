@@ -1,12 +1,14 @@
 /* =============================================================
    Monthly commissions (المكافآت والعمولات)
    - Sales staff: a monthly target and a %. Their sales = the invoices
-     issued in the month (cancelled ones out), before VAT, without the
-     installation and delivery share. The commission is the % of what
+     whose payments reached half of their total (50%) in the month —
+     counted in the month that happened, whenever the invoice was issued;
+     cancelled ones out — before VAT, without the installation and
+     delivery share. An invoice paid less than half waits. The commission is the % of what
      goes over the target: target 7000, sales 8000, 2.5% → 25.
      An invoice belongs to the quote's owner (who priced it), otherwise
      to whoever issued it — as in «أداء الموظفين».
-   - Technicians: a % of the installation fee of each installation
+   - Technicians: when the installation is finished: a % of the installation fee of each installation
      order they completed in the month (from its invoice, or its quote),
      each invoice / quote counted once.
    - The share of a line in an amount after discounts is taken in
@@ -48,15 +50,30 @@ function share(items, pick) {
 
 /* ------------------------------ Figures ------------------------------ */
 
-function salesOf(db, month) {
-    return db.prepare("SELECT id, number, customer_name, issue_date, subtotal, items_json, details_json, created_by FROM invoices WHERE status = 'issued' AND issue_date LIKE ? ORDER BY issue_date, id")
-        .all(month + '-%').map((r) => {
+/* An invoice counts towards its salesperson once this share of its total is paid */
+const PAID_SHARE = 0.5;
+
+/* Every issued invoice, with the day its payments reached half of its total (null: not yet) */
+function invoicesWithPayments(db) {
+    const pays = new Map();
+    for (const p of db.prepare('SELECT invoice_id, amount, paid_on FROM payments ORDER BY paid_on, id').all()) {
+        if (!pays.has(p.invoice_id)) pays.set(p.invoice_id, []);
+        pays.get(p.invoice_id).push(p);
+    }
+    return db.prepare("SELECT id, number, customer_name, issue_date, subtotal, total, items_json, details_json, created_by FROM invoices WHERE status = 'issued' ORDER BY issue_date, id")
+        .all().map((r) => {
+            let paid = 0;
+            let qualified = null;
+            for (const p of pays.get(r.id) || []) {
+                paid += Number(p.amount) || 0;
+                if (!qualified && paid >= r.total * PAID_SHARE - 0.005) qualified = p.paid_on;
+            }
             const items = parse(r.items_json, []);
-            const out = share(items, (i) => isInstallation(i) || isDelivery(i));
-            const excluded = round2(r.subtotal * out);
+            const excluded = round2(r.subtotal * share(items, (i) => isInstallation(i) || isDelivery(i)));
             return {
-                id: r.id, number: r.number, customer_name: r.customer_name, date: r.issue_date,
+                id: r.id, number: r.number, customer_name: r.customer_name, date: r.issue_date, qualified_on: qualified,
                 owner: (parse(r.details_json, {}) || {}).created_by || r.created_by || null,
+                total: round2(r.total), paid: round2(paid), paid_percent: r.total > 0 ? Math.round((paid / r.total) * 1000) / 10 : 0,
                 subtotal: round2(r.subtotal), excluded, base: round2(r.subtotal - excluded)
             };
         });
@@ -95,7 +112,10 @@ function compute(db, month, nowMs = Date.now()) {
     // At this pace until the month ends (current month only, from the 3rd day: earlier is noise)
     const pace = (v) => (per.current && per.days_passed >= 3 ? round2(v / per.days_passed * per.days) : null);
     const users = db.prepare("SELECT id, display_name, role, active, bonus_target, bonus_percent FROM staff_users ORDER BY role = 'technician', display_name").all();
-    const sales = salesOf(db, month);
+    const all = invoicesWithPayments(db);
+    // Counted in the month half of it was paid; still waiting: issued up to the month's end, under half paid now
+    const sales = all.filter((i) => i.qualified_on && i.qualified_on.slice(0, 7) === month);
+    const waiting = per.ended ? [] : all.filter((i) => !i.qualified_on && i.date <= per.to);
     const installs = installationsOf(db, month);
     const named = new Set(users.map((u) => u.display_name));
     const people = users.map((u) => {
@@ -109,6 +129,7 @@ function compute(db, month, nowMs = Date.now()) {
                 projected, projected_commission: projected == null ? null : round2(projected * percent / 100), orders };
         }
         const invoices = sales.filter((i) => i.owner === u.display_name);
+        const pending = waiting.filter((i) => i.owner === u.display_name);
         const base = round2(invoices.reduce((s, i) => s + i.base, 0));
         const target = Number(u.bonus_target) || 0;
         const over = round2(Math.max(0, base - target));
@@ -118,10 +139,13 @@ function compute(db, month, nowMs = Date.now()) {
             reached: target > 0 ? base >= target : null, progress: target > 0 ? Math.round((base / target) * 1000) / 10 : null,
             left_to_target: target > 0 ? round2(Math.max(0, target - base)) : null,
             projected, projected_commission: projected == null ? null : round2(Math.max(0, projected - target) * percent / 100),
-            count: invoices.length, invoices };
-    }).filter((p) => p.active || p.count);
+            count: invoices.length, invoices,
+            // Issued but under half paid: they count when the customer pays half
+            pending: pending.length, pending_base: round2(pending.reduce((s, i) => s + i.base, 0)), pending_invoices: pending };
+    }).filter((p) => p.active || p.count || p.pending);
     // Invoices of no employee account (e.g. issued with the general manager's password)
     const unassigned = sales.filter((i) => !i.owner || !named.has(i.owner));
+    const waitingTotal = round2(waiting.filter((i) => i.owner && named.has(i.owner)).reduce((s, i) => s + i.base, 0));
     const withTarget = people.filter((p) => p.kind === 'sales' && p.target > 0);
     return {
         month, period: per, people, unassigned,
@@ -130,6 +154,7 @@ function compute(db, month, nowMs = Date.now()) {
             reached: withTarget.filter((p) => p.reached).length,
             avg_progress: withTarget.length ? Math.round(withTarget.reduce((s, p) => s + p.progress, 0) / withTarget.length * 10) / 10 : null,
             earning: people.filter((p) => p.commission > 0).length,
+            waiting_base: waitingTotal, waiting_count: waiting.filter((i) => i.owner && named.has(i.owner)).length,
             projected_commission: per.current && per.days_passed >= 3 ? round2(people.reduce((s, p) => s + (p.projected_commission || 0), 0)) : null,
             best: [...withTarget].sort((a, b) => b.progress - a.progress).slice(0, 3).map((p) => ({ name: p.name, progress: p.progress, commission: p.commission }))
         },
@@ -225,10 +250,10 @@ function mine(db, user, month = thisMonth()) {
     const s = statement(db, month);
     const me = s.people.find((p) => p.user_id === user.id);
     if (!me || (!me.percent && !me.target)) return null;
-    const { invoices, orders, ...summary } = me;
+    const { invoices, orders, pending_invoices: pendingInvoices, ...summary } = me;
     const before = statement(db, addMonths(month, -1)).people.find((p) => p.user_id === user.id);
     return { month, period: s.period || period(month), approved: Boolean(s.approved), ...summary,
         previous: before ? { month: addMonths(month, -1), name: monthName(addMonths(month, -1)), commission: before.commission, progress: before.progress ?? null } : null };
 }
 
-module.exports = { statement, approve, unapprove, setPlan, mine, compute, history, closeEndedMonth, period, share, isInstallation, isDelivery, thisMonth, addMonths };
+module.exports = { PAID_SHARE, statement, approve, unapprove, setPlan, mine, compute, history, closeEndedMonth, period, share, isInstallation, isDelivery, thisMonth, addMonths };
