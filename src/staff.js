@@ -326,7 +326,7 @@ function sectionsFor(method, path) {
 /* Settings each section may change (the rest belong to «الربط والإعدادات»; staff names to managers) */
 const SETTING_SECTIONS = {
     lme: 'pricing', manufacturing: 'pricing', painting: 'pricing', exchange_rate: 'pricing', profit_percent: 'pricing',
-    vat_percent: 'pricing', tax_mode: 'pricing', slat_thicknesses: 'pricing',
+    vat_percent: 'pricing', tax_mode: 'pricing', sqm_to_linear: 'pricing', slat_thicknesses: 'pricing',
     agent_knowledge: 'agent', agent_instructions: 'agent',
     motors_profit_percent: 'motors',
     staff_members: 'manager',
