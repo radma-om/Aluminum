@@ -722,6 +722,8 @@ function migrate(db) {
     addColumns('overhead_motors', { cost: 'REAL' });
     // Product descriptions shown under each line of a quote / invoice / PDF
     addColumns('overhead_motors', { description: 'TEXT' });
+    // A work order event written by the technician (a report the office follows)
+    addColumns('work_order_events', { by_technician: 'INTEGER NOT NULL DEFAULT 0' });
     db.exec(`CREATE TABLE IF NOT EXISTS overhead_types (
         name        TEXT PRIMARY KEY,
         description TEXT

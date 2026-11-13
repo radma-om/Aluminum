@@ -47,6 +47,7 @@ async function loadWorkOrders() {
         if (woPendingRequests !== (r.pending_requests || 0)) { woPendingRequests = r.pending_requests || 0; renderWoChips(); }
         renderWorkOrders();
         setStatus('woStatus', '');
+        loadWoBoard();
     } catch (err) {
         setStatus('woStatus', err.message, 'err');
     }
@@ -84,6 +85,9 @@ function renderWorkOrders() {
                 ${!isTech() ? ` — <i class="fas fa-helmet-safety"></i> ${esc(o.technician_name || 'بدون فني')}` : ''}</div>
             <div class="wo-desc">${esc(o.description)}</div>
             ${o.completion_note ? `<div class="wo-line"><i class="fas fa-check"></i> ما تم: ${esc(o.completion_note)}</div>` : ''}
+            ${!isTech() && o.tech_last_text ? `<div class="wo-report"><i class="fas fa-helmet-safety"></i> <b>آخر تقرير من الفني</b>
+                <small>${esc(o.tech_last_author || '')} — ${esc(woAgo(o.tech_last_at))}${o.tech_reports > 1 ? ` — ${o.tech_reports} تقارير` : ''}</small>
+                <div>${esc(o.tech_last_text)}</div></div>` : ''}
             <div class="wo-actions">
                 ${techActions}${officeActions}
                 <button class="btn btn-outline btn-sm" onclick="woNote(${o.id})">ملاحظة</button>
@@ -121,7 +125,7 @@ async function woHistory(id, btn, forceOpen = false) {
     try {
         const o = await api('GET', `/api/admin/work-orders/${id}`);
         const when = (s) => new Date(String(s).replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' });
-        box.innerHTML = o.events.map((e) => `• ${esc(when(e.created_at))}${e.author ? ' — ' + esc(e.author) : ''}: ${esc(e.text)}`).join('<br>');
+        box.innerHTML = o.events.map((e) => `<div class="wo-ev ${e.by_technician ? 'tech' : ''}">${e.by_technician ? '<i class="fas fa-helmet-safety"></i> ' : '• '}${esc(when(e.created_at))}${e.author ? ' — ' + esc(e.author) : ''}: ${esc(e.text)}</div>`).join('');
         box.hidden = false;
     } catch (err) { alert(err.message); }
 }
@@ -370,3 +374,109 @@ async function submitNewRequest() {
         await loadRequests();
     } catch (err) { setStatus('srnStatus', err.message, 'err'); }
 }
+
+
+/* ---------------- Board: the technician's most important jobs (time left); the office follows the technicians ---------------- */
+let woBoardData = null;
+let woBoardTick = null;
+const WO_SEEN_KEY = 'woReportsSeen';
+
+function woAgo(at) {
+    if (!at) return '';
+    const min = Math.round((Date.now() - Date.parse(String(at).replace(' ', 'T') + (String(at).includes('Z') ? '' : 'Z'))) / 60000);
+    if (min < 1) return 'الآن';
+    if (min < 60) return `قبل ${min} د`;
+    if (min < 24 * 60) return `قبل ${Math.round(min / 60)} س`;
+    return `قبل ${Math.round(min / 1440)} يوم`;
+}
+
+/* «متبقٍ 2 س 15 د» / «بعد 3 أيام» / «متأخر 1 س» — counted live from the due time */
+function woLeft(o) {
+    if (o.status === 'in_progress') return { text: 'قيد التنفيذ الآن', cls: 'run' };
+    if (!o.due_at) return { text: 'بلا موعد', cls: 'none' };
+    const min = Math.round((Date.parse(o.due_at) - Date.now()) / 60000);
+    const span = (m) => {
+        const a = Math.abs(m);
+        if (a < 60) return `${a} د`;
+        if (a < 24 * 60) return `${Math.floor(a / 60)} س${a % 60 ? ` ${a % 60} د` : ''}`;
+        const d = Math.round(a / 1440);
+        return d === 1 ? 'يوم' : d === 2 ? 'يومين' : `${d} أيام`;
+    };
+    if (o.late || min < 0) return { text: `متأخر ${span(min)}`, cls: 'late' };
+    if (!o.due_exact) {
+        const days = Math.round((Date.parse(o.scheduled_date) - Date.parse(woBoardData.today)) / 86400000);
+        return { text: days <= 0 ? 'اليوم' : days === 1 ? 'غداً' : `بعد ${days} أيام`, cls: days <= 0 ? 'soon' : '' };
+    }
+    return { text: `متبقٍ ${span(min)}`, cls: min <= 120 ? 'soon' : '' };
+}
+
+async function loadWoBoard() {
+    try {
+        woBoardData = await api('GET', '/api/admin/work-orders/board');
+        renderWoBoard();
+        clearInterval(woBoardTick);
+        woBoardTick = setInterval(() => { if (document.visibilityState === 'visible' && $id('tab-work_orders').classList.contains('active')) renderWoBoard(); }, 30000);
+    } catch { /* the list below still works */ }
+}
+
+function renderWoBoard() {
+    const b = woBoardData;
+    if (!b) return;
+    const c = b.counts;
+    const tile = (n, label, cls, filter) => `<button type="button" class="wo-tile ${cls} ${n ? '' : 'zero'}" ${filter ? `onclick="woFilter='${filter}'; renderWoChips(); loadWorkOrders()"` : ''}><strong>${n}</strong><span>${label}</span></button>`;
+    const tiles = `<div class="wo-tiles">
+        ${tile(c.in_progress, 'قيد التنفيذ', 'run', 'in_progress')}
+        ${tile(c.late, 'متأخرة', 'late', 'open')}
+        ${tile(c.today, 'اليوم', 'soon', 'scheduled')}
+        ${tile(c.week, 'خلال 7 أيام', '', 'scheduled')}
+        ${isTech() ? '' : tile(c.unscheduled, 'بلا موعد', 'none', 'new')}
+    </div>`;
+    const jobs = b.top.length ? b.top.map((o) => {
+        const left = woLeft(o);
+        return `<button type="button" class="wo-job ${left.cls}" onclick="woFocus('${esc(o.number)}')">
+            <span class="wo-left">${esc(left.text)}</span>
+            <span class="wo-job-main"><b>${esc(o.kind_label)} — ${esc(o.customer_name)}</b>
+                <small>${esc([o.location, o.scheduled_date ? o.scheduled_date + (o.scheduled_time ? ' ' + o.scheduled_time : '') : ''].filter(Boolean).join(' — '))}${!isTech() && o.technician_name ? ' — ' + esc(o.technician_name) : ''}</small></span>
+            <span class="wo-job-no">${esc(o.number)}</span>
+        </button>`;
+    }).join('') : `<p class="status-text" style="margin:4px 0">${isTech() ? 'لا أعمال قريبة — يومك خفيف 👍' : 'لا أعمال مفتوحة خلال الأيام القادمة'}</p>`;
+    let feed = '';
+    if (!isTech()) {
+        let seen = 0;
+        try { seen = Number(localStorage.getItem(WO_SEEN_KEY)) || 0; } catch { /* private mode */ }
+        const fresh = b.feed.filter((e) => e.id > seen).length;
+        feed = `<details class="wo-feed" ${fresh ? 'open' : ''} ontoggle="if (this.open) woMarkSeen()">
+            <summary><i class="fas fa-helmet-safety"></i> متابعة الفنيين — آخر التقارير والتحديثات ${fresh ? `<span class="badge" style="background:#e67e22;color:#fff">${fresh} جديد</span>` : ''}</summary>
+            ${b.feed.length ? b.feed.map((e) => `<button type="button" class="wo-feed-row ${e.id > seen ? 'new' : ''}" onclick="woFocus('${esc(e.number)}')">
+                <span class="wo-feed-meta"><b>${esc(e.author || 'الفني')}</b> — ${esc(woAgo(e.created_at))} — ${esc(e.number)} — ${esc(e.customer_name)} <span class="badge wo-${esc(e.status)}">${esc(e.status_label)}</span></span>
+                <span class="wo-feed-text">${esc(e.text)}</span></button>`).join('')
+                : '<p class="status-text" style="margin:6px 0">لم يكتب الفنيون تقارير بعد. تظهر هنا عندما يبدأ الفني العمل أو ينهيه أو يكتب ملاحظة.</p>'}
+        </details>`;
+    }
+    $id('woBoard').innerHTML = `<div class="wo-board-head">${isTech() ? `<i class="fas fa-gauge-high"></i> لوحتي — أهم الأعمال الآن` : `<i class="fas fa-gauge-high"></i> الأعمال المفتوحة`}</div>
+        ${tiles}<div class="wo-jobs">${jobs}</div>${feed}`;
+}
+
+function woMarkSeen() {
+    if (!woBoardData || !woBoardData.feed.length) return;
+    try { localStorage.setItem(WO_SEEN_KEY, String(woBoardData.feed[0].id)); } catch { /* private mode */ }
+    setTimeout(renderWoBoard, 4000);
+}
+
+/* Open one order in the list below (with its history) */
+function woFocus(number) {
+    woFilter = '';
+    renderWoChips();
+    $id('woSearch').value = number;
+    loadWorkOrders().then(() => {
+        const o = woOrders.find((x) => x.number === number);
+        if (!o) return;
+        woHistory(o.id, null, true).then(() => {
+            const card = $id('woEvents' + o.id);
+            if (card) card.closest('.wo-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && $id('tab-work_orders').classList.contains('active')) loadWoBoard();
+});

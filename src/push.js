@@ -231,6 +231,16 @@ function workOrderAssigned(db, order, { rescheduled = false } = {}) {
     });
 }
 
+/* The technician started, finished, asked for a new date or wrote a report: the office (work orders staff and managers) */
+function workOrderReport(db, order, { title, text = '', author = '' }) {
+    const keys = accounts(db, (u) => u.role !== 'technician' && u.permissions.includes('work_orders'));
+    return send(db, keys, {
+        title,
+        body: `${order.number} — ${order.customer_name}${author ? ` — ${author}` : ''}${text ? `\n${String(text).slice(0, 160)}` : ''}`,
+        url: '/admin#tab=work_orders', tag: 'wo-report-' + order.number
+    });
+}
+
 /* An appointment request waiting for approval */
 function serviceRequest(db, r) {
     const keys = accounts(db, (u) => u.role !== 'technician' && u.permissions.includes('work_orders'));
@@ -243,5 +253,5 @@ function serviceRequest(db, r) {
 
 module.exports = {
     publicKey, subscribe, unsubscribe, devices, send, keyOf, setSenderForTests,
-    quoteFromCustomer, leadAssigned, humanRequested, workOrderAssigned, serviceRequest
+    quoteFromCustomer, leadAssigned, humanRequested, workOrderAssigned, workOrderReport, serviceRequest
 };
