@@ -1814,15 +1814,20 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Gate motors: sections, items (profit % each), extra fees, installation fee per wilayah ---- */
 
-    const motorsAdmin = () => ({
-        sections: motors.loadSections(db, { includeInactive: true }),
-        items: motors.loadItems(db, { includeInactive: true }),
-        extra_fees: motors.loadExtraFees(db, { includeInactive: true }),
-        profit_percent: motors.profitPercent(getSettings(db)),
-        kinds: motors.KINDS, units: motors.UNITS,
-        regions: db.prepare(`SELECT id, name, governorate, active, motor_installation_fee, overhead_installation_fee, installation_fee
-                             FROM regions ORDER BY governorate, name`).all()
-    });
+    const motorsAdmin = (user) => {
+        const items = motors.loadItems(db, { includeInactive: true });
+        const visibleItems = seesCost(user) ? items : items.map(({ cost, ...item }) => item);
+        return {
+            sections: motors.loadSections(db, { includeInactive: true }),
+            items: visibleItems,
+            extra_fees: motors.loadExtraFees(db, { includeInactive: true }),
+            profit_percent: motors.profitPercent(getSettings(db)),
+            sees_cost: seesCost(user),
+            kinds: motors.KINDS, units: motors.UNITS,
+            regions: db.prepare(`SELECT id, name, governorate, active, motor_installation_fee, overhead_installation_fee, installation_fee
+                                 FROM regions ORDER BY governorate, name`).all()
+        };
+    };
 
     const motorMoney = (v, label) => {
         if (v === '' || v == null) return null;
@@ -1845,7 +1850,7 @@ function createApp(db, { agentClient } = {}) {
         });
     };
 
-    admin.get('/motors', (req, res) => res.json(motorsAdmin()));
+    admin.get('/motors', (req, res) => res.json(motorsAdmin(req.user)));
 
     /* Sections: name, description, installation extra (added to the wilayah's base fee) */
     admin.put('/motors/sections', (req, res) => {
@@ -1868,13 +1873,15 @@ function createApp(db, { agentClient } = {}) {
             for (const x of removed) db.prepare('DELETE FROM motor_extra_fees WHERE section_id = ?').run(x.id);
             replaceRows('motor_sections', ['name', 'description', 'install_extra', 'active'], rows);
         });
-        res.json(motorsAdmin());
+        res.json(motorsAdmin(req.user));
     });
 
     /* Items (kits and accessories, each with its profit %), possible extra fees, default profit */
     admin.put('/motors', (req, res) => {
         const b = req.body || {};
         const sectionIds = new Set(motors.loadSections(db, { includeInactive: true }).map((x) => x.id));
+        const oldItems = motors.loadItems(db, { includeInactive: true });
+        const keepCost = !seesCost(req.user);
         const items = (Array.isArray(b.items) ? b.items : []).map((m) => {
             const row = {
                 id: Number(m.id) || null,
@@ -1882,7 +1889,10 @@ function createApp(db, { agentClient } = {}) {
                 kind: motors.KINDS[m.kind] ? m.kind : 'kit',
                 name: text(m.name, 200), description: text(m.description, 1000),
                 unit: motors.UNITS[m.unit] ? m.unit : 'piece',
-                cost: motorMoney(m.cost, 'التكلفة'), price: motorMoney(m.price, 'سعر البيع'),
+                cost: keepCost
+                    ? (oldItems.find((old) => old.id === Number(m.id)) || {}).cost ?? null
+                    : motorMoney(m.cost, 'التكلفة'),
+                price: motorMoney(m.price, 'سعر البيع'),
                 profit_percent: motorMoney(m.profit_percent, 'نسبة الربح'),
                 active: isOn(m.active), link: text(m.link, 500)
             };
@@ -1908,7 +1918,7 @@ function createApp(db, { agentClient } = {}) {
             if (fees) replaceRows('motor_extra_fees', ['section_id', 'name', 'amount', 'active'], fees);
         });
         if (profit != null) saveSettings(db, { motors_profit_percent: profit });
-        res.json(motorsAdmin());
+        res.json(motorsAdmin(req.user));
     });
 
     /* Start the motors installation fees from the overhead (or shutter) ones — only where empty */
@@ -1916,7 +1926,7 @@ function createApp(db, { agentClient } = {}) {
         const from = (req.body || {}).from === 'shutter' ? 'installation_fee' : 'overhead_installation_fee';
         const info = db.prepare(`UPDATE regions SET motor_installation_fee = ${from}
                                  WHERE motor_installation_fee IS NULL AND ${from} IS NOT NULL`).run();
-        res.json({ ...motorsAdmin(), copied: Number(info.changes) });
+        res.json({ ...motorsAdmin(req.user), copied: Number(info.changes) });
     });
 
     admin.get('/governorates', (req, res) => res.json(db.prepare('SELECT * FROM governorates ORDER BY sort_order, name').all()));

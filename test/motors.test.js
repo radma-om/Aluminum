@@ -5,6 +5,7 @@ const { openDatabase } = require('../src/db');
 const { createApp } = require('../src/server');
 const { executeTool } = require('../src/agent');
 const { exportWorkbook, restoreWorkbook } = require('../src/backup');
+const staff = require('../src/staff');
 
 process.env.ADMIN_TOKEN = 'test-token';
 
@@ -179,6 +180,34 @@ test('admin: sections with a description and an installation extra; profit % per
     const r = copied.regions.find((x) => x.overhead_installation_fee != null && x.id !== nizwa);
     assert.strictEqual(r.motor_installation_fee, r.overhead_installation_fee);
     assert.strictEqual(copied.regions.find((x) => x.id === nizwa).motor_installation_fee, 30);
+});
+
+test('motors staff cannot read purchase costs, and saving keeps hidden costs', async (t) => {
+    const { db, server, call } = await start();
+    t.after(() => server.close());
+    staff.create(db, { username: 'motoronly', display_name: 'المكائن', password: 'motor-pass-1', permissions: ['motors'] });
+    const login = await call('POST', '/api/auth/login', { username: 'motoronly', password: 'motor-pass-1' }, null);
+    assert.strictEqual(login.status, 200, JSON.stringify(login.body));
+    const token = login.body.token;
+
+    const hidden = await call('GET', '/api/admin/motors', null, token);
+    assert.strictEqual(hidden.status, 200);
+    assert.strictEqual(hidden.body.sees_cost, false);
+    assert.ok(hidden.body.items.every((item) => !('cost' in item)));
+
+    const manager = await call('GET', '/api/admin/motors');
+    assert.strictEqual(manager.body.sees_cost, true);
+    const original = manager.body.items.find((item) => item.name.includes('600'));
+    assert.strictEqual(original.cost, 115);
+
+    // The motors editor sends back the rows it can see. The server must not
+    // turn an unseen cost into NULL or require the editor to know it.
+    const items = hidden.body.items.map((item) => ({ ...item, active: Boolean(item.active) }));
+    const saved = await call('PUT', '/api/admin/motors', { items }, token);
+    assert.strictEqual(saved.status, 200, JSON.stringify(saved.body));
+    assert.strictEqual(saved.body.sees_cost, false);
+    assert.ok(saved.body.items.every((item) => !('cost' in item)));
+    assert.strictEqual(db.prepare('SELECT cost FROM motor_items WHERE id = ?').get(original.id).cost, 115);
 });
 
 test('a database of version 3.0.0 (fixed sections) moves its items into the sections', () => {
