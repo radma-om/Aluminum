@@ -525,3 +525,42 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
     .wo-tile strong { font-size: 1.25rem; }
     .wo-left { min-width: 80px; }
 }
+
+/* ---------------- Monthly commissions ---------------- */
+.bonus-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 6px 0 14px; }
+.bonus-kpis .kpi { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: #fff; display: flex; flex-direction: column; }
+.bonus-kpis .kpi small { color: var(--text-light); }
+.bonus-kpis .kpi strong { font-size: 1.35rem; }
+.bonus-kpis .kpi.good { background: #f3fbf6; border-color: #bfe3cc; color: #17663a; }
+.bonus-table td, .bonus-table th { vertical-align: middle; }
+.bonus-row { cursor: pointer; }
+.bonus-row:hover { background: #f7f9fb; }
+.bonus-detail td { background: #fbfcfd; padding: 8px 12px; }
+.bonus-sub { width: 100%; font-size: 0.85rem; }
+.bonus-sub th { background: none; color: var(--text-light); font-weight: 600; }
+.bonus-commission { font-weight: 700; }
+.bonus-commission.pos, .my-bonus .pos { color: #17663a; }
+.bonus-progress { min-width: 130px; }
+.bonus-progress small { color: var(--text-light); }
+.bonus-bar { height: 8px; border-radius: 6px; background: #e9eef3; overflow: hidden; min-width: 90px; }
+.bonus-bar span { display: block; height: 100%; background: linear-gradient(90deg, #f0b44c, #e08e1b); border-radius: 6px; }
+.bonus-bar.ok span { background: linear-gradient(90deg, #3fbf74, #1e9a52); }
+.bonus-bar.big { height: 12px; margin: 8px 0; }
+.bonus-unassigned { margin-top: 12px; font-size: 0.88rem; }
+.my-bonus:not([hidden]) { margin-bottom: 14px; }
+.my-bonus-card { border: 1px solid #d8e6d9; background: linear-gradient(180deg, #f6fbf7, #fff); border-radius: 14px; padding: 12px 14px; }
+.my-bonus-figs { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 6px; font-size: 0.92rem; }
+.bonus-period { margin: 4px 0 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bonus-kpis .kpi small + strong + small, .bonus-kpis .kpi strong + small { margin-top: 2px; font-size: 0.78rem; }
+.bonus-history { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; background: #fff; }
+.bonus-history-head { font-weight: 700; font-size: 0.9rem; margin-bottom: 6px; }
+.bonus-bars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; align-items: end; }
+.bonus-col { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 0.75rem; }
+.bonus-col span { width: 60%; max-width: 46px; background: #cfe0d4; border-radius: 6px 6px 2px 2px; }
+.bonus-col.on span { background: #1e9a52; }
+.bonus-col em { font-style: normal; color: var(--text-light); }
+.my-bonus-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; align-items: baseline; }
+.my-bonus-gauge { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+.my-bonus-gauge strong { font-size: 1.8rem; line-height: 1; }
+.my-bonus-gauge span { color: var(--text-light); font-size: 0.85rem; }
+.bonus-best { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 0.9rem; }

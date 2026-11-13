@@ -252,6 +252,6 @@ function serviceRequest(db, r) {
 }
 
 module.exports = {
-    publicKey, subscribe, unsubscribe, devices, send, keyOf, setSenderForTests,
+    publicKey, subscribe, unsubscribe, devices, send, keyOf, setSenderForTests, accountsOf: accounts,
     quoteFromCustomer, leadAssigned, humanRequested, workOrderAssigned, workOrderReport, serviceRequest
 };

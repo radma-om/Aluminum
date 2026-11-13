@@ -722,6 +722,7 @@
             <div class="nav-group">الرئيسية</div>
             <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')" title="لوحة المؤشرات"><i class="fas fa-chart-line"></i><span class="t-label">لوحة المؤشرات</span></button>
             <button class="tab-btn" data-tab="team" onclick="switchTab('team')" title="أداء الموظفين" hidden><i class="fas fa-ranking-star"></i><span class="t-label">أداء الموظفين</span></button>
+            <button class="tab-btn" data-tab="bonuses" onclick="switchTab('bonuses')" title="المكافآت والعمولات" hidden><i class="fas fa-sack-dollar"></i><span class="t-label">المكافآت والعمولات</span></button>
             <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')" title="متابعة العملاء"><i class="fas fa-headset"></i><span class="t-label">متابعة العملاء</span><span class="count" id="leadsBadge" hidden></span></button>
             <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')" title="العملاء"><i class="fas fa-address-book"></i><span class="t-label">العملاء</span></button>
             <button class="tab-btn" data-tab="quotes" onclick="switchTab('quotes')" title="طلبات العروض"><i class="fas fa-file-invoice-dollar"></i><span class="t-label">طلبات العروض</span></button>
@@ -787,6 +788,7 @@
             </div>
             <div id="dashBody">
                 <section id="pulse" class="pulse" hidden aria-label="نبض اليوم"></section>
+                <section id="bonusPulse" class="my-bonus" hidden aria-label="العمولات هذا الشهر"></section>
                 <div class="kpi-grid" id="kpiGrid"></div>
                 <div class="attention" id="attention"></div>
                 <div class="dash-grid" id="pulseCharts" hidden style="margin-bottom:16px">
@@ -932,6 +934,24 @@
         </div>
 
         <!-- ==================== Employees' performance (managers) ==================== -->
+        <div id="tab-bonuses" class="tab-content">
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-sack-dollar"></i></span> المكافآت والعمولات الشهرية</div>
+                <p class="status-text" style="margin:0 0 10px">
+                    <b>الموظفون:</b> نسبة من المبيعات <u>بعد تجاوز الهدف</u>. المبيعات = فواتير الشهر (غير الملغاة) قبل الضريبة، بدون التركيب والتوصيل. الفاتورة لصاحب العرض.
+                    مثال: هدف 7000، مبيعات 8000، نسبة 2.5% ← (8000 − 7000) × 2.5% = 25 ر.ع.<br>
+                    <b>الفنيون:</b> نسبة من مبلغ التركيب لكل أمر تركيب أكمله الفني في الشهر، من فاتورته أو عرضه، وتُحتسب الفاتورة مرة واحدة.
+                    الهدف والنسبة تُكتب في الجدول وتُحفظ فوراً.</p>
+                <div class="filter-row">
+                    <label>الشهر <input type="month" id="bonusMonth"></label>
+                    <button class="btn btn-outline btn-sm" onclick="bonusCsv()"><i class="fas fa-file-csv"></i> تصدير CSV</button>
+                    <span id="bonusApproval"></span>
+                    <span class="status-text" id="bonusStatus"></span>
+                </div>
+                <div id="bonusBody"></div>
+            </div>
+        </div>
+
         <div id="tab-team" class="tab-content">
             <div class="dash-toolbar">
                 <h2>أداء الموظفين</h2>
@@ -1832,6 +1852,7 @@
         </div>
 
         <div id="tab-quotes" class="tab-content">
+            <div id="myBonus" class="my-bonus" hidden></div>
             <div class="card">
                 <div class="card-title">
                     <span class="icon">Q</span>
@@ -2963,6 +2984,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-invoices.js"></script>
     <script src="admin-workorders.js"></script>
     <script src="admin-team.js"></script>
+    <script src="admin-bonuses.js"></script>
     <script src="admin-pwa.js"></script>
     <script src="admin-customers.js"></script>
     <script src="admin-quotebuilder.js"></script>
