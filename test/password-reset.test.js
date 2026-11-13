@@ -149,6 +149,13 @@ test('without mail settings or the public address, the reset is refused and the 
     assert.match(warn, /الرابط العام للنظام» فارغ/);
 });
 
+test('password reset refuses an insecure non-local public address', async (t) => {
+    const { call } = await start(t, { baseUrl: 'http://calc.example.com' });
+    const r = await call('POST', '/api/auth/forgot', { identifier: 'x' }, null);
+    assert.equal(r.status, 503);
+    assert.match(r.body.error, /غير مفعّلة/);
+});
+
 test('account emails are validated, unique, and kept in backups', async (t) => {
     const { db, call } = await start(t);
     assert.equal((await call('POST', '/api/admin/users', { username: 'a1a', display_name: 'أ', email: 'not-an-email', password: 'pass-12345', permissions: ['leads'] })).status, 400);

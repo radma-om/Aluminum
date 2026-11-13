@@ -786,7 +786,12 @@ function createApp(db, { agentClient } = {}) {
         const base = String(getSettings(db).public_base_url || '').trim().replace(/\/+$/, '');
         try {
             const u = new URL(base);
-            return ['https:', 'http:'].includes(u.protocol) ? `${u.origin}/admin` : null;
+            // Password-reset tokens must not travel over clear-text HTTP. Keep a
+            // small localhost exception so development/test instances can still
+            // exercise the flow without weakening production deployments.
+            const localHost = /^(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)$/i.test(u.hostname);
+            if (u.protocol !== 'https:' && !(u.protocol === 'http:' && localHost)) return null;
+            return `${u.origin}/admin`;
         } catch { return null; }
     };
     const forgotLimit = rateLimit({ windowMs: 60 * 60_000, max: 5 });
