@@ -185,7 +185,7 @@ function renderTeamOverview() {
         <div class="chart-head"><h3>الموظفون</h3><span class="sub">اضغط على موظف لعرض تفاصيله — مرتبون حسب قيمة الفواتير</span></div>
         ${rows.length ? `<div class="table-wrapper"><table class="team-table stack-table"><thead><tr>
             <th>الموظف</th><th>العروض</th><th>القبول</th><th>الفواتير</th><th>المحصّل</th><th>المتابعات</th><th>زمن أول رد</th><th>الآن</th><th>أيام النشاط</th>
-        </tr></thead><tbody>${rows.map((s) => `<tr class="team-row${s.active ? '' : ' muted-row'}" onclick="openTeamEmployee('${esc(s.name).replace(/'/g, '&#39;')}')" tabindex="0">
+        </tr></thead><tbody>${rows.map((s) => `<tr class="team-row${s.active ? '' : ' muted-row'}" data-employee="${esc(s.name)}" tabindex="0">
             <td data-label="الموظف" class="text-start"><span class="team-who"><span class="avatar" style="background:${s.role === 'technician' ? 'var(--series-2)' : 'var(--primary)'}">${esc(initials(s.name))}</span>
                 <span><strong>${esc(s.name)}</strong><small>${esc(s.role_label)}${s.active ? '' : ' — موقوف'}${s.last_seen ? ' · آخر نشاط ' + esc(ago(s.last_seen)) : ''}</small></span></span></td>
             <td data-label="العروض"><b>${fmt.format(s.quote_count)}</b> <small><bdi>${fmt2.format(s.quote_value)}</bdi> ر.ع</small>${bar(s.quote_value, maxQuote)}</td>
@@ -202,6 +202,13 @@ function renderTeamOverview() {
         <div class="card span-6"><div class="chart-head"><h3>قيمة الفواتير لكل موظف</h3><span class="sub">ر.ع</span></div><div class="hbars" id="teamInvoiceBars"></div></div>
         <div class="card span-6"><div class="chart-head"><h3>المتابعات لكل موظف</h3><span class="sub">ردود وتقارير</span></div><div class="hbars" id="teamFollowBars"></div></div>
     </div>`;
+    $id('teamBody').querySelectorAll('.team-row').forEach((row) => {
+        const open = () => openTeamEmployee(row.dataset.employee || '');
+        row.addEventListener('click', open);
+        row.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+        });
+    });
     renderBars('teamInvoiceBars', rows.filter((s) => s.invoice_value).map((s) => ({ label: s.name, value: Math.round(s.invoice_value) })));
     renderBars('teamFollowBars', rows.filter((s) => s.replies + s.reports).map((s) => ({ label: s.name, value: s.replies + s.reports })));
 }
