@@ -34,14 +34,18 @@ function renderBonuses() {
     const bar = (p) => p.progress == null ? '<span class="status-text">لا هدف</span>'
         : `<div class="bonus-bar ${p.reached ? 'ok' : ''}"><span style="width:${Math.min(100, p.progress)}%"></span></div><small>${p.progress}%</small>`;
     const details = (p) => p.kind === 'sales'
-        ? (p.invoices.length ? `<table class="bonus-sub"><thead><tr><th>الفاتورة</th><th>العميل</th><th>التاريخ</th><th>قبل الضريبة</th><th>تركيب وتوصيل</th><th>تُحتسب</th></tr></thead><tbody>
-            ${p.invoices.map((i) => `<tr><td>${esc(i.number)}</td><td>${esc(i.customer_name)}</td><td>${esc(i.date)}</td><td>${bMoney(i.subtotal)}</td><td>${i.excluded ? '−' + bMoney(i.excluded) : '—'}</td><td><b>${bMoney(i.base)}</b></td></tr>`).join('')}
-            </tbody></table>` : '<p class="status-text">لا فواتير هذا الشهر.</p>')
+        ? (p.invoices.length ? `<table class="bonus-sub"><thead><tr><th>الفاتورة</th><th>العميل</th><th>صدرت</th><th>دُفع 50% في</th><th>مدفوع</th><th>قبل الضريبة</th><th>تركيب وتوصيل</th><th>تُحتسب</th></tr></thead><tbody>
+            ${p.invoices.map((i) => `<tr><td>${esc(i.number)}</td><td>${esc(i.customer_name)}</td><td>${esc(i.date)}</td><td>${esc(i.qualified_on || '')}</td><td>${i.paid_percent ?? ''}%</td><td>${bMoney(i.subtotal)}</td><td>${i.excluded ? '−' + bMoney(i.excluded) : '—'}</td><td><b>${bMoney(i.base)}</b></td></tr>`).join('')}
+            </tbody></table>` : '<p class="status-text">لا فواتير مُحتسبة هذا الشهر.</p>')
+          + ((p.pending_invoices || []).length ? `<p class="sub-heading" style="margin-top:10px">بانتظار دفع 50% (${p.pending_invoices.length}) — لا تُحتسب بعد</p>
+            <table class="bonus-sub"><thead><tr><th>الفاتورة</th><th>العميل</th><th>صدرت</th><th>مدفوع</th><th>المتبقي لبلوغ 50%</th><th>ستُحتسب</th></tr></thead><tbody>
+            ${p.pending_invoices.map((i) => `<tr class="pending"><td>${esc(i.number)}</td><td>${esc(i.customer_name)}</td><td>${esc(i.date)}</td><td>${i.paid_percent}%</td><td>${bMoney(Math.max(0, i.total / 2 - i.paid))}</td><td>${bMoney(i.base)}</td></tr>`).join('')}
+            </tbody></table>` : '')
         : (p.orders.length ? `<table class="bonus-sub"><thead><tr><th>أمر العمل</th><th>العميل</th><th>اكتمل</th><th>مبلغ التركيب</th><th></th></tr></thead><tbody>
             ${p.orders.map((o) => `<tr><td>${esc(o.number)}</td><td>${esc(o.customer_name)}</td><td>${esc(o.date)}</td><td><b>${bMoney(o.fee)}</b></td><td class="status-text">${esc(o.note || '')}</td></tr>`).join('')}
             </tbody></table>` : '<p class="status-text">لم يُكمل تركيبات هذا الشهر.</p>');
     const row = (p, cells) => `<tr class="bonus-row" onclick="if (!event.target.closest('input')) this.nextElementSibling.hidden = !this.nextElementSibling.hidden">${cells}</tr>
-        <tr class="bonus-detail" hidden><td colspan="9">${details(p)}</td></tr>`;
+        <tr class="bonus-detail" hidden><td colspan="10">${details(p)}</td></tr>`;
     const per = b.period || {};
     const st = b.stats || {};
     const proj = per.current && st.projected_commission != null;
@@ -53,6 +57,7 @@ function renderBonuses() {
         <div class="kpi-row bonus-kpis">
             <div class="kpi"><small>مبيعات الموظفين (بدون تركيب وتوصيل)</small><strong>${bMoney(b.totals.sales)}</strong></div>
             <div class="kpi"><small>قيمة التركيبات المنجزة</small><strong>${bMoney(b.totals.installations)}</strong></div>
+            ${st.waiting_count ? `<div class="kpi"><small>بانتظار دفع 50% (لا تُحتسب بعد)</small><strong>${bMoney(st.waiting_base)}</strong><small>${st.waiting_count === 1 ? 'فاتورة واحدة' : st.waiting_count + ' فواتير'}</small></div>` : ''}
             <div class="kpi"><small>حققوا الهدف</small><strong>${st.reached ?? 0} / ${st.with_target ?? 0}</strong>${st.avg_progress != null ? `<small>متوسط التحقيق ${st.avg_progress}%</small>` : ''}</div>
             <div class="kpi good"><small>إجمالي العمولات ${per.current ? 'حتى الآن' : ''}</small><strong>${bMoney(b.totals.commission)} ر.ع</strong>${proj ? `<small>المتوقع بنهاية الشهر ≈ ${bMoney(st.projected_commission)}</small>` : ''}</div>
         </div>
@@ -62,13 +67,14 @@ function renderBonuses() {
                 <em>${esc(h.name.split(' ')[0])}${h.approved ? ' ✓' : ''}</em><small class="status-text">${h.with_target ? `${h.reached}/${h.with_target}` : ''}</small></div>`).join('')}
         </div></div>` : ''}
         <p class="sub-heading">الموظفون — عمولة بعد الهدف</p>
-        <div class="table-wrapper"><table class="bonus-table"><thead><tr><th>الموظف</th><th>الهدف (ر.ع)</th><th>النسبة %</th><th>المبيعات</th><th>التقدّم</th><th>فوق الهدف</th><th>العمولة</th>${proj ? '<th>المتوقع</th>' : ''}<th>فواتير</th></tr></thead><tbody>
+        <div class="table-wrapper"><table class="bonus-table"><thead><tr><th>الموظف</th><th>الهدف (ر.ع)</th><th>النسبة %</th><th>المبيعات</th><th>التقدّم</th><th>فوق الهدف</th><th>العمولة</th>${proj ? '<th>المتوقع</th>' : ''}<th>فواتير</th><th>بانتظار الدفع</th></tr></thead><tbody>
         ${sales.map((p) => row(p, `<td><b>${esc(p.name)}</b>${p.role === 'manager' ? ' <small class="status-text">مدير</small>' : ''}</td>
             <td>${input(p, 'target', p.target || null, 100, '100')}</td><td>${input(p, 'percent', p.percent || null, 70, '0.1')}</td>
             <td><b>${bMoney(p.base)}</b></td><td class="bonus-progress">${bar(p)}</td><td>${p.over ? bMoney(p.over) : '—'}</td>
             <td class="bonus-commission ${p.commission ? 'pos' : ''}">${bMoney(p.commission)}</td>
             ${proj ? `<td class="status-text" title="بهذه الوتيرة حتى نهاية الشهر">${p.projected != null ? `${bMoney(p.projected)}<br>≈ ${bMoney(p.projected_commission)} عمولة` : '—'}</td>` : ''}
-            <td>${p.count} <i class="fas fa-chevron-down status-text"></i></td>`)).join('') || '<tr><td colspan="8" class="status-text">لا يوجد موظفون.</td></tr>'}
+            <td>${p.count} <i class="fas fa-chevron-down status-text"></i></td>
+            <td class="status-text">${p.pending ? `${p.pending} — ${bMoney(p.pending_base)}` : '—'}</td>`)).join('') || '<tr><td colspan="8" class="status-text">لا يوجد موظفون.</td></tr>'}
         </tbody></table></div>
         <p class="sub-heading">الفنيون — نسبة من التركيب</p>
         <div class="table-wrapper"><table class="bonus-table"><thead><tr><th>الفني</th><th>النسبة % من التركيب</th><th>تركيبات منجزة</th><th>مبلغ التركيب</th><th>العمولة</th><th></th></tr></thead><tbody>
@@ -134,13 +140,14 @@ function myBonusHtml(m) {
     const prev = m.previous && m.previous.commission > 0 ? `<span class="status-text">${esc(m.previous.name)}: ${bMoney(m.previous.commission)} ر.ع${m.previous.progress != null ? ` (${m.previous.progress}%)` : ''}</span>` : '';
     if (m.kind === 'technician') {
         return `<div class="my-bonus-card"><div class="my-bonus-head"><span><i class="fas fa-sack-dollar"></i> <b>عمولتي هذا الشهر</b></span>${when}</div>
-            <div class="my-bonus-figs"><span>نسبتي <b>${m.percent}%</b> من التركيب</span><span>تركيبات منجزة <b>${m.count}</b></span><span>مبلغ التركيب <b>${bMoney(m.base)}</b></span>
+            <div class="my-bonus-figs"><span>نسبتي <b>${m.percent}%</b> من التركيب — عند اكتمال التركيب</span><span>تركيبات منجزة <b>${m.count}</b></span><span>مبلغ التركيب <b>${bMoney(m.base)}</b></span>
                 <span class="pos">العمولة <b>${bMoney(m.commission)} ر.ع</b></span>${m.projected_commission != null ? `<span class="status-text">المتوقع ≈ ${bMoney(m.projected_commission)}</span>` : ''}${prev}</div></div>`;
     }
     return `<div class="my-bonus-card"><div class="my-bonus-head"><span><i class="fas fa-bullseye"></i> <b>هدفي هذا الشهر</b></span>${when}</div>
         ${m.target ? `<div class="my-bonus-gauge"><strong class="${m.reached ? 'pos' : ''}">${m.progress}%</strong><span>من الهدف (${bMoney(m.target)} ر.ع)</span></div>
             <div class="bonus-bar big ${m.reached ? 'ok' : ''}"><span style="width:${Math.min(100, m.progress)}%"></span></div>` : ''}
-        <div class="my-bonus-figs"><span>مبيعاتي <b>${bMoney(m.base)}</b> <small class="status-text">(بدون التركيب والتوصيل)</small></span>
+        <div class="my-bonus-figs"><span>مبيعاتي المُحتسبة <b>${bMoney(m.base)}</b> <small class="status-text">(مدفوع منها 50% فأكثر، بدون التركيب والتوصيل)</small></span>
+            ${m.pending ? `<span class="status-text">⏳ بانتظار الدفع: ${m.pending} ${m.pending === 1 ? 'فاتورة' : 'فواتير'} بقيمة ${bMoney(m.pending_base)} — تُحتسب عند دفع 50%</span>` : ''}
             <span>نسبة عمولتي <b>${m.percent}%</b> بعد الهدف</span>
             ${m.reached ? `<span class="pos">تجاوزت الهدف بـ <b>${bMoney(m.over)}</b></span>` : m.target ? `<span>متبقٍ للهدف <b>${bMoney(m.left_to_target)}</b></span>` : ''}
             <span class="pos">عمولتي <b>${bMoney(m.commission)} ر.ع</b></span>
