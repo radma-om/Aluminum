@@ -124,6 +124,7 @@ test('employees follow a customer: assign, report, recommendation, handover, sta
     ]);
     assert.match(handed.body.notes[0].text, /من سالم إلى مريم[^]*يوم الخميس/);
     assert.ok(handed.body.messages.some((m) => m.role === 'system' && /جديد ← قيد المتابعة \(سالم\)/.test(m.text)));
+    assert.equal((await call('PATCH', `/api/admin/leads/${lead.id}`, { assigned_to: 'موظف غير موجود' })).status, 400);
 
     // Employee 2 answers on WhatsApp through MazBot; the AI agent steps back
     const reply = await call('POST', `/api/admin/leads/${lead.id}/reply`, { text: 'مرحباً خالد، نؤكد موعد الخميس' }, 'مريم');

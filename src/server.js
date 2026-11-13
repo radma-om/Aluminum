@@ -1547,6 +1547,10 @@ function createApp(db, { agentClient } = {}) {
 
     admin.patch('/leads/:id', (req, res) => {
         const { lead: before } = leadFor(req, req.params.id);
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, 'assigned_to')) {
+            const assigned = String((req.body || {}).assigned_to || '').trim();
+            if (assigned && !assignableStaff().includes(assigned)) throw httpError(400, 'الموظف المعيّن غير موجود أو غير مفعّل');
+        }
         const out = leads.update(db, req.params.id, req.body || {}, staffName(req));
         const after = db.prepare('SELECT * FROM leads WHERE id = ?').get(before.id);
         if (after && after.assigned_to && after.assigned_to !== before.assigned_to) push.leadAssigned(db, after, staffName(req)).catch(() => {});

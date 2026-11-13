@@ -188,6 +188,7 @@ test('follow-up: notes carry the account name; "own customers" employees never s
     // The author is the account, whatever name the browser sends
     const noted = await call('POST', `/api/admin/leads/${mine.id}/notes`, { kind: 'report', text: 'اتصلت بالعميل' }, salem, { 'X-Staff-Name': encodeURIComponent('مريم') });
     assert.strictEqual(noted.body.notes[0].author, 'سالم');
+    assert.strictEqual((await call('PATCH', `/api/admin/leads/${mine.id}`, { assigned_to: 'اسم غير معتمد' }, salem)).status, 400);
     // Hand over to Mariam: Salem no longer sees the customer; Mariam (all customers) does
     await call('PATCH', `/api/admin/leads/${mine.id}`, { assigned_to: 'مريم', handover_text: 'يحتاج زيارة' }, salem);
     assert.strictEqual((await call('GET', `/api/admin/leads/${mine.id}`, null, salem)).status, 404);
