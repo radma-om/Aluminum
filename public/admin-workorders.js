@@ -413,6 +413,8 @@ function woLeft(o) {
 async function loadWoBoard() {
     try {
         woBoardData = await api('GET', '/api/admin/work-orders/board');
+        // The technician's own commission this month (when the manager set a %)
+        if (isTech() && typeof loadMyBonus === 'function') woBoardData.my_bonus = await loadMyBonus();
         renderWoBoard();
         clearInterval(woBoardTick);
         woBoardTick = setInterval(() => { if (document.visibilityState === 'visible' && $id('tab-work_orders').classList.contains('active')) renderWoBoard(); }, 30000);
@@ -454,7 +456,7 @@ function renderWoBoard() {
         </details>`;
     }
     $id('woBoard').innerHTML = `<div class="wo-board-head">${isTech() ? `<i class="fas fa-gauge-high"></i> لوحتي — أهم الأعمال الآن` : `<i class="fas fa-gauge-high"></i> الأعمال المفتوحة`}</div>
-        ${tiles}<div class="wo-jobs">${jobs}</div>${feed}`;
+        ${tiles}<div class="wo-jobs">${jobs}</div>${feed}${isTech() && b.my_bonus && typeof myBonusHtml === 'function' ? `<div class="my-bonus" style="margin-top:10px">${myBonusHtml(b.my_bonus)}</div>` : ''}`;
 }
 
 function woMarkSeen() {

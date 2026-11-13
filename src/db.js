@@ -724,6 +724,14 @@ function migrate(db) {
     addColumns('overhead_motors', { description: 'TEXT' });
     // A work order event written by the technician (a report the office follows)
     addColumns('work_order_events', { by_technician: 'INTEGER NOT NULL DEFAULT 0' });
+    // Monthly commission: a salesperson's target and % over it; a technician's % of installation
+    addColumns('staff_users', { bonus_target: 'REAL', bonus_percent: 'REAL' });
+    db.exec(`CREATE TABLE IF NOT EXISTS bonus_months (
+        month       TEXT PRIMARY KEY,
+        data_json   TEXT NOT NULL,
+        approved_by TEXT,
+        approved_at TEXT NOT NULL
+    )`);
     db.exec(`CREATE TABLE IF NOT EXISTS overhead_types (
         name        TEXT PRIMARY KEY,
         description TEXT
