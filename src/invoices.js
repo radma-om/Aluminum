@@ -234,16 +234,28 @@ function list(db, { q = '', state = '', from = '', to = '' } = {}) {
     return state ? rows.filter((r) => r.state === state) : rows;
 }
 
-/* This month's figures for the panel (issued, collected, still owed overall) */
-function summary(db, { today = leads.localToday() } = {}) {
+/* This month's figures for the panel (issued, collected, still owed overall).
+   When mineOf is set, match the same customer scope as staff.seesPhones: an
+   invoice is visible unless one of the customer's leads is assigned to another
+   employee. */
+function summary(db, { today = leads.localToday(), mineOf = null } = {}) {
     const month = today.slice(0, 7);
-    const issued = db.prepare("SELECT COUNT(*) AS n, IFNULL(SUM(total), 0) AS v FROM invoices WHERE status = 'issued' AND substr(issue_date, 1, 7) = ?").get(month);
+    const scope = mineOf
+        ? ` AND NOT EXISTS (SELECT 1 FROM leads scope_lead
+                           WHERE scope_lead.phone = i.customer_phone
+                             AND scope_lead.assigned_to IS NOT NULL
+                             AND TRIM(scope_lead.assigned_to) <> ''
+                             AND scope_lead.assigned_to <> ?)`
+        : '';
+    const args = (values) => mineOf ? [...values, mineOf] : values;
+    const issued = db.prepare(`SELECT COUNT(*) AS n, IFNULL(SUM(i.total), 0) AS v FROM invoices i
+                               WHERE i.status = 'issued' AND substr(i.issue_date, 1, 7) = ?${scope}`).get(...args([month]));
     const collected = db.prepare(`SELECT IFNULL(SUM(p.amount), 0) AS v FROM payments p JOIN invoices i ON i.id = p.invoice_id
-                                  WHERE i.status = 'issued' AND substr(p.paid_on, 1, 7) = ?`).get(month).v;
+                                  WHERE i.status = 'issued' AND substr(p.paid_on, 1, 7) = ?${scope}`).get(...args([month])).v;
     const owed = db.prepare(`SELECT IFNULL(SUM(i.total - IFNULL((SELECT SUM(amount) FROM payments WHERE invoice_id = i.id), 0)), 0) AS v
-                             FROM invoices i WHERE i.status = 'issued'`).get().v;
+                             FROM invoices i WHERE i.status = 'issued'${scope}`).get(...args([])).v;
     const overdue = db.prepare(`SELECT COUNT(*) AS n FROM invoices i WHERE i.status = 'issued' AND i.due_date IS NOT NULL AND i.due_date < ?
-                                AND i.total - IFNULL((SELECT SUM(amount) FROM payments WHERE invoice_id = i.id), 0) > ?`).get(today, EPS).n;
+                                AND i.total - IFNULL((SELECT SUM(amount) FROM payments WHERE invoice_id = i.id), 0) > ?${scope}`).get(...args([today, EPS])).n;
     return { month, issued_count: issued.n, issued_value: round2(issued.v), collected: round2(collected), outstanding: round2(owed), overdue };
 }
 

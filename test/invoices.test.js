@@ -165,7 +165,12 @@ test('staff without the invoices section cannot see invoices; the customer scope
     assert.equal((await call('GET', '/api/admin/invoices', null, sales)).status, 403);
     assert.equal((await call('POST', `/api/admin/quotes/${q.id}/invoice`, {}, sales)).status, 403);
     const mine = await login('mine', 'pass-12345');
-    assert.equal((await call('GET', '/api/admin/invoices', null, mine)).body.invoices.length, 0, 'another employee\'s customer');
+    const mineInvoices = (await call('GET', '/api/admin/invoices', null, mine)).body;
+    assert.equal(mineInvoices.invoices.length, 0, 'another employee\'s customer');
+    assert.deepEqual(mineInvoices.summary, {
+        month: leads.localToday().slice(0, 7), issued_count: 0, issued_value: 0,
+        collected: 0, outstanding: 0, overdue: 0
+    }, 'the summary follows the employee customer scope');
     assert.equal((await call('GET', `/api/admin/invoices/${inv.id}`, null, mine)).status, 404);
 });
 

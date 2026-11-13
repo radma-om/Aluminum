@@ -1265,7 +1265,8 @@ function createApp(db, { agentClient } = {}) {
     admin.get('/invoices', (req, res) => res.json({
         invoices: invoices.list(db, { q: String(req.query.q || '').trim(), state: String(req.query.state || ''), from: String(req.query.from || ''), to: String(req.query.to || '') })
             .filter((inv) => staff.seesQuote(db, req.user, inv)).map(invoicePublic),
-        summary: invoices.summary(db), methods: invoices.METHODS, states: invoices.PAY_STATES, deposit_types: invoices.DEPOSIT_TYPES
+        summary: invoices.summary(db, { mineOf: req.user.leads_scope === 'mine' ? req.user.display_name : null }),
+        methods: invoices.METHODS, states: invoices.PAY_STATES, deposit_types: invoices.DEPOSIT_TYPES
     }));
     admin.get('/invoices/:id', (req, res) => res.json(invoicePublic(invoiceFor(req, req.params.id))));
     admin.get('/invoices/:id/pdf', (req, res) => sendInvoicePdf(res, invoiceFor(req, req.params.id)));
