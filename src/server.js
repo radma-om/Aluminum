@@ -1191,6 +1191,10 @@ function createApp(db, { agentClient } = {}) {
         const phone = customers.normalizePhone(b.customer_phone);
         const name = clip(b.customer_name, 120);
         if (phone.length < 8) throw httpError(400, 'اكتب رقم جوال العميل');
+        // A limited employee may type a phone instead of selecting a customer
+        // record. Apply the same customer scope here so this shortcut cannot
+        // create activity for another employee's customer.
+        if (!staff.seesCustomer(db, req.user, { phone })) throw httpError(404, 'العميل غير موجود');
         if (!name) throw httpError(400, 'اكتب اسم العميل');
         return { name, phone, city: clip(b.customer_city, 80) || null };
     };
@@ -1368,6 +1372,9 @@ function createApp(db, { agentClient } = {}) {
         } else if (b.quote_id) {
             source = { quote: parseQuote(quoteFor(req, b.quote_id)) };
         }
+        if (!source && !staff.seesCustomer(db, req.user, { phone: customers.normalizePhone(b.customer_phone) })) {
+            throw httpError(404, 'العميل غير موجود');
+        }
         const order = workorders.create(db, b, staffName(req), { source });
         webhooks.emit(db, 'work_order.created', order);
         res.status(201).json(order);
@@ -1419,6 +1426,9 @@ function createApp(db, { agentClient } = {}) {
     });
     admin.post('/service-requests', (req, res) => {
         officeOnly(req);
+        if (!staff.seesCustomer(db, req.user, { phone: customers.normalizePhone((req.body || {}).customer_phone) })) {
+            throw httpError(404, 'العميل غير موجود');
+        }
         const r = servicerequests.create(db, req.body || {}, { source: 'staff', author: staffName(req) });
         res.status(201).json(r);
     });
