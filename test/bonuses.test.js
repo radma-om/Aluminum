@@ -165,3 +165,16 @@ test('the month runs 1st to last day; pace and statistics; it closes by itself w
     assert.equal(h.length, 6);
     assert.deepEqual(h.slice(-2).map((x) => x.commission), [25, 0]);
 });
+
+test('automatic month close retries after the first run had no bonus plan', () => {
+    const db = openDatabase(':memory:');
+    const last = bonuses.addMonths(month, -1);
+    assert.equal(bonuses.closeEndedMonth(db), null);
+    const ahmed = staff.create(db, { username: 'late-plan', display_name: 'موظف لاحق', password: 'pass-12345', permissions: ['quotes'] });
+    bonuses.setPlan(db, ahmed.id, { target: 1, percent: 5 });
+    const inv = sale(db, 'موظف لاحق', 100);
+    db.prepare('UPDATE invoices SET issue_date = ? WHERE id = ?').run(last + '-15', inv.id);
+    const closed = bonuses.closeEndedMonth(db);
+    assert.equal(closed.month, last);
+    assert.equal(closed.approved.by, 'إغلاق تلقائي بنهاية الشهر');
+});

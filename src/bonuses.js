@@ -166,12 +166,14 @@ function closeEndedMonth(db, nowMs = Date.now()) {
     const prev = addMonths(thisMonth(nowMs), -1);
     const done = db.prepare("SELECT last_key FROM scheduled_runs WHERE name = 'bonus_close'").get();
     if (done && done.last_key >= prev) return null;
-    db.prepare(`INSERT INTO scheduled_runs (name, last_key, at) VALUES ('bonus_close', ?, datetime('now'))
-                ON CONFLICT(name) DO UPDATE SET last_key = excluded.last_key, at = excluded.at`).run(prev);
     // Nothing to close before the commissions were set up
     const anyPlan = db.prepare('SELECT COUNT(*) AS n FROM staff_users WHERE bonus_percent > 0').get().n;
     if (!anyPlan) return null;
     const s = db.prepare('SELECT 1 FROM bonus_months WHERE month = ?').get(prev) ? statement(db, prev) : approve(db, prev, 'إغلاق تلقائي بنهاية الشهر');
+    // Mark it only after a statement exists. A first run with no plans must
+    // not permanently skip the previous month if plans are added later.
+    db.prepare(`INSERT INTO scheduled_runs (name, last_key, at) VALUES ('bonus_close', ?, datetime('now'))
+                ON CONFLICT(name) DO UPDATE SET last_key = excluded.last_key, at = excluded.at`).run(prev);
     const push = require('./push');
     push.send(db, push.accountsOf(db, (u) => u.role === 'manager'), {
         title: `💰 أُغلق كشف عمولات ${monthName(prev)}`,
