@@ -145,8 +145,8 @@ test('the month runs 1st to last day; pace and statistics; it closes by itself w
     assert.deepEqual([mine.previous.month, mine.previous.commission], [last, 25]);
 
     // A device for the general manager and for Ahmed
-    await push.subscribe(db, { owner: true }, { endpoint: 'https://push.example.com/send/boss', keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } });
-    await push.subscribe(db, { id: ahmed.id }, { endpoint: 'https://push.example.com/send/ahmed', keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } });
+    await push.subscribe(db, { owner: true }, { endpoint: 'https://fcm.googleapis.com/send/boss', keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } });
+    await push.subscribe(db, { id: ahmed.id }, { endpoint: 'https://fcm.googleapis.com/send/ahmed', keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } });
     // The 1st of this month: last month closes as it stood, once
     const closed = bonuses.closeEndedMonth(db);
     assert.equal(closed.approved.by, 'إغلاق تلقائي بنهاية الشهر');
