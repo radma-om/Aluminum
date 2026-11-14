@@ -43,7 +43,7 @@ function build(db, { days = 30, user = null } = {}) {
     const tomorrow = day(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1)));
     const employee = user && user.role !== 'manager' ? user.display_name : null;
 
-    const rows = db.prepare('SELECT id, total, status, source, customer_city, details_json, created_at FROM quotes WHERE created_at >= ? ORDER BY id')
+    const rows = db.prepare('SELECT id, total, status, source, customer_city, customer_phone, details_json, created_at FROM quotes WHERE created_at >= ? ORDER BY id')
         .all(utcOf(previousFrom))
         .map((q) => ({ ...q, details: parseJson(q.details_json), date: local(q.created_at) }))
         .filter((q) => !employee || quoteOwner(q) === employee);
@@ -63,6 +63,19 @@ function build(db, { days = 30, user = null } = {}) {
     const won = (list) => list.filter((q) => q.status === 'accepted' || q.status === 'done');
     const rate = (list) => (list.length ? Math.round((won(list).length / list.length) * 1000) / 10 : 0);
     const sourceKey = (q) => (q.source === 'whatsapp' ? 'mazbot' : q.source);
+    // Who made the quote: an employee (the quote builder) or the customer (calculators, website, WhatsApp — a customer
+    // often prices several options, so their acceptance is also given per customer)
+    const byStaff = (q) => q.source === 'staff' || Boolean(q.details && q.details.staff_quote);
+    const origin = (list, staffSide) => {
+        const mine = list.filter((q) => byStaff(q) === staffSide);
+        const phones = new Set(mine.map((q) => q.customer_phone).filter(Boolean));
+        const wonPhones = new Set(won(mine).map((q) => q.customer_phone).filter(Boolean));
+        return {
+            count: mine.length, value: sum(mine), accepted: won(mine).length, accepted_value: sum(won(mine)), win_rate: rate(mine),
+            customers: phones.size, customers_won: wonPhones.size,
+            customer_win_rate: phones.size ? Math.round((wonPhones.size / phones.size) * 1000) / 10 : 0
+        };
+    };
     const placeOf = (q) => q.details.region || (q.customer_city || '').split('،')[0].trim() || 'غير محدد';
 
     // Follow-up: open customers by status and by employee, and follow-ups due
@@ -141,6 +154,10 @@ function build(db, { days = 30, user = null } = {}) {
         days: n,
         from,
         to: todayStr,
+        by_origin: {
+            staff: { ...origin(current, true), previous: origin(previous, true) },
+            customers: { ...origin(current, false), previous: origin(previous, false) }
+        },
         kpis: {
             quotes: { value: current.length, previous: previous.length },
             value: { value: sum(current), previous: sum(previous) },

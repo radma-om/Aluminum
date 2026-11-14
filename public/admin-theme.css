@@ -565,3 +565,19 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
 .my-bonus-gauge span { color: var(--text-light); font-size: 0.85rem; }
 .bonus-best { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 0.9rem; }
 .bonus-sub tr.pending td { color: var(--text-light); }
+
+/* ---------------- Dashboard: quotes by who made them ---------------- */
+.origin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin: 14px 0; }
+.origin-card { background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; }
+.origin-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; margin-bottom: 8px; }
+.origin-head i { color: var(--primary); }
+.origin-main { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; }
+.origin-main small { color: var(--text-light); display: block; }
+.origin-main strong { font-size: 1.9rem; line-height: 1.15; }
+.origin-main strong small { display: inline; font-size: 1rem; margin-inline-start: 2px; }
+.origin-bar { height: 7px; border-radius: 5px; background: #e9eef3; overflow: hidden; margin: 6px 0 4px; }
+.origin-bar span { display: block; height: 100%; background: #1e9a52; border-radius: 5px; }
+.origin-bar.alt span { background: #2f6fb5; }
+.origin-main .k-delta, .origin-main .muted { font-size: 0.78rem; }
+.origin-main .up { color: #17663a; } .origin-main .down { color: #a93226; }
+.origin-figs { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 0.88rem; }

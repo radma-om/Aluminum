@@ -16,7 +16,9 @@
    ============================================================= */
 const fs = require('node:fs');
 const path = require('node:path');
-const ExcelJS = require('exceljs');
+// Loaded when a backup is made or read, not at start (it is the heaviest library)
+let excel = null;
+const xl = () => (excel = excel || require('exceljs'));
 const { resolveDbPath } = require('./db');
 
 /* Parents before children (insert order); delete runs in reverse */
@@ -75,7 +77,7 @@ const columnsOf = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all()
 const exportedColumns = (db, table) => columnsOf(db, table).filter((c) => !(NOT_EXPORTED[table] && NOT_EXPORTED[table].has(c)));
 
 async function exportWorkbook(db) {
-    const wb = new ExcelJS.Workbook();
+    const wb = new (xl().Workbook)();
     wb.creator = 'Radma pricing';
     wb.created = new Date();
     const info = wb.addWorksheet(INFO_SHEET, { views: [{ rightToLeft: true }] });
@@ -112,7 +114,7 @@ function cellValue(v) {
 }
 
 async function readWorkbook(buffer) {
-    const wb = new ExcelJS.Workbook();
+    const wb = new (xl().Workbook)();
     try { await wb.xlsx.load(buffer); } catch { throw err400('الملف ليس ملف Excel صالحاً'); }
     const missing = TABLES.filter(([table, label]) => !OPTIONAL.has(table) && !wb.getWorksheet(label) && !wb.getWorksheet(table))
         .map(([, label]) => label);
