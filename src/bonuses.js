@@ -217,7 +217,8 @@ function closeEndedMonth(db, nowMs = Date.now()) {
 
 function approve(db, month, by) {
     if (!isMonth(month)) throw err(400, 'الشهر غير صالح');
-    if (month > thisMonth()) throw err(400, 'لا يُعتمد شهر لم يبدأ بعد');
+    // A month is final only when it has ended (it closes by itself on the 1st of the next month)
+    if (month >= thisMonth()) throw err(400, 'يُعتمد الكشف بعد انتهاء الشهر — يُغلق تلقائياً في أول الشهر التالي');
     if (db.prepare('SELECT 1 FROM bonus_months WHERE month = ?').get(month)) throw err(400, 'هذا الشهر معتمد من قبل');
     db.prepare("INSERT INTO bonus_months (month, data_json, approved_by, approved_at) VALUES (?, ?, ?, datetime('now'))")
         .run(month, JSON.stringify(compute(db, month)), String(by || '').slice(0, 80) || null);
@@ -228,6 +229,12 @@ function unapprove(db, month) {
     if (!isMonth(month)) throw err(400, 'الشهر غير صالح');
     db.prepare('DELETE FROM bonus_months WHERE month = ?').run(month);
     return statement(db, month);
+}
+
+/* A statement saved for a month that had not ended (allowed before): its figures froze mid-month, before
+   later payments and cancellations. Dropped at start so the month is counted live again. */
+function dropUnfinished(db, nowMs = Date.now()) {
+    return Number(db.prepare('DELETE FROM bonus_months WHERE month >= ?').run(thisMonth(nowMs)).changes);
 }
 
 /* The manager sets an employee's target and % (a technician: the % of installation only) */
@@ -258,4 +265,4 @@ function mine(db, user, month = thisMonth()) {
         previous: before ? { month: addMonths(month, -1), name: monthName(addMonths(month, -1)), commission: before.commission, progress: before.progress ?? null } : null };
 }
 
-module.exports = { PAID_SHARE, statement, approve, unapprove, setPlan, mine, compute, history, closeEndedMonth, period, share, isInstallation, isDelivery, thisMonth, addMonths };
+module.exports = { PAID_SHARE, dropUnfinished, statement, approve, unapprove, setPlan, mine, compute, history, closeEndedMonth, period, share, isInstallation, isDelivery, thisMonth, addMonths };
