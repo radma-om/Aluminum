@@ -252,6 +252,16 @@ function workOrderAssigned(db, order, { rescheduled = false } = {}) {
     });
 }
 
+/* A work order cancelled with its invoice: the technician should not go */
+function workOrderCancelled(db, order, why = '') {
+    if (!order || !order.technician_id) return Promise.resolve(0);
+    return send(db, [`u:${order.technician_id}`], {
+        title: '❌ أُلغي أمر عمل — لا تذهب',
+        body: `${order.number} — ${order.customer_name}${order.scheduled_date ? ` — ${order.scheduled_date}` : ''}${why ? `\n${why}` : ''}`,
+        url: '/admin#tab=work_orders', tag: 'wo-' + order.number
+    });
+}
+
 /* The technician started, finished, asked for a new date or wrote a report: the office (work orders staff and managers) */
 function workOrderReport(db, order, { title, text = '', author = '' }) {
     const keys = accounts(db, (u) => u.role !== 'technician' && u.permissions.includes('work_orders'));
@@ -274,5 +284,5 @@ function serviceRequest(db, r) {
 
 module.exports = {
     publicKey, subscribe, unsubscribe, devices, send, keyOf, setSenderForTests, accountsOf: accounts,
-    quoteFromCustomer, leadAssigned, humanRequested, workOrderAssigned, workOrderReport, serviceRequest
+    quoteFromCustomer, leadAssigned, humanRequested, workOrderAssigned, workOrderReport, workOrderCancelled, serviceRequest
 };

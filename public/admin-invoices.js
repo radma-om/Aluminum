@@ -226,10 +226,12 @@ async function deletePayment(paymentId) {
 }
 
 async function cancelInvoice() {
-    const reason = prompt(`سبب إلغاء الفاتورة ${invCurrent.number}؟ (تبقى برقمها في القائمة، ويمكن إصدار فاتورة جديدة للعرض)`);
+    const reason = prompt(`سبب إلغاء الفاتورة ${invCurrent.number}؟ (تبقى برقمها في القائمة، ويمكن إصدار فاتورة جديدة للعرض)\nأوامر العمل المفتوحة لهذه الفاتورة تُلغى معها ويُبلَّغ الفني.`);
     if (!reason || !reason.trim()) return;
     try {
-        showInvoice(await api('POST', `/api/admin/invoices/${invCurrent.id}/cancel`, { reason: reason.trim() }));
+        const r = await api('POST', `/api/admin/invoices/${invCurrent.id}/cancel`, { reason: reason.trim() });
+        showInvoice(r);
+        if (r.cancelled_work_orders && r.cancelled_work_orders.length) alert(`أُلغيت معها أوامر العمل: ${r.cancelled_work_orders.join('، ')} — وأُبلغ الفني.`);
         loadInvoices().catch(() => {});
         loadQuotes().catch(() => {});
     } catch (err) { alert(err.message); }
