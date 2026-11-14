@@ -193,8 +193,32 @@ function cancel(db, invoiceId, reason, author = null) {
         if (inv.payments.length) throw err(400, 'على الفاتورة دفعات مسجّلة — احذفها أولاً (أو سجّل استرداد المبلغ) ثم ألغِ الفاتورة');
         db.prepare("UPDATE invoices SET status = 'cancelled', cancel_reason = ?, cancelled_at = datetime('now') WHERE id = ?")
             .run(why + (author ? ` (${author})` : ''), inv.id);
+        reopenAfterCancel(db, inv, why, author);
     });
     return get(db, invoiceId);
+}
+
+/* Issuing an invoice made its quote «مقبول» and the customer «تم البيع». Cancelled with no other invoice
+   standing, both go back (the statistics count accepted quotes and won customers); work already done stays. */
+function reopenAfterCancel(db, inv, why = '', author = null) {
+    if (inv.quote_id && !db.prepare("SELECT 1 FROM invoices WHERE quote_id = ? AND status = 'issued' AND id != ?").get(inv.quote_id, inv.id)) {
+        db.prepare("UPDATE quotes SET status = 'contacted' WHERE id = ? AND status = 'accepted'").run(inv.quote_id);
+    }
+    const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(inv.customer_phone);
+    if (!lead) return;
+    if (why !== null) leads.addMessage(db, lead, 'system', `❌ أُلغيت الفاتورة ${inv.number}${why ? ` — ${why}` : ''}${author ? ` (${author})` : ''}`);
+    const stillSold = db.prepare("SELECT 1 FROM invoices WHERE customer_phone = ? AND status = 'issued' AND id != ?").get(inv.customer_phone, inv.id)
+        || db.prepare("SELECT 1 FROM quotes WHERE customer_phone = ? AND status IN ('accepted', 'done')").get(inv.customer_phone);
+    if (lead.status === 'won' && !stillSold) db.prepare("UPDATE leads SET status = 'following' WHERE id = ?").run(lead.id);
+}
+
+/* Invoices cancelled before the rule above: their quotes / customers still counted as sold (run at start; nothing once clean) */
+function repairCancelled(db) {
+    const rows = db.prepare(`SELECT i.* FROM invoices i JOIN quotes q ON q.id = i.quote_id
+                             WHERE i.status = 'cancelled' AND q.status = 'accepted'
+                             AND NOT EXISTS (SELECT 1 FROM invoices j WHERE j.quote_id = i.quote_id AND j.status = 'issued')`).all();
+    for (const inv of rows) reopenAfterCancel(db, inv, null);
+    return rows.length;
 }
 
 function update(db, invoiceId, patch) {
@@ -264,4 +288,4 @@ function summary(db, { today = leads.localToday(), mineOf = null } = {}) {
     return { month, issued_count: issued.n, issued_value: round2(issued.v), collected: round2(collected), outstanding: round2(owed), overdue };
 }
 
-module.exports = { createFromQuote, addPayment, deletePayment, cancel, update, list, get, byNumber, activeForQuote, summary, METHODS, PAY_STATES, DEPOSIT_TYPES };
+module.exports = { createFromQuote, addPayment, deletePayment, cancel, update, list, get, byNumber, activeForQuote, summary, METHODS, PAY_STATES, DEPOSIT_TYPES, repairCancelled };

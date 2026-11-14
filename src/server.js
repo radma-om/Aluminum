@@ -443,6 +443,8 @@ function createApp(db, { agentClient } = {}) {
     const app = express();
     pruneOldLogs(db);
     try { workorders.cancelOrphans(db); } catch (err) { console.error('[work-orders] orphans', err.message); }
+    // Statistics: quotes / customers of cancelled invoices no longer counted as sold; no frozen unfinished month
+    try { invoices.repairCancelled(db); require('./bonuses').dropUnfinished(db); } catch (err) { console.error('[stats] repair', err.message); }
     setInterval(() => { try { pruneOldLogs(db); } catch (err) { console.error('[prune]', err.message); } }, 24 * 3600_000).unref();
     // Customer address: only from the proxies listed in TRUSTED_PROXIES (default: none). An invalid
     // value is reported and ignored — the app keeps running (and answering WhatsApp) without trust.

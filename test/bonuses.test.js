@@ -106,14 +106,20 @@ test('the manager: the month, setting targets, approving (kept as it was); an em
 
     const s = (await call('GET', `/api/admin/bonuses?month=${month}`)).body;
     assert.equal(s.totals.commission, 25);
-    const ok = await call('POST', `/api/admin/bonuses/${month}/approve`);
+    // The running month cannot be approved (its figures are not final)
+    assert.equal((await call('POST', `/api/admin/bonuses/${month}/approve`)).status, 400);
+    // Last month: the same sale, paid then — approved, then kept as it was
+    const last = bonuses.addMonths(month, -1);
+    db.prepare('UPDATE invoices SET issue_date = ?').run(last + '-10');
+    db.prepare('UPDATE payments SET paid_on = ?').run(last + '-12');
+    const ok = await call('POST', `/api/admin/bonuses/${last}/approve`);
     assert.equal(ok.body.approved.by, 'المدير العام');
-    // Later changes do not move an approved month
+    assert.equal(ok.body.people[0].commission, 25);
     bonuses.setPlan(db, ahmed.id, { target: 1000, percent: 5 });
-    assert.equal((await call('GET', `/api/admin/bonuses?month=${month}`)).body.people[0].commission, 25);
-    assert.equal((await call('POST', `/api/admin/bonuses/${month}/approve`)).status, 400, 'once');
+    assert.equal((await call('GET', `/api/admin/bonuses?month=${last}`)).body.people[0].commission, 25);
+    assert.equal((await call('POST', `/api/admin/bonuses/${last}/approve`)).status, 400, 'once');
     // Withdrawn: computed again with the new figures
-    const back = await call('DELETE', `/api/admin/bonuses/${month}/approve`);
+    const back = await call('DELETE', `/api/admin/bonuses/${last}/approve`);
     assert.equal(back.body.approved, null);
     assert.equal(back.body.people[0].commission, 350, '(8000 − 1000) × 5%');
     assert.equal((await call('GET', '/api/admin/bonuses?month=2026-13')).status, 400);
@@ -211,4 +217,22 @@ test('automatic month close retries after the first run had no bonus plan', () =
     const closed = bonuses.closeEndedMonth(db);
     assert.equal(closed.month, last);
     assert.equal(closed.approved.by, 'إغلاق تلقائي بنهاية الشهر');
+});
+
+
+test('a month approved before it ended (older versions allowed it) is dropped at start and counted live again', () => {
+    const db = openDatabase(':memory:');
+    const ahmed = staff.create(db, { username: 'ahmedo', display_name: 'أحمد عمر عثمان', password: 'pass-12345', permissions: ['quotes'] });
+    bonuses.setPlan(db, ahmed.id, { target: 100, percent: 10 });
+    const inv = sale(db, 'أحمد عمر عثمان', 1000, 0, 0, 0);
+    // A snapshot saved mid-month the old way: the unpaid invoice counted
+    db.prepare("INSERT INTO bonus_months (month, data_json, approved_by, approved_at) VALUES (?, ?, 'المدير', datetime('now'))")
+        .run(month, JSON.stringify(bonuses.compute(db, month)));
+    invoices.cancel(db, inv.id, 'تجربة', 'المدير');
+    assert.ok(bonuses.statement(db, month).approved, 'frozen');
+    assert.equal(bonuses.dropUnfinished(db), 1);
+    const s = bonuses.statement(db, month);
+    assert.equal(s.approved, null);
+    assert.equal(s.people[0].base, 0, 'the cancelled invoice is gone');
+    assert.equal(s.people[0].pending, 0);
 });
