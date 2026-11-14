@@ -26,7 +26,9 @@ function renderBonuses() {
     $id('bonusApproval').innerHTML = locked
         ? `<span class="badge on">معتمد ✓ — ${esc(b.approved.by || '')} ${esc(String(b.approved.at || '').slice(0, 10))}</span>
            <button class="link-btn" onclick="bonusUnapprove()">إلغاء الاعتماد</button>`
-        : `<button class="btn btn-primary btn-sm" onclick="bonusApprove()"><i class="fas fa-stamp"></i> اعتماد كشف الشهر</button>`;
+        : b.period && !b.period.ended
+            ? '<span class="status-text">الشهر جارٍ — الأرقام تتحدّث مع كل فاتورة ودفعة، ويُغلق الكشف تلقائياً في أول الشهر التالي</span>'
+            : `<button class="btn btn-primary btn-sm" onclick="bonusApprove()"><i class="fas fa-stamp"></i> اعتماد كشف الشهر</button>`;
     const sales = b.people.filter((p) => p.kind === 'sales');
     const techs = b.people.filter((p) => p.kind === 'technician');
     const input = (p, f, v, w = 90, step = '0.5') => locked ? `<b>${v ?? '—'}</b>` :
