@@ -442,6 +442,7 @@ function pruneOldLogs(db) {
 function createApp(db, { agentClient } = {}) {
     const app = express();
     pruneOldLogs(db);
+    try { workorders.cancelOrphans(db); } catch (err) { console.error('[work-orders] orphans', err.message); }
     setInterval(() => { try { pruneOldLogs(db); } catch (err) { console.error('[prune]', err.message); } }, 24 * 3600_000).unref();
     // Customer address: only from the proxies listed in TRUSTED_PROXIES (default: none). An invalid
     // value is reported and ignored — the app keeps running (and answering WhatsApp) without trust.
@@ -1292,7 +1293,10 @@ function createApp(db, { agentClient } = {}) {
         invoiceFor(req, req.params.id);
         const inv = invoices.cancel(db, req.params.id, (req.body || {}).reason, staffName(req));
         webhooks.emit(db, 'invoice.cancelled', invoicePublic(inv));
-        res.json(invoicePublic(inv));
+        // Its open work orders are cancelled too (the technician is told)
+        const orders = workorders.cancelForInvoice(db, inv, staffName(req));
+        for (const o of orders) webhooks.emit(db, 'work_order.status_changed', o);
+        res.json({ ...invoicePublic(inv), cancelled_work_orders: orders.map((o) => o.number) });
     });
 
     /* ---- Customers: one record per customer, and their profile ---- */
