@@ -15,6 +15,7 @@ let qbLines = [];
 let qbCustomer = null;   // a customer record chosen (from the profile or the suggestions)
 let qbEditing = null;    // the quote whose lines are being changed
 let qbInvoice = null;    // the issued invoice whose lines are being changed (its payments stay)
+let qbAnchor = null;     // an invoice opened for editing: its amount before tax, matched on the first preview
 let qbTimer = null;
 let qbLastPreview = null;
 let qbCostOnly = false;  // «حاسبة التكلفة والربح»: no customer, nothing saved
@@ -52,7 +53,11 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
         const groups = Array.isArray(d.calc_groups) ? d.calc_groups : [];
         const seen = new Set();
         qbLines = [];
-        for (const i of quote.items) {
+        // A customer calculator's quote / invoice: its lines all belong to one gate (slats, color, accessories,
+        // installation, delivery, gift) — reopened as that gate's card when its choices are still in the catalog
+        const fromCalc = !groups.length ? qbFromCalculator(d) : null;
+        if (fromCalc) qbLines.push({ ...fromCalc, params: qbScreenParams(fromCalc.calc, fromCalc.params), price_level: 'from', disc_type: '', disc_value: '' });
+        for (const i of fromCalc ? [] : quote.items) {
             if (i.group !== undefined && groups[i.group]) {
                 if (seen.has(i.group)) continue;
                 seen.add(i.group);
@@ -71,18 +76,15 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
             });
         }
         if (d.quote_discount) { $id('qbDiscType').value = d.quote_discount.type; $id('qbDiscValue').value = d.quote_discount.value; }
-        // Whatever took the invoice below the sum of its lines (a calculator promotion, a gift, the «المبلغ النهائي»
-        // agreed at issue) is carried as a discount on the total, so the edit starts from the invoiced amount
-        if (invoice) {
-            const off = Math.round((invoice.items.reduce((s, i) => s + (Number(i.line_total) || 0), 0) - invoice.subtotal) * 100) / 100;
-            const same = d.quote_discount && Math.abs(d.quote_discount.amount - off) < 0.006;
-            if (off > 0.004 && !same) { $id('qbDiscType').value = 'amount'; $id('qbDiscValue').value = off; }
-        }
+        // An invoice opens at its own amount: whatever is above it on the first pricing (a promotion that has ended,
+        // today's prices, the «المبلغ النهائي» agreed at issue) becomes a discount on the total — see qbPreview
+        qbAnchor = invoice ? invoice.subtotal : null;
         $id('qbNotes').value = quote.notes || '';
     } else {
         qbLines = [];
     }
-    qbFillRegions(quote ? (quote.details || {}).region_id : null, quote ? null : (customer && customer.city));
+    qbFillRegions(quote ? (quote.details || {}).region_id : null,
+        quote ? ((quote.details || {}).region || quote.customer_city) : (customer && customer.city));
     qbFillAddButtons();
     // The manager's promotion is applied by itself to the gates / motors it covers
     const pr = qbCatalog.promotion;
@@ -101,6 +103,53 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
 }
 
 /* A saved gate / motor (as the server keeps it) → the screen's form: one accessory per group, parts by id */
+/* A quote saved by a customer calculator keeps its choices by name (type, thickness, color, accessories, motor…).
+   Find them in today's catalog to reopen it as a gate / motor card, priced the same way as when it was made.
+   null when something is no longer in the catalog (the lines are then shown as they were invoiced). */
+function qbFromCalculator(d) {
+    const c = qbCatalog.calculators;
+    const same = (a, b) => String(a || '').trim() === String(b || '').trim();
+    if (d.shutter_type && d.width_cm && c.rolling_shutter) {
+        const t = c.rolling_shutter.shutter_types.find((x) => same(x.name, d.shutter_type));
+        const v = t && (t.variants.find((x) => same(x.label, d.variant)) || (t.variants.length === 1 ? t.variants[0] : null));
+        if (!v) return null;
+        const color = d.color ? v.colors.find((x) => same(x.name, d.color)) : null;
+        if (d.color && !color) return null;
+        const acc = Array.isArray(d.accessories) ? d.accessories : [];
+        const option_ids = [];
+        for (const g of c.rolling_shutter.accessory_groups) {
+            const a = acc.find((x) => same(x.group, g.name));
+            if (!a) { option_ids.push(''); continue; }
+            const o = g.options.find((x) => same(x.label, a.option));
+            if (!o) return null;
+            option_ids.push(o.id);
+        }
+        return { calc: 'rolling_shutter', params: { shutter_type_id: t.id, variant_id: v.id, color_id: color ? color.id : '',
+            width_cm: Number(d.width_cm), height_cm: Number(d.height_cm), count: Number(d.count) || 1, option_ids } };
+    }
+    if (d.calculator === 'overhead' && d.gate_type && c.overhead) {
+        const m = c.overhead.motors.find((x) => same(x.name, d.motor));
+        if (!m || !c.overhead.gate_types.some((x) => same(x.name, d.gate_type))) return null;
+        return { calc: 'overhead', params: { gate_type: d.gate_type, height_cm: Number(d.height_cm), width_cm: Number(d.width_cm), motor_id: m.id } };
+    }
+    if (d.calculator === 'motors' && d.section_id && c.motors) {
+        const s = c.motors.sections.find((x) => x.id === Number(d.section_id));
+        if (!s) return null;
+        const kit = d.kit ? s.kits.find((x) => same(x.name, d.kit)) : null;
+        if (d.kit && !kit) return null;
+        const parts = {};
+        for (const txt of Array.isArray(d.parts) ? d.parts : []) {
+            const m = String(txt).match(/^(.*) × (\d+)$/);
+            const p = m && s.parts.find((x) => same(x.name, m[1]));
+            if (!p) return null;
+            parts[p.id] = Number(m[2]);
+        }
+        return { calc: 'motors', params: { section_id: s.id, kit_id: kit ? kit.id : '', kit_count: Number(d.kit_count) || 1, parts,
+            installation: !/بدون تركيب/.test(String(d.fees_note || '')) } };
+    }
+    return null;
+}
+
 function qbScreenParams(calc, saved) {
     const p = structuredClone(saved);
     if (calc === 'rolling_shutter') {
@@ -421,6 +470,18 @@ async function qbPreview() {
     if (!body.items.length) { $id('qbTotals').innerHTML = '<span class="status-text">أضف بنداً لحساب الإجمالي.</span>'; qbLastPreview = null; return; }
     try {
         const r = await api('POST', '/api/admin/quotes/preview', body);
+        // An invoice opened for editing: start from the amount it was invoiced at (before tax)
+        if (qbAnchor !== null) {
+            const target = qbAnchor;
+            qbAnchor = null;
+            const extra = Math.round((r.subtotal - target) * 100) / 100;
+            if (extra > 0.004) {
+                const had = r.pricing.quote_discount ? r.pricing.quote_discount.amount : 0;
+                $id('qbDiscType').value = 'amount';
+                $id('qbDiscValue').value = Math.round((had + extra) * 100) / 100;
+                return qbPreview();
+            }
+        }
         qbLastPreview = r;
         // Walk the priced lines in order: a gate / motor takes all its lines (the same group), a part takes one
         let n = 0;
