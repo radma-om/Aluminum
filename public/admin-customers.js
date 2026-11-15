@@ -145,7 +145,7 @@ async function submitCustomer() {
 
 /* The same customer registered under another number: join the two records */
 async function mergeCustomer() {
-    const phone = prompt('رقم العميل الآخر (نفس الشخص مسجّل بهذا الرقم):\nسيصبح رقماً ثانياً لهذا العميل، وتنضم إليه عروضه وفواتيره ومحادثاته.');
+    const phone = await askText('رقم العميل الآخر (نفس الشخص مسجّل بهذا الرقم):\nسيصبح رقماً ثانياً لهذا العميل، وتنضم إليه عروضه وفواتيره ومحادثاته.');
     if (!phone || !phone.trim()) return;
     try {
         await api('POST', `/api/admin/customers/${custCurrent.customer.id}/merge`, { phone: phone.trim() });
@@ -155,7 +155,7 @@ async function mergeCustomer() {
 }
 
 async function deleteCustomer() {
-    if (!confirm('حذف هذا العميل من السجل؟ (لا توجد له عروض أو فواتير أو أوامر عمل)')) return;
+    if (!await askYes('حذف هذا العميل من السجل؟ (لا توجد له عروض أو فواتير أو أوامر عمل)')) return;
     try {
         await api('DELETE', `/api/admin/customers/${custCurrent.customer.id}`);
         closeSheet('custSheet');

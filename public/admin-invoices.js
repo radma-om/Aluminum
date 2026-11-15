@@ -127,7 +127,7 @@ for (const id of ['invAskType', 'invAskValue', 'invFinal']) {
 /* Change or remove the deposit asked of an issued invoice */
 async function editInvoiceDeposit() {
     const d = invCurrent.deposit;
-    const v = prompt('المقدم المطلوب: اكتب نسبة مثل 50% أو مبلغاً مثل 200 — اتركه فارغاً لإلغائه:', d ? (d.type === 'percent' ? d.value + '%' : money2(d.value)) : '');
+    const v = await askText('المقدم المطلوب: اكتب نسبة مثل 50% أو مبلغاً مثل 200 — اتركه فارغاً لإلغائه:', d ? (d.type === 'percent' ? d.value + '%' : money2(d.value)) : '');
     if (v === null) return;
     const t = v.trim().replace('٪', '%');
     const body = !t ? { deposit_required: null } : { deposit_required: { type: t.endsWith('%') ? 'percent' : 'amount', value: Number(t.replace('%', '')) } };
@@ -223,7 +223,7 @@ async function submitPayment() {
 }
 
 async function deletePayment(paymentId) {
-    if (!confirm('حذف هذه الدفعة؟ يُسجَّل الحذف في سجل النشاط.')) return;
+    if (!await askYes('حذف هذه الدفعة؟ يُسجَّل الحذف في سجل النشاط.')) return;
     try {
         showInvoice(await api('DELETE', `/api/admin/invoices/${invCurrent.id}/payments/${paymentId}`));
         loadInvoices().catch(() => {});
@@ -231,7 +231,7 @@ async function deletePayment(paymentId) {
 }
 
 async function cancelInvoice() {
-    const reason = prompt(`سبب إلغاء الفاتورة ${invCurrent.number}؟ (تبقى برقمها في القائمة، ويمكن إصدار فاتورة جديدة للعرض)\nأوامر العمل المفتوحة لهذه الفاتورة تُلغى معها ويُبلَّغ الفني.`);
+    const reason = await askText(`سبب إلغاء الفاتورة ${invCurrent.number}؟ (تبقى برقمها في القائمة، ويمكن إصدار فاتورة جديدة للعرض)\nأوامر العمل المفتوحة لهذه الفاتورة تُلغى معها ويُبلَّغ الفني.`);
     if (!reason || !reason.trim()) return;
     try {
         const r = await api('POST', `/api/admin/invoices/${invCurrent.id}/cancel`, { reason: reason.trim() });
@@ -243,9 +243,9 @@ async function cancelInvoice() {
 }
 
 async function editInvoice() {
-    const due = prompt('تاريخ الاستحقاق (YYYY-MM-DD) — اتركه فارغاً لإلغائه:', invCurrent.due_date || '');
+    const due = await askText('تاريخ الاستحقاق (YYYY-MM-DD) — اتركه فارغاً لإلغائه:', invCurrent.due_date || '');
     if (due === null) return;
-    const notes = prompt('ملاحظات على الفاتورة:', invCurrent.notes || '');
+    const notes = await askText('ملاحظات على الفاتورة:', invCurrent.notes || '');
     if (notes === null) return;
     try {
         showInvoice(await api('PATCH', `/api/admin/invoices/${invCurrent.id}`, { due_date: due.trim() || null, notes }));
@@ -255,7 +255,7 @@ async function editInvoice() {
 
 async function copyInvoiceLink() {
     const link = location.origin + invCurrent.pdf_url;
-    try { await navigator.clipboard.writeText(link); alert('نُسخ الرابط ✓ — يفتح به العميل فاتورته (PDF) دون دخول'); } catch { prompt('انسخ الرابط:', link); }
+    try { await navigator.clipboard.writeText(link); alert('نُسخ الرابط ✓ — يفتح به العميل فاتورته (PDF) دون دخول'); } catch { await askText('انسخ الرابط:', link); }
 }
 
 async function downloadInvoicePdf(id, number) {

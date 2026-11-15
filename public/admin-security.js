@@ -51,7 +51,7 @@ async function confirmTwoStep() {
     try {
         await api('POST', '/api/admin/me/2fa/enable', { code });
         $id('twoStepBar').hidden = true;
-        alert('تم تفعيل التحقق بخطوتين ✓\nمن الآن يُطلب الرمز من التطبيق عند كل دخول. خرجت الأجهزة الأخرى من حسابك.');
+        await tell('تم تفعيل التحقق بخطوتين ✓\nمن الآن يُطلب الرمز من التطبيق عند كل دخول. خرجت الأجهزة الأخرى من حسابك.');
         if (twoStepRequired) return location.reload();
         ME = (await api('GET', '/api/admin/me')).user;
         applyPermissions();
@@ -61,7 +61,7 @@ async function confirmTwoStep() {
 }
 
 async function disableTwoStep() {
-    const password = prompt('لإيقاف التحقق بخطوتين اكتب كلمة المرور:');
+    const password = await askText('لإيقاف التحقق بخطوتين اكتب كلمة المرور:');
     if (password === null) return;
     try {
         ME = (await api('POST', '/api/admin/me/2fa/disable', { password })).user;
@@ -191,7 +191,7 @@ window.switchTab = function (tabId) {
 /* ---------------------------- Forgotten password ---------------------------- */
 
 async function forgotPassword() {
-    const identifier = prompt('اكتب اسم المستخدم أو البريد الإلكتروني المسجّل لحسابك:', $id('loginUser').value.trim());
+    const identifier = await askText('اكتب اسم المستخدم أو البريد الإلكتروني المسجّل لحسابك:', $id('loginUser').value.trim());
     if (!identifier || !identifier.trim()) return;
     try {
         const res = await fetch('/api/auth/forgot', {

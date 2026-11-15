@@ -101,10 +101,10 @@ function renderWorkOrders() {
 async function woMove(id, status) {
     let note = '';
     if (status === 'done') {
-        note = prompt('ما الذي تم إنجازه؟ (مثلاً: رُكّبت البوابة وجُرّبت مع العميل وسُلّم الريموت)');
+        note = await askText('ما الذي تم إنجازه؟ (مثلاً: رُكّبت البوابة وجُرّبت مع العميل وسُلّم الريموت)');
         if (note === null || !note.trim()) return;
     } else if (status === 'new') {
-        note = prompt('سبب الحاجة لموعد جديد (مثلاً: العميل غير موجود، الموقع غير جاهز):');
+        note = await askText('سبب الحاجة لموعد جديد (مثلاً: العميل غير موجود، الموقع غير جاهز):');
         if (note === null || !note.trim()) return;
     }
     try {
@@ -114,7 +114,7 @@ async function woMove(id, status) {
 }
 
 async function woNote(id) {
-    const text = prompt('الملاحظة:');
+    const text = await askText('الملاحظة:');
     if (!text || !text.trim()) return;
     try { await api('POST', `/api/admin/work-orders/${id}/notes`, { text: text.trim() }); await woHistory(id, null, true); } catch (err) { alert(err.message); }
 }
@@ -131,9 +131,9 @@ async function woHistory(id, btn, forceOpen = false) {
 }
 
 async function woCancel(id) {
-    const reason = prompt('سبب إلغاء أمر العمل:');
+    const reason = await askText('سبب إلغاء أمر العمل:');
     if (!reason || !reason.trim()) return;
-    const notify = confirm('إبلاغ العميل بالإلغاء على واتساب؟ (السبب يصله في الرسالة)');
+    const notify = await askYes('إبلاغ العميل بالإلغاء على واتساب؟ (السبب يصله في الرسالة)');
     try {
         const r = await api('POST', `/api/admin/work-orders/${id}/cancel`, { reason: reason.trim(), notify_customer: notify });
         woNoticeAlert(r.notice);
@@ -341,9 +341,9 @@ async function submitApprove() {
 }
 
 async function rejectRequest(id) {
-    const reason = prompt('سبب الرفض (يصل للعميل في رسالة واتساب):');
+    const reason = await askText('سبب الرفض (يصل للعميل في رسالة واتساب):');
     if (!reason || !reason.trim()) return;
-    const notify = confirm('إرسال الرسالة للعميل على واتساب الآن؟');
+    const notify = await askYes('إرسال الرسالة للعميل على واتساب الآن؟');
     try {
         const out = await api('POST', `/api/admin/service-requests/${id}/reject`, { reason: reason.trim(), notify });
         woNoticeAlert(out.notice);

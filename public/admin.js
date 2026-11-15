@@ -360,7 +360,7 @@ async function saveProduct() {
 
 async function deleteProduct(id) {
     const p = products.find((x) => x.id === id);
-    if (!p || !confirm(`حذف «${p.name}${p.type ? ' — ' + p.type : ''}» وكل سجل مشترياته؟\nلإخفائه فقط ألغِ خيار «مفعّل».`)) return;
+    if (!p || !await askYes(`حذف «${p.name}${p.type ? ' — ' + p.type : ''}» وكل سجل مشترياته؟\nلإخفائه فقط ألغِ خيار «مفعّل».`)) return;
     try {
         await api('DELETE', `/api/admin/products/${id}`);
         await loadProducts();
@@ -445,7 +445,7 @@ async function savePurchase() {
 }
 
 async function deletePurchase(id) {
-    if (!confirm('حذف هذا السطر من سجل المشتريات؟ (لن يتغير سعر المنتج الحالي)')) return;
+    if (!await askYes('حذف هذا السطر من سجل المشتريات؟ (لن يتغير سعر المنتج الحالي)')) return;
     await api('DELETE', `/api/admin/purchases/${id}`);
     await loadPurchases();
 }
@@ -507,7 +507,7 @@ async function openQuotePdf(id) {
 
 /* A new validity date (e.g. the customer asked for more time and the price still holds) */
 async function extendQuote(id, current) {
-    const next = prompt('تاريخ الصلاحية الجديد (YYYY-MM-DD):', current);
+    const next = await askText('تاريخ الصلاحية الجديد (YYYY-MM-DD):', current);
     if (!next) return;
     try { await api('PATCH', `/api/admin/quotes/${id}`, { valid_until: next.trim() }); await loadQuotes(); } catch (err) { alert(err.message); }
 }
@@ -680,7 +680,7 @@ async function testHook(id) {
 }
 
 async function deleteHook(id) {
-    if (!confirm('حذف هذا الـ Webhook؟')) return;
+    if (!await askYes('حذف هذا الـ Webhook؟')) return;
     await api('DELETE', `/api/admin/webhooks/${id}`);
     await loadHooks();
 }
@@ -849,7 +849,7 @@ async function saveType() {
 }
 
 async function deleteType(id) {
-    if (!confirm('حذف هذا النوع؟ (لإخفائه فقط عدّله وألغِ «مفعّل»)')) return;
+    if (!await askYes('حذف هذا النوع؟ (لإخفائه فقط عدّله وألغِ «مفعّل»)')) return;
     await api('DELETE', `/api/admin/shutter-types/${id}`);
     await loadDoors();
 }
@@ -939,7 +939,7 @@ async function saveGroup() {
 }
 
 async function deleteGroup(id) {
-    if (!confirm('حذف هذه المجموعة وفئاتها؟')) return;
+    if (!await askYes('حذف هذه المجموعة وفئاتها؟')) return;
     await api('DELETE', `/api/admin/accessory-groups/${id}`);
     await loadDoors();
 }
@@ -1097,7 +1097,7 @@ async function toggleKnowledge(id, active) {
 
 async function deleteKnowledge(id) {
     const i = kbItems.find((x) => x.id === id);
-    if (!confirm(`حذف «${i ? i.title : ''}» من قاعدة المعرفة؟`)) return;
+    if (!await askYes(`حذف «${i ? i.title : ''}» من قاعدة المعرفة؟`)) return;
     try { renderKnowledge(await api('DELETE', '/api/admin/knowledge/' + id)); } catch (err) { alert(err.message); }
 }
 
@@ -1170,8 +1170,8 @@ async function downloadSaved(name) {
 }
 
 /* Restoring replaces all current data — ask the admin to type a confirmation word */
-function confirmRestore(what) {
-    const word = prompt(`سيتم استبدال كل البيانات الحالية بمحتوى ${what}.\n` +
+async function confirmRestore(what) {
+    const word = await askText(`سيتم استبدال كل البيانات الحالية بمحتوى ${what}.\n` +
         'تُحفظ نسخة من البيانات الحالية تلقائياً قبل الاستعادة.\n\nللمتابعة اكتب: استعادة');
     return word != null && word.trim() === 'استعادة';
 }
@@ -1180,7 +1180,7 @@ async function afterRestore(r) {
     const total = Object.values(r.counts).reduce((a, b) => a + b, 0);
     // Every staff session ended with the restore: a staff manager signs in again
     if (r.signed_out && ME && !ME.owner) {
-        alert(`تمت الاستعادة ✓ (${total} سجل)\nانتهت كل جلسات الدخول — سجّل الدخول من جديد.`);
+        await tell(`تمت الاستعادة ✓ (${total} سجل)\nانتهت كل جلسات الدخول — سجّل الدخول من جديد.`);
         try { localStorage.removeItem('adminToken'); } catch { /* ignore */ }
         return location.reload();
     }
@@ -1193,7 +1193,7 @@ async function afterRestore(r) {
 async function restoreFromFile(input) {
     const file = input.files[0];
     input.value = '';
-    if (!file || !confirmRestore(`الملف «${file.name}»`)) return;
+    if (!file || !(await confirmRestore(`الملف «${file.name}»`))) return;
     setStatus('backupStatus', 'جاري الاستعادة...');
     try {
         const res = await authFetch('POST', '/api/admin/restore', file, { 'Content-Type': 'application/octet-stream', 'X-Confirm-Restore': 'yes' });
@@ -1204,7 +1204,7 @@ async function restoreFromFile(input) {
 }
 
 async function restoreSaved(name) {
-    if (!confirmRestore(`النسخة «${name}»`)) return;
+    if (!(await confirmRestore(`النسخة «${name}»`))) return;
     setStatus('backupStatus', 'جاري الاستعادة...');
     try {
         const res = await authFetch('POST', '/api/admin/backups/' + encodeURIComponent(name) + '/restore', undefined, { 'X-Confirm-Restore': 'yes' });
@@ -1803,14 +1803,14 @@ function applyPermissions() {
 }
 
 async function changeMyPassword() {
-    const current = prompt('كلمة المرور الحالية:');
+    const current = await askText('كلمة المرور الحالية:');
     if (current === null) return;
-    const next = prompt('كلمة المرور الجديدة (8 أحرف على الأقل):');
+    const next = await askText('كلمة المرور الجديدة (8 أحرف على الأقل):');
     if (next === null) return;
     try {
         await api('POST', '/api/admin/me/password', { current, password: next });
         // The server ended every session of this account (here and on other devices)
-        alert('تم تغيير كلمة المرور ✓\nخرجت من كل الأجهزة — سجّل الدخول من جديد بكلمة المرور الجديدة.');
+        await tell('تم تغيير كلمة المرور ✓\nخرجت من كل الأجهزة — سجّل الدخول من جديد بكلمة المرور الجديدة.');
         try { localStorage.removeItem('adminToken'); } catch { /* ignore */ }
         location.reload();
     } catch (err) {

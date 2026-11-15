@@ -104,11 +104,11 @@ $id('bonusBody').addEventListener('change', async (e) => {
 $id('bonusMonth').addEventListener('change', loadBonuses);
 
 async function bonusApprove() {
-    if (!confirm(`اعتماد كشف ${bonusData.month}؟\nيُحفظ الكشف كما هو الآن، ولا يتغير بتعديل الفواتير أو الأهداف لاحقاً (يمكن إلغاء الاعتماد).`)) return;
+    if (!await askYes(`اعتماد كشف ${bonusData.month}؟\nيُحفظ الكشف كما هو الآن، ولا يتغير بتعديل الفواتير أو الأهداف لاحقاً (يمكن إلغاء الاعتماد).`)) return;
     try { bonusData = await api('POST', `/api/admin/bonuses/${bonusData.month}/approve`); renderBonuses(); } catch (err) { alert(err.message); }
 }
 async function bonusUnapprove() {
-    if (!confirm('إلغاء اعتماد الشهر؟ سيُحسب الكشف من جديد بالأرقام والأهداف الحالية.')) return;
+    if (!await askYes('إلغاء اعتماد الشهر؟ سيُحسب الكشف من جديد بالأرقام والأهداف الحالية.')) return;
     try { bonusData = await api('DELETE', `/api/admin/bonuses/${bonusData.month}/approve`); renderBonuses(); } catch (err) { alert(err.message); }
 }
 
