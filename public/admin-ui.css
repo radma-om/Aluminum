@@ -286,7 +286,7 @@ table.mini td.num { font-variant-numeric: tabular-nums; text-align: end; }
 .note-form { background: #f7f9fc; border: 1px solid var(--grid); border-radius: 12px; padding: 10px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
 .note-form select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; }
 .notes { display: flex; flex-direction: column; gap: 10px; max-height: 470px; overflow-y: auto; }
-.note { border: 1px solid var(--grid); border-right: 4px solid var(--note-color, var(--axis)); border-radius: 10px; padding: 9px 12px; background: #fff; }
+.note { border: 1px solid var(--grid); border-inline-start: 4px solid var(--note-color, var(--axis)); border-radius: 10px; padding: 9px 12px; background: #fff; }
 .note.k-report { --note-color: var(--series-1); }
 .note.k-recommendation { --note-color: var(--series-3); }
 .note.k-handover { --note-color: var(--series-2); }
