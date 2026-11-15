@@ -6,7 +6,9 @@
    ============================================================= */
 const fs = require('node:fs');
 const path = require('node:path');
-const PDFDocument = require('pdfkit');
+// Loaded with the first PDF, not at start
+let PDFKit = null;
+const pdfDocument = (opts) => new (PDFKit = PDFKit || require('pdfkit'))(opts);
 
 const FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');
 // Same palette as the customer calculator (company site identity)
@@ -160,7 +162,7 @@ const METHOD_LABELS = { cash: 'نقداً', bank: 'تحويل بنكي', card: '
 function renderQuotePdf(quote, settings, out, opts = {}) {
     const inv = opts.invoice || null;
     const ref = inv ? inv.number : quote.ref;
-    const doc = new PDFDocument({ size: 'A4', margin: 40, info: { Title: inv ? `Invoice ${ref}` : `Quotation ${ref}` } });
+    const doc = pdfDocument({ size: 'A4', margin: 40, info: { Title: inv ? `Invoice ${ref}` : `Quotation ${ref}` } });
     doc.pipe(out);
     const w = new RtlWriter(doc);
     const left = 40;

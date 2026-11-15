@@ -13,6 +13,7 @@ const crypto = require('node:crypto');
     }
 }
 const express = require('express');
+const compression = require('compression');
 const { openDatabase, getSettings, saveSettings } = require('./db');
 const { unitCost, unitSellPrice, priceQuote, round2 } = require('./pricing');
 const webhooks = require('./webhooks');
@@ -441,6 +442,8 @@ function pruneOldLogs(db) {
 
 function createApp(db, { agentClient } = {}) {
     const app = express();
+    // Pages, scripts, styles and API lists go compressed (about 5× smaller on a phone)
+    app.use(compression({ threshold: 1024 }));
     pruneOldLogs(db);
     try { workorders.cancelOrphans(db); } catch (err) { console.error('[work-orders] orphans', err.message); }
     // Statistics: quotes / customers of cancelled invoices no longer counted as sold; no frozen unfinished month
@@ -468,7 +471,13 @@ function createApp(db, { agentClient } = {}) {
         // always fresh; pages, scripts and styles must be revalidated (cheap, thanks to ETags).
         if (req.path.startsWith('/api/') || req.path.startsWith('/quotes/') || req.path.startsWith('/webhooks/') || req.path === '/healthz') {
             res.setHeader('Cache-Control', 'no-store');
-        } else if (!/\.(png|jpe?g|webp|gif|svg|ico|woff2?)$/i.test(req.path)) {
+        } else if (req.query && req.query.v && /\.(js|css)$/i.test(req.path)) {
+            // Scripts and styles are linked with the app version (admin.js?v=3.30.3): a new version is a new
+            // address, so the phone keeps them for a year without asking the server on every open
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (/\.(woff2?|png|ico)$/i.test(req.path)) {
+            res.setHeader('Cache-Control', 'public, max-age=2592000'); // fonts and icons: 30 days
+        } else if (!/\.(jpe?g|webp|gif|svg)$/i.test(req.path)) {
             res.setHeader('Cache-Control', 'no-cache');
         }
         // Pages may load scripts / styles / fonts only from here and the two CDNs they use, and talk only to

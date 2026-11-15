@@ -51,6 +51,7 @@ async function loadDashboard() {
 
 function renderDashboard() {
     renderKpis();
+    renderOrigins();
     renderAttention();
     renderDashboardNotifications();
     renderStaffPerformance();
@@ -135,6 +136,38 @@ function renderKpis() {
         grid.appendChild(el);
         countUp(el.querySelector('.num'), k[t.key].value, t.decimals || 0);
     }
+}
+
+/* Quotes by who made them: an employee's quote is a real offer, so its acceptance rate is the meaningful one;
+   a customer pricing several options inflates the count, so theirs is also given per customer */
+function renderOrigins() {
+    const o = dash.by_origin;
+    if (!o) { $id('originGrid').innerHTML = ''; return; }
+    const pctDelta = (now, before) => {
+        if (!before && !now) return '<span class="muted">—</span>';
+        const d = Math.round((now - before) * 10) / 10;
+        return `<span class="${d > 0 ? 'up' : d < 0 ? 'down' : 'muted'}">${d > 0 ? '▲' : d < 0 ? '▼' : ''} ${fmt.format(Math.abs(d))} نقطة</span> <span class="muted">عن الفترة السابقة (${fmt.format(before)}%)</span>`;
+    };
+    const card = (x, title, icon, note, perCustomer) => `<div class="origin-card">
+        <div class="origin-head"><i class="fas ${icon}"></i> <b>${title}</b> <small class="muted">${note}</small></div>
+        <div class="origin-main">
+            <div><small>نسبة القبول</small><strong>${fmt.format(x.win_rate)}<small>%</small></strong>
+                <div class="origin-bar"><span style="width:${Math.min(100, x.win_rate)}%"></span></div>
+                <div class="k-delta">${pctDelta(x.win_rate, x.previous.win_rate)}</div></div>
+            ${perCustomer ? `<div><small>القبول حسب العميل</small><strong>${fmt.format(x.customer_win_rate)}<small>%</small></strong>
+                <div class="origin-bar alt"><span style="width:${Math.min(100, x.customer_win_rate)}%"></span></div>
+                <div class="muted">${fmt.format(x.customers_won)} من ${fmt.format(x.customers)} عميل</div></div>` : ''}
+        </div>
+        <div class="origin-figs">
+            <span>العروض <b>${fmt.format(x.count)}</b> <small class="muted">(السابقة ${fmt.format(x.previous.count)})</small></span>
+            <span>المقبولة <b>${fmt.format(x.accepted)}</b></span>
+            <span>قيمتها <b>${fmt.format(x.value)}</b> ر.ع</span>
+            <span>قيمة المقبولة <b>${fmt.format(x.accepted_value)}</b> ر.ع</span>
+            ${perCustomer ? `<span>متوسط الخيارات للعميل <b>${x.customers ? fmt.format(Math.round((x.count / x.customers) * 10) / 10) : 0}</b></span>` : ''}
+        </div></div>`;
+    $id('originGrid').innerHTML =
+        card(o.staff, 'عروض الموظفين', 'fa-user-tie', 'من منشئ العروض — الأدق في قياس القبول', false)
+        + card(o.customers, 'عروض العملاء', 'fa-calculator', 'الحاسبة والموقع والواتساب — العميل قد يسعّر عدة خيارات', true);
 }
 
 function renderAttention() {
