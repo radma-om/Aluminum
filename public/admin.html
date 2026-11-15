@@ -11,6 +11,9 @@
     <meta name="apple-mobile-web-app-title" content="RADMA">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>نظام تسعير شرائح الألمنيوم</title>
+    <!-- The panel's language (Arabic / English): before anything is drawn, so the page opens already in it -->
+    <script src="admin-i18n-en.js"></script>
+    <script src="admin-i18n.js"></script>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <!-- Icons: loaded without holding the page back (they appear a moment later on a slow line) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
@@ -718,7 +721,7 @@
     <aside class="sidebar" id="sidebar" aria-label="أقسام اللوحة">
         <div class="sb-brand">
             <span class="header-icon"><img src="images/logo.png" alt=""></span>
-            <span class="t-label">رادما<small>نظام التسعير والمبيعات</small></span>
+            <span class="t-label">ردما للبوابات الإلكترونية<small>نظام التسعير والمبيعات</small></span>
         </div>
         <nav class="sb-nav">
             <div class="nav-group">الرئيسية</div>
@@ -765,6 +768,7 @@
                 <button type="button" id="mePwd" onclick="changeMyPassword()" title="تغيير كلمة المرور" hidden><i class="fas fa-key"></i></button>
                 <button type="button" id="me2fa" onclick="openTwoStep()" title="التحقق بخطوتين" hidden><i class="fas fa-shield-halved"></i></button>
             </div>
+            <button type="button" class="hdr-icon lang-btn" id="langBtn" onclick="setLanguage(APP_LANG === 'en' ? 'ar' : 'en')" title="اللغة"><span class="lang-name lang-short" data-no-i18n>EN</span></button>
             <button type="button" class="hdr-icon" id="installBtn" onclick="installApp()" title="تثبيت التطبيق على الشاشة الرئيسية" hidden><i class="fas fa-mobile-screen-button"></i></button>
             <button type="button" class="hdr-icon" id="pushBtn" onclick="openPushSheet()" title="الإشعارات" hidden><i class="fas fa-bell"></i></button>
             <button class="logout-btn" onclick="logout()" title="تسجيل الخروج"><i class="fas fa-right-from-bracket"></i> <span class="t-out">خروج</span></button>
@@ -2207,6 +2211,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
             <button class="btn btn-primary" type="submit">دخول</button>
             <span id="loginStatus" class="status-text"></span>
             <button type="button" class="link-btn" onclick="forgotPassword()">نسيت كلمة المرور؟</button>
+            <button type="button" class="link-btn lang-link" onclick="setLanguage(APP_LANG === 'en' ? 'ar' : 'en')"><i class="fas fa-language"></i> <span class="lang-name" data-no-i18n>English</span></button>
         </form>
     </div>
 

@@ -9,7 +9,7 @@ let custCurrent = null;
 let custEditing = null;
 const custMoney = (n) => Number(n || 0).toFixed(2);
 const CUST_LEAD_STATUS = { new: 'جديد', needs_staff: 'يطلب موظفاً', following: 'قيد المتابعة', waiting: 'بانتظار العميل', won: 'تم البيع', lost: 'لم يتم' };
-const custWhen = (s) => (s ? new Date(String(s).replace(' ', 'T') + 'Z').toLocaleDateString('ar-OM', { dateStyle: 'medium' }) : '—');
+const custWhen = (s) => (s ? new Date(String(s).replace(' ', 'T') + 'Z').toLocaleDateString(APP_LOCALE, { dateStyle: 'medium' }) : '—');
 
 let custTimer = null;
 function debouncedCustomers() { clearTimeout(custTimer); custTimer = setTimeout(loadCustomers, 250); }
