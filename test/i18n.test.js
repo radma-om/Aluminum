@@ -104,3 +104,10 @@ test('texts the scripts build from parts are translated; half-known sentences st
     // Every value in the dictionary is English
     for (const [ar, en] of Object.entries(ctx.I18N_EN)) assert.ok(!ARABIC.test(en) || ar === 'رادما' || /استعادة/.test(en), `${ar} → ${en}`);
 });
+
+test('on a phone in English the side menu slides out to the left (it must not stay on screen)', () => {
+    const ui = fs.readFileSync(path.join(pub, 'admin-ui.css'), 'utf8');
+    const theme = fs.readFileSync(path.join(pub, 'admin-theme.css'), 'utf8');
+    assert.match(ui, /\.sidebar[^{]*\{[^}]*translateX\(100%\)/, 'Arabic: out to the right');
+    assert.match(theme, /@media \(max-width: 900px\)\s*\{\s*html\.lang-en body:not\(\.sb-open\) \.sidebar \{ transform: translateX\(-100%\); \}/);
+});

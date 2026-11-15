@@ -609,3 +609,7 @@ html.lang-en .stack-table td { direction: ltr; text-align: right; }
 /* What customers wrote stays right-to-left */
 html.lang-en .msg, html.lang-en .msg-text, html.lang-en .n-text, html.lang-en #priceListPreview { direction: rtl; }
 .lang-btn .lang-name { font-weight: 700; font-size: 0.85rem; }
+/* Phone, English: the menu is on the left, so it slides out to the left (to the right it would stay on screen) */
+@media (max-width: 900px) {
+    html.lang-en body:not(.sb-open) .sidebar { transform: translateX(-100%); }
+}
