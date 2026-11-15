@@ -121,7 +121,7 @@ function auditDetails(d) {
     return d.created ? `<small class="status-text">رقم ${esc(d.created.id)}</small>` : '';
 }
 
-const auditTime = (at) => new Date(String(at).replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' });
+const auditTime = (at) => new Date(String(at).replace(' ', 'T') + 'Z').toLocaleString(APP_LOCALE, { dateStyle: 'medium', timeStyle: 'short' });
 
 async function loadAudit(more = false) {
     const params = new URLSearchParams({ limit: '50' });

@@ -30,7 +30,7 @@ function renderPulse(p) {
     $id('pulseCharts').hidden = !p;
     if (!p) return;
     const visitsPct = p.visits.total ? Math.round((p.visits.done / p.visits.total) * 100) : 0;
-    const day = new Date(p.today + 'T00:00:00').toLocaleDateString('ar-OM', { weekday: 'long', day: 'numeric', month: 'long' });
+    const day = new Date(p.today + 'T00:00:00').toLocaleDateString(APP_LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
     const tiles = [
         { icon: 'fa-file-invoice', label: 'عروض اليوم', value: p.quotes.count, sub: `${fmt2.format(p.quotes.value)} ر.ع — ${vsYesterday(p.quotes.count, p.quotes.previous_count)}`, go: "switchTab('quotes')" },
         { icon: 'fa-receipt', label: 'فواتير اليوم', value: p.invoices.value, decimals: 2, unit: 'ر.ع', sub: `${fmt.format(p.invoices.count)} فاتورة — ${vsYesterday(p.invoices.value, p.invoices.previous_value, { money: true })}`, go: "switchTab('invoices')" },

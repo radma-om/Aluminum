@@ -162,7 +162,7 @@ async function renderPushDevices(sub) {
     if (!box) return;
     const r = await api('GET', '/api/admin/me/push');
     const mine = sub ? sub.endpoint.slice(-12) : null;
-    const when = (s) => (s ? new Date(String(s).replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+    const when = (s) => (s ? new Date(String(s).replace(' ', 'T') + 'Z').toLocaleString(APP_LOCALE, { dateStyle: 'short', timeStyle: 'short' }) : '—');
     // This browser allowed notifications but the server does not know it: register it again
     if (sub && Notification.permission === 'granted' && !r.devices.some((d) => d.tail === mine)) {
         await api('POST', '/api/admin/me/push', { subscription: sub.toJSON(), device: deviceName() }).catch(() => {});

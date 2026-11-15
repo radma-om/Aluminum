@@ -595,3 +595,17 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
 .ui-dialog-buttons .btn { flex: 1; min-width: 110px; padding: 11px; }
 .ui-dialog-buttons .danger { background: #a93226; border-color: #a93226; }
 @media (max-width: 600px) { .ui-dialog { align-items: flex-end; padding: 0; } .ui-dialog-card { max-width: none; border-radius: 18px 18px 0 0; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); } }
+
+/* ===== English (left-to-right): admin-i18n.js sets html.lang-en ===== */
+html.lang-en body,
+html.lang-en input, html.lang-en select, html.lang-en textarea { direction: ltr; }
+html.lang-en .two-step-card,
+html.lang-en td.text-start,
+html.lang-en .quote-items,
+html.lang-en .wo-job,
+html.lang-en .wo-feed-row,
+html.lang-en .stack-table td::before { text-align: left; }
+html.lang-en .stack-table td { direction: ltr; text-align: right; }
+/* What customers wrote stays right-to-left */
+html.lang-en .msg, html.lang-en .msg-text, html.lang-en .n-text, html.lang-en #priceListPreview { direction: rtl; }
+.lang-btn .lang-name { font-weight: 700; font-size: 0.85rem; }

@@ -71,6 +71,7 @@ const toUser = (row) => (row ? {
     email: row.email || '',
     max_discount_percent: row.role === 'manager' ? null : (row.max_discount_percent ?? null),
     totp_enabled: Boolean(row.totp_secret),
+    lang: row.lang === 'en' ? 'en' : 'ar',
     // Managers must turn on two-step sign-in before they can use the panel
     must_setup_2fa: row.role === 'manager' && !row.totp_secret
 } : null);

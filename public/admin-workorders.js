@@ -124,7 +124,7 @@ async function woHistory(id, btn, forceOpen = false) {
     if (!forceOpen && !box.hidden) { box.hidden = true; return; }
     try {
         const o = await api('GET', `/api/admin/work-orders/${id}`);
-        const when = (s) => new Date(String(s).replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' });
+        const when = (s) => new Date(String(s).replace(' ', 'T') + 'Z').toLocaleString(APP_LOCALE, { dateStyle: 'medium', timeStyle: 'short' });
         box.innerHTML = o.events.map((e) => `<div class="wo-ev ${e.by_technician ? 'tech' : ''}">${e.by_technician ? '<i class="fas fa-helmet-safety"></i> ' : '• '}${esc(when(e.created_at))}${e.author ? ' — ' + esc(e.author) : ''}: ${esc(e.text)}</div>`).join('');
         box.hidden = false;
     } catch (err) { alert(err.message); }
