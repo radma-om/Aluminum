@@ -1290,6 +1290,23 @@ function createApp(db, { agentClient } = {}) {
         invoiceFor(req, req.params.id);
         res.json(invoicePublic(invoices.update(db, req.params.id, req.body || {})));
     });
+    /* Change the lines of an issued invoice (sizes, lines added or removed) — its payments stay as they are */
+    admin.put('/invoices/:id/items', (req, res) => {
+        const before = invoiceFor(req, req.params.id);
+        const b = req.body || {};
+        const settings = getSettings(db);
+        const priced = staffquotes.price(db, b, settings);
+        staffquotes.checkLimit(req.user, settings, priced.pricing.discount_percent);
+        const region = b.region_id ? doors.getRegion(db, b.region_id) : null;
+        const old = before.details || {};
+        // The sale stays its owner's (commissions); the calculator's own fields (sizes, range…) no longer describe it
+        const details = { ...staffDetails(req, priced, region), created_by: old.created_by || before.created_by || staffName(req),
+            ...(old.calculator ? { calculator: old.calculator } : {}), edited_by: staffName(req) };
+        const inv = invoices.revise(db, before.id, { priced, details, reason: b.reason }, staffName(req));
+        const orders = workorders.reviseForInvoice(db, inv, before.items, before.details, staffName(req));
+        webhooks.emit(db, 'invoice.updated', invoicePublic(inv));
+        res.json({ ...invoicePublic(inv), updated_work_orders: orders.map((o) => o.number) });
+    });
     admin.post('/invoices/:id/payments', (req, res) => {
         invoiceFor(req, req.params.id);
         const inv = invoices.addPayment(db, req.params.id, req.body || {}, staffName(req));

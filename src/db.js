@@ -726,6 +726,20 @@ function migrate(db) {
     addColumns('work_order_events', { by_technician: 'INTEGER NOT NULL DEFAULT 0' });
     // Monthly commission: a salesperson's target and % over it; a technician's % of installation
     addColumns('staff_users', { bonus_target: 'REAL', bonus_percent: 'REAL' });
+    // An invoice edited after it was issued: what it was before each edit (who, why, when)
+    db.exec(`CREATE TABLE IF NOT EXISTS invoice_revisions (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id  INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        items_json  TEXT NOT NULL,
+        details_json TEXT,
+        subtotal    REAL NOT NULL,
+        vat         REAL NOT NULL,
+        total       REAL NOT NULL,
+        new_total   REAL NOT NULL,
+        reason      TEXT,
+        edited_by   TEXT,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
     db.exec(`CREATE TABLE IF NOT EXISTS bonus_months (
         month       TEXT PRIMARY KEY,
         data_json   TEXT NOT NULL,

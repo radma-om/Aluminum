@@ -303,6 +303,8 @@ function sectionsFor(method, path) {
         [/^\/settings$/, method === 'GET' ? 'any' : 'settings'],
         [/^\/dashboard$/, ['dashboard']],
         [/^\/leads(\/|$)/, ['leads']],
+        // The quote builder also edits an invoice's lines
+        [/^\/quotes\/(catalog|preview)$/, ['quotes', 'invoices']],
         [/^\/quotes\/\d+\/pdf$/, ['quotes', 'leads']],
         [/^\/quotes\/\d+\/invoice$/, ['invoices']],
         // Deleting a payment or cancelling an invoice: managers only
