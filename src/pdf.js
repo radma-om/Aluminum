@@ -196,6 +196,12 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
     if (inv && opts.quoteRef) infoRows.push(['عرض السعر', opts.quoteRef]);
     if (inv && inv.due_date) infoRows.push(['تاريخ الاستحقاق', inv.due_date]);
     if (!inv && quote.valid_until) infoRows.push(['صالح حتى', quote.valid_until]);
+    // Who made it: the employee who priced the quote; on an invoice also who issued it, when that is someone else
+    const seller = details.staff_quote ? details.created_by : null;
+    if (inv) {
+        if (seller) infoRows.push(['موظف المبيعات', seller]);
+        if (inv.created_by && inv.created_by !== seller) infoRows.push(['أصدر الفاتورة', inv.created_by]);
+    } else if (seller) infoRows.push(['أعدّ العرض', seller]);
     // Door basics only (gate type and size); the color and accessories are listed in the items table
     const spec = [];
     const given = new Map(Array.isArray(details.spec) ? details.spec : []);
