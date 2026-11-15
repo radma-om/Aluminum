@@ -169,7 +169,8 @@ function price(db, input, settings) {
             if (!name) throw err(400, `اكتب اسم البند (${where})`);
             const unitPrice = round2(num(line.unit_price));
             if (!Number.isFinite(unitPrice) || unitPrice < 0) throw err(400, `سعر الوحدة غير صالح (${where})`);
-            item = { name, type: clip(line.type, 120) || null, unit: UNITS.includes(line.unit) ? line.unit : 'piece', unit_price: unitPrice };
+            item = { name, type: clip(line.type, 120) || null, unit: UNITS.includes(line.unit) ? line.unit : 'piece', unit_price: unitPrice,
+                ...(typeof line.part === 'string' && /^[a-z_]{2,20}$/.test(line.part) ? { part: line.part } : {}) };
         }
         const gross = round2(item.unit_price * quantity);
         const d = discountOf(line.discount, gross, where);
