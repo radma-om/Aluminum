@@ -581,3 +581,5 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
 .origin-main .k-delta, .origin-main .muted { font-size: 0.78rem; }
 .origin-main .up { color: #17663a; } .origin-main .down { color: #a93226; }
 .origin-figs { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 0.88rem; }
+.qb-inv-note { margin: 4px 0 10px; padding: 10px 12px; border-radius: 12px; background: #fff8ec; border: 1px solid #f1d9a8; font-size: 0.88rem; line-height: 1.9; }
+.qb-inv-note[hidden] { display: none; }

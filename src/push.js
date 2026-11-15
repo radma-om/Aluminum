@@ -252,6 +252,16 @@ function workOrderAssigned(db, order, { rescheduled = false } = {}) {
     });
 }
 
+/* The job of a work order changed (its invoice was edited): the technician looks again before going */
+function workOrderChanged(db, order) {
+    if (!order || !order.technician_id) return Promise.resolve(0);
+    return send(db, [`u:${order.technician_id}`], {
+        title: '✏️ تعديل في أمر عمل — راجع التفاصيل',
+        body: `${order.number} — ${order.customer_name}\n${String(order.description || '').slice(0, 140)}`,
+        url: '/admin#tab=work_orders', tag: 'wo-' + order.number
+    });
+}
+
 /* A work order cancelled with its invoice: the technician should not go */
 function workOrderCancelled(db, order, why = '') {
     if (!order || !order.technician_id) return Promise.resolve(0);
@@ -284,5 +294,5 @@ function serviceRequest(db, r) {
 
 module.exports = {
     publicKey, subscribe, unsubscribe, devices, send, keyOf, setSenderForTests, accountsOf: accounts,
-    quoteFromCustomer, leadAssigned, humanRequested, workOrderAssigned, workOrderReport, workOrderCancelled, serviceRequest
+    quoteFromCustomer, leadAssigned, humanRequested, workOrderAssigned, workOrderReport, workOrderCancelled, workOrderChanged, serviceRequest
 };

@@ -177,6 +177,10 @@ function showInvoice(inv) {
                 <span class="status-text">${esc(i.quantity)} × ${money2(i.unit_price)} = ${money2(i.line_total)}${i.gift ? ' (هدية)' : ''}</span>
                 ${i.description ? `<span class="item-desc">${esc(i.description)}</span>` : ''}</li>`).join('')}
         </ol></details>` : ''}
+        ${(inv.revisions || []).length ? `<details class="inv-items"><summary>سجل التعديلات (${inv.revisions.length})</summary><ol>
+            ${inv.revisions.map((r) => `<li><b>${money2(r.total)} ← ${money2(r.new_total)}</b> ر.ع — ${esc(r.reason || '')}
+                <span class="status-text">${esc(r.edited_by || '')} — ${esc(String(r.created_at).slice(0, 16))}</span></li>`).join('')}
+        </ol></details>` : ''}
         <p class="sub-heading">الدفعات</p>
         ${inv.payments.length ? `<div class="table-wrapper"><table class="stack-table"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>الطريقة</th><th>المرجع / ملاحظة</th><th></th></tr></thead><tbody>
             ${inv.payments.map((p) => `<tr>
@@ -190,6 +194,7 @@ function showInvoice(inv) {
             <button class="btn btn-outline btn-sm" onclick="downloadInvoicePdf(${inv.id}, '${esc(inv.number)}')">PDF</button>
             <button class="btn btn-outline btn-sm" onclick="copyInvoiceLink()">نسخ رابط العميل</button>
             <a class="btn btn-outline btn-sm" href="${esc(wa)}" target="_blank" rel="noopener">إرسال عبر واتساب</a>
+            ${inv.state !== 'cancelled' ? `<button class="btn btn-outline btn-sm" onclick="closeSheet('invSheet'); openQuoteBuilder({ invoice: invCurrent })"><i class="fas fa-pen-ruler"></i> تعديل البنود / المقاسات</button>` : ''}
             ${inv.state !== 'cancelled' ? `<button class="btn btn-outline btn-sm" onclick="editInvoice()">تعديل الاستحقاق / الملاحظات</button>` : ''}
             ${canSee('work_orders') && inv.state !== 'cancelled' ? `<button class="btn btn-primary btn-sm" onclick="closeSheet('invSheet'); newWorkOrder({ invoice: invCurrent })"><i class="fas fa-screwdriver-wrench"></i> إنشاء أمر عمل</button>` : ''}
             ${manager && inv.state !== 'cancelled' ? `<button class="btn btn-outline btn-sm" style="color:#a93226" onclick="cancelInvoice()">إلغاء الفاتورة</button>` : ''}

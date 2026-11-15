@@ -14,6 +14,7 @@ let qbCatalog = null;
 let qbLines = [];
 let qbCustomer = null;   // a customer record chosen (from the profile or the suggestions)
 let qbEditing = null;    // the quote whose lines are being changed
+let qbInvoice = null;    // the issued invoice whose lines are being changed (its payments stay)
 let qbTimer = null;
 let qbLastPreview = null;
 let qbCostOnly = false;  // «حاسبة التكلفة والربح»: no customer, nothing saved
@@ -24,14 +25,17 @@ const qbMoney = (n) => Number(n || 0).toFixed(2);
 const QB_CALCS = { rolling_shutter: 'بوابة رول شتر', overhead: 'بوابة أوفرهيد', motors: 'مكينة بوابة' };
 const QB_ICONS = { rolling_shutter: 'fa-warehouse', overhead: 'fa-door-closed', motors: 'fa-cogs' };
 
-async function openQuoteBuilder({ customer = null, quote = null, costOnly = false } = {}) {
+async function openQuoteBuilder({ customer = null, quote = null, costOnly = false, invoice = null } = {}) {
     try {
         qbCatalog = await api('GET', '/api/admin/quotes/catalog');
     } catch (err) { return alert(err.message); }
+    qbInvoice = invoice;
+    // An invoice is opened like a quote: its gates can be re-sized, its other lines keep the invoiced price
+    if (invoice) quote = { ...invoice, ref: invoice.number, details: invoice.details || {}, items: invoice.items || [] };
     qbEditing = quote;
     qbCustomer = customer;
     qbCostOnly = costOnly && qbCatalog.sees_cost;
-    $id('qbTitle').textContent = qbCostOnly ? 'حاسبة التكلفة والربح' : quote ? `تعديل بنود العرض ${quote.ref}` : 'عرض سعر جديد';
+    $id('qbTitle').textContent = qbCostOnly ? 'حاسبة التكلفة والربح' : invoice ? `تعديل الفاتورة ${invoice.number}` : quote ? `تعديل بنود العرض ${quote.ref}` : 'عرض سعر جديد';
     qbApplyMode();
     $id('qbExtraCost').value = '';
     const fixed = quote || customer;
@@ -61,10 +65,19 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
             qbLines.push({
                 product_id: i.product_id || '', name: i.name, type: i.type || '', unit: i.unit, quantity: i.quantity,
                 unit_price: i.unit_price, disc_type: i.discount ? i.discount.type : '', disc_value: i.discount ? i.discount.value : '',
-                description: i.description || '', catalog: Boolean(i.product_id)
+                description: i.description || '', catalog: Boolean(i.product_id) && !invoice, part: i.part || '',
+                // On an invoice the line keeps what was invoiced (not today's list price)
+                ...(invoice ? { product_id: '', unit_price: i.gross != null && i.quantity ? Math.round((i.gross / i.quantity) * 1000) / 1000 : i.unit_price } : {})
             });
         }
         if (d.quote_discount) { $id('qbDiscType').value = d.quote_discount.type; $id('qbDiscValue').value = d.quote_discount.value; }
+        // Whatever took the invoice below the sum of its lines (a calculator promotion, a gift, the «المبلغ النهائي»
+        // agreed at issue) is carried as a discount on the total, so the edit starts from the invoiced amount
+        if (invoice) {
+            const off = Math.round((invoice.items.reduce((s, i) => s + (Number(i.line_total) || 0), 0) - invoice.subtotal) * 100) / 100;
+            const same = d.quote_discount && Math.abs(d.quote_discount.amount - off) < 0.006;
+            if (off > 0.004 && !same) { $id('qbDiscType').value = 'amount'; $id('qbDiscValue').value = off; }
+        }
         $id('qbNotes').value = quote.notes || '';
     } else {
         qbLines = [];
@@ -111,6 +124,17 @@ function qbApplyMode() {
     document.querySelectorAll('#qbSheet .qb-quote-only').forEach((el) => { el.hidden = qbCostOnly; });
     $id('qbCostIntro').hidden = !qbCostOnly;
     $id('qbSave').hidden = qbCostOnly;
+    $id('qbSave').textContent = qbInvoice ? 'حفظ تعديل الفاتورة' : 'حفظ العرض';
+    $id('qbInvoiceNote').hidden = !qbInvoice;
+    if (qbInvoice) {
+        $id('qbInvoiceNote').innerHTML = `<b>تعديل فاتورة صادرة.</b> رقمها وتاريخها ودفعاتها تبقى كما هي${qbInvoice.paid > 0.004 ? ` — المدفوع <b>${qbMoney(qbInvoice.paid)}</b> ر.ع` : ''}.
+            الإجمالي الحالي <b>${qbMoney(qbInvoice.total)}</b> ر.ع، والجديد يظهر أسفل الصفحة.
+            <br>غيّر المقاس أو الخيارات في بطاقة البوابة، أو احذف بنداً، أو أضف بنداً. البوابات تُسعَّر بأسعار اليوم؛ البنود الأخرى تبقى بسعر الفاتورة.
+            ${qbInvoice.adjustment > 0.004 ? `<br>⚠️ هذه الفاتورة صدرت بمبلغ نهائي متفق عليه (${qbMoney(qbInvoice.subtotal)} قبل الضريبة) — راجع الإجمالي الجديد وعدّل الخصم أو مستوى السعر ليطابق الاتفاق.` : ''}`;
+    }
+    const v = $id('qbValidity').closest('.form-group');
+    if (v) v.hidden = qbCostOnly || Boolean(qbInvoice);
+    $id('qbNotes').closest('.form-group').hidden = qbCostOnly || Boolean(qbInvoice); // an invoice's notes are edited from its own window
     $id('qbToQuote').hidden = !qbCostOnly;
     $id('qbCostBox').hidden = !qbCatalog.sees_cost;
     if (qbCostOnly) { $id('qbCustFields').hidden = true; $id('qbCustFixed').hidden = true; }
@@ -374,7 +398,8 @@ function qbPayload(all = false) {
             ...(l.item_discounts && Object.values(l.item_discounts).some((d) => Number(d.value)) ? { item_discounts: Object.fromEntries(Object.entries(l.item_discounts).filter(([, d]) => Number(d.value)).map(([k, d]) => [k, { type: d.type, value: Number(d.value) }])) } : {}),
             ...(l.item_notes && Object.keys(l.item_notes).length ? { item_notes: { ...l.item_notes } } : {}) }
             : l.product_id ? { product_id: Number(l.product_id), quantity: Number(l.quantity) }
-                : { name: l.name, unit: l.unit, unit_price: l.unit_price === '' ? '' : Number(l.unit_price), quantity: Number(l.quantity) }),
+                : { name: l.name, unit: l.unit, unit_price: l.unit_price === '' ? '' : Number(l.unit_price), quantity: Number(l.quantity),
+                    ...(l.type ? { type: l.type } : {}), ...(l.part ? { part: l.part } : {}) }),
         ...(!l.calc && String(l.description || '').trim() ? { description: String(l.description).trim() } : {}),
         ...(l.disc_type && l.disc_value !== '' ? { discount: { type: l.disc_type, value: Number(l.disc_value) } } : {})
     }));
@@ -425,8 +450,12 @@ async function qbPreview() {
             <div class="row"><span>المجموع قبل الضريبة</span><span>${qbMoney(r.subtotal)}</span></div>
             <div class="row"><span>ضريبة القيمة المضافة ${esc(r.vat_percent)}%</span><span>${qbMoney(r.vat)}</span></div>
             <div class="row grand"><span>الإجمالي (ر.ع)</span><span>${qbMoney(r.total)}</span></div>
+            ${qbInvoice ? `<div class="row"><span>إجمالي الفاتورة قبل التعديل</span><span>${qbMoney(qbInvoice.total)}</span></div>
+                <div class="row"><span>المدفوع (لا يتغير)</span><span>${qbMoney(qbInvoice.paid)}</span></div>
+                <div class="row" style="font-weight:700;color:${r.total + 0.005 < qbInvoice.paid ? '#a93226' : 'inherit'}"><span>المتبقي بعد التعديل</span><span>${qbMoney(r.total - qbInvoice.paid)}</span></div>
+                ${r.total + 0.005 < qbInvoice.paid ? '<div class="status-text" style="color:#a93226">⚠️ المدفوع أكبر من الإجمالي الجديد — لا يُحفظ التعديل (الدفعات لا تتغير).</div>' : ''}` : ''}
             ${limit !== null ? `<div class="status-text" style="color:${r.over_limit ? '#a93226' : 'inherit'}">${r.over_limit ? '⚠️ ' : ''}حد الخصم المسموح لك: ${esc(limit)}%${p.promo_amount || p.gift_amount ? ' (فوق العرض والهدية)' : ''}${r.over_limit ? ' — قلّل الخصم أو اطلب من المدير' : ''}</div>` : ''}`;
-        $id('qbSave').disabled = Boolean(r.over_limit);
+        $id('qbSave').disabled = Boolean(r.over_limit) || Boolean(qbInvoice && r.total + 0.005 < qbInvoice.paid);
         renderQbCost(r.cost);
         setStatus('qbStatus', '');
     } catch (err) {
@@ -460,6 +489,17 @@ async function saveBuiltQuote() {
     const body = { ...qbPayload(true), notes: $id('qbNotes').value.trim() };
     try {
         let q;
+        if (qbInvoice) {
+            const reason = prompt(`سبب تعديل الفاتورة ${qbInvoice.number}؟ (مثلاً: تغيير المقاس بعد المعاينة) — يُحفظ في سجل التعديلات`);
+            if (!reason || !reason.trim()) return;
+            const inv = await api('PUT', `/api/admin/invoices/${qbInvoice.id}/items`, { ...body, reason: reason.trim() });
+            closeSheet('qbSheet');
+            loadInvoices().catch(() => {});
+            showInvoice(inv);
+            alert(`تم تعديل الفاتورة ${inv.number} ✓\nالإجمالي ${qbMoney(inv.previous_total)} ← ${qbMoney(inv.total)} ر.ع — المتبقي ${qbMoney(inv.balance)} ر.ع`
+                + (inv.updated_work_orders && inv.updated_work_orders.length ? `\nحُدّثت أوامر العمل: ${inv.updated_work_orders.join('، ')} وأُبلغ الفني.` : ''));
+            return;
+        }
         if (qbEditing) {
             q = await api('PUT', `/api/admin/quotes/${qbEditing.id}`, body);
         } else {

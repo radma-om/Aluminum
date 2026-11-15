@@ -60,7 +60,8 @@ function withPayments(db, row) {
         details: details_json ? JSON.parse(details_json) : null,
         adjustment: round2(row.subtotal - row.quote_subtotal),
         payments, paid, balance, state, state_label: PAY_STATES[state],
-        deposit
+        deposit,
+        revisions: revisions(db, row.id)
     };
 }
 
@@ -198,6 +199,38 @@ function cancel(db, invoiceId, reason, author = null) {
     return get(db, invoiceId);
 }
 
+/* Change the lines of an issued invoice (new sizes, lines added or removed), paid in part or not.
+   The number, the dates and the payments stay; what it was before is kept in invoice_revisions.
+   priced: the new lines and amounts (the same pricing as an employee quote); details: what the builder keeps. */
+function revise(db, invoiceId, { priced, details, reason }, author = null) {
+    const why = String(reason || '').trim().slice(0, 300);
+    if (!why) throw err(400, 'اكتب سبب التعديل (مثلاً: تغيير المقاس بعد المعاينة)');
+    const total = round2(priced.total);
+    if (!Array.isArray(priced.items) || !priced.items.length || !(total > 0)) throw err(400, 'الفاتورة تحتاج بنداً واحداً على الأقل');
+    return tx(db, () => {
+        const inv = get(db, invoiceId);
+        if (!inv) throw err(404, 'الفاتورة غير موجودة');
+        if (inv.status === 'cancelled') throw err(400, 'الفاتورة ملغاة — لا تُعدَّل');
+        if (inv.paid > total + EPS) {
+            throw err(400, `المدفوع على الفاتورة (${inv.paid.toFixed(2)} ر.ع) أكبر من الإجمالي الجديد (${total.toFixed(2)} ر.ع) — الدفعات لا تتغير: عدّل البنود، أو احذف دفعة / سجّل استرداداً أولاً`);
+        }
+        db.prepare(`INSERT INTO invoice_revisions (invoice_id, items_json, details_json, subtotal, vat, total, new_total, reason, edited_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(inv.id, JSON.stringify(inv.items), inv.details ? JSON.stringify(inv.details) : null, inv.subtotal, inv.vat, inv.total, total, why, author);
+        // The deposit asked: a % follows the new total; an amount is kept (never above the total)
+        const dep = inv.deposit ? cleanDeposit({ type: inv.deposit.type, value: inv.deposit.type === 'percent' ? inv.deposit.value : Math.min(inv.deposit.value, total) }, total) : null;
+        db.prepare(`UPDATE invoices SET items_json = ?, details_json = ?, quote_subtotal = ?, subtotal = ?, vat_percent = ?, vat = ?, total = ?,
+                           deposit_type = ?, deposit_value = ?, deposit_amount = ? WHERE id = ?`)
+            .run(JSON.stringify(priced.items), details ? JSON.stringify(details) : null, round2(priced.subtotal), round2(priced.subtotal),
+                Number(priced.vat_percent) || 0, round2(priced.vat), total, dep ? dep.type : null, dep ? dep.value : null, dep ? dep.amount : null, inv.id);
+        const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(inv.customer_phone);
+        if (lead) leads.addMessage(db, lead, 'system', `✏️ عُدّلت الفاتورة ${inv.number}: الإجمالي ${inv.total.toFixed(2)} ← ${total.toFixed(2)} ر.ع — ${why}${author ? ` (${author})` : ''}`);
+        return { ...get(db, inv.id), previous_total: inv.total };
+    });
+}
+
+const revisions = (db, invoiceId) => db.prepare('SELECT id, subtotal, vat, total, new_total, reason, edited_by, created_at FROM invoice_revisions WHERE invoice_id = ? ORDER BY id DESC').all(Number(invoiceId));
+
 /* Issuing an invoice made its quote «مقبول» and the customer «تم البيع». Cancelled with no other invoice
    standing, both go back (the statistics count accepted quotes and won customers); work already done stays. */
 function reopenAfterCancel(db, inv, why = '', author = null) {
@@ -288,4 +321,4 @@ function summary(db, { today = leads.localToday(), mineOf = null } = {}) {
     return { month, issued_count: issued.n, issued_value: round2(issued.v), collected: round2(collected), outstanding: round2(owed), overdue };
 }
 
-module.exports = { createFromQuote, addPayment, deletePayment, cancel, update, list, get, byNumber, activeForQuote, summary, METHODS, PAY_STATES, DEPOSIT_TYPES, repairCancelled };
+module.exports = { createFromQuote, addPayment, deletePayment, cancel, update, list, get, byNumber, activeForQuote, summary, METHODS, PAY_STATES, DEPOSIT_TYPES, repairCancelled, revise, revisions };

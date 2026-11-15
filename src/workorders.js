@@ -252,6 +252,23 @@ function cancel(db, id, reason, author) {
     return get(db, order.id);
 }
 
+/* An invoice edited (sizes, lines): its open work orders get the new job and the technician is told */
+function reviseForInvoice(db, invoice, oldItems, oldDetails, author = null) {
+    if (!invoice || !invoice.id) return [];
+    const before = describe(oldItems, oldDetails);
+    const now = describe(invoice.items, invoice.details);
+    if (before === now) return [];
+    const open = db.prepare("SELECT id, description FROM work_orders WHERE invoice_id = ? AND status IN ('new', 'scheduled', 'in_progress')").all(invoice.id);
+    return open.map(({ id, description }) => {
+        // A description the office wrote by hand is kept; the new job is in the history either way
+        if (description === before) db.prepare('UPDATE work_orders SET description = ? WHERE id = ?').run(now, id);
+        event(db, id, `عُدّلت الفاتورة ${invoice.number} — العمل الآن:\n${now}`, author);
+        const order = get(db, id);
+        require('./push').workOrderChanged(db, order).catch(() => {});
+        return order;
+    });
+}
+
 /* An invoice cancelled: its open work orders go with it (done ones stay — the work happened).
    The technician hears it on the phone, the reason is in each order's history. */
 function cancelForInvoice(db, invoice, author = null) {
@@ -453,5 +470,5 @@ function technicianFeed(db, { limit = 20 } = {}) {
 
 module.exports = {
     create, update, setStatus, addNote, cancel, list, get, technicians, describe,
-    technicianDigests, sendTechnicianDigests, weekFigures, cancelForInvoice, cancelOrphans, dueAt, board, technicianFeed, KINDS, STATUSES
+    technicianDigests, sendTechnicianDigests, weekFigures, reviseForInvoice, cancelForInvoice, cancelOrphans, dueAt, board, technicianFeed, KINDS, STATUSES
 };
