@@ -33,10 +33,41 @@
             const m = key.match(re);
             if (m) return typeof to === 'function' ? to(...m) : key.replace(re, to);
         }
-        // A label followed by a colon, or with a trailing «*» / «:» / «…»
-        const tail = key.match(/^(.*?)\s*([:：*…]+)$/);
-        if (tail && Object.prototype.hasOwnProperty.call(d, tail[1])) return d[tail[1]] + tail[2];
+        const whole = look(d, key);
+        if (whole !== null) return whole;
+        return byParts(d, key);
+    }
+    const has = (d, k) => Object.prototype.hasOwnProperty.call(d, k);
+    /* A text as it is, or a label followed by a colon / «*» / «…» */
+    function look(d, s) {
+        if (has(d, s)) return d[s];
+        const tail = s.match(/^(.*?)\s*([:：*…]+)$/);
+        if (tail && has(d, tail[1])) return d[tail[1]] + tail[2];
         return null;
+    }
+    /* A text the scripts built from parts and values («متبقٍ 15 يوماً», «عميل: سالم»): each part between
+       the numbers and Latin words is looked up, then each run of Arabic words; names and the rest stay */
+    const LETTERS = '\\u0620-\\u065F\\u066E-\\u06D3\\u0670';
+    const RUN = new RegExp(`[${LETTERS}]+(?:\\s+[${LETTERS}]+)*`, 'g');
+    function byParts(d, key) {
+        let hit = false;
+        let unknown = 0;
+        let known = 0;
+        const out = key.replace(/[^0-9A-Za-z\u0660-\u0669]+/g, (seg) => {
+            if (!ARABIC.test(seg)) return seg;
+            const lead = seg.match(/^\s*/)[0];
+            const trail = seg.match(/\s*$/)[0];
+            const found = look(d, seg.trim());
+            if (found !== null) { hit = true; known += seg.trim().split(/\s+/).length; return lead + found + trail; }
+            return seg.replace(RUN, (r) => {
+                const v = look(d, r);
+                if (v !== null) { hit = true; known += r.split(/\s+/).length; return v; }
+                unknown += r.split(/\s+/).length;
+                return r;
+            });
+        });
+        // A name or two left in Arabic is fine; a half-translated sentence is not — then it stays as written
+        return hit && unknown <= 3 && unknown < known ? out : null;
     }
     window.t = (s) => (window.APP_LANG === 'en' ? en(s) ?? s : s);
 

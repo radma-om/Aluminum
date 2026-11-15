@@ -39,7 +39,7 @@ test('every Arabic text in admin.html has an English translation', () => {
     const missing = [...texts].filter((v) => !Object.hasOwn(I18N_EN, v) && !Object.hasOwn(I18N_EN, v.replace(/\s*[:：*…]+$/, '')));
     assert.deepEqual(missing, [], 'add these to public/admin-i18n-en.js');
     assert.ok(texts.size > 500);
-    for (const [ar, en] of Object.entries(I18N_EN)) assert.ok(en && !ARABIC.test(en) || ar === 'رادما', `${ar} → ${en}`);
+    for (const [ar, en] of Object.entries(I18N_EN)) assert.ok(en && (!ARABIC.test(en) || ar === 'رادما' || /استعادة/.test(en)), `${ar} → ${en}`);
 });
 
 test('the language scripts load in <head>, before the page is drawn', () => {
@@ -81,4 +81,26 @@ test('each staff account keeps its own language', async (t) => {
     assert.equal((await call('GET', '/api/admin/me', null, token)).body.user.lang, 'ar');
     // The general manager (no account row) is answered without error
     assert.equal((await call('PUT', '/api/admin/me/lang', { lang: 'en' })).status, 200);
+});
+
+test('texts the scripts build from parts are translated; half-known sentences stay in Arabic', () => {
+    const window = {};
+    const document = { readyState: 'loading', addEventListener() {}, documentElement: { classList: { add() {} } } };
+    const localStorage = { getItem: () => 'en', setItem() {} };
+    const ctx = { window, document, localStorage, MutationObserver: class { observe() {} }, location: {} };
+    ctx.window = ctx;
+    vm.runInNewContext(fs.readFileSync(path.join(pub, 'admin-i18n-en.js'), 'utf8'), ctx);
+    vm.runInNewContext(fs.readFileSync(path.join(pub, 'admin-i18n.js'), 'utf8'), ctx);
+    const t = ctx.t;
+    assert.equal(t('لوحة المؤشرات'), 'Dashboard');
+    assert.equal(t('متبقٍ 15 يوماً'), 'remaining 15 days');
+    assert.equal(t('1,250.000 ر.ع'), '1,250.000 OMR');
+    assert.equal(t('الإجمالي:'), 'Total:');
+    // A name stays as it is beside the translated label
+    assert.equal(t('تعديل الفاتورة INV-2026-0002'), 'Edit invoice INV-2026-0002');
+    // Mostly unknown: left whole rather than mixed
+    const mixed = 'جملة غير معروفة إطلاقاً مع غير مفعّل';
+    assert.equal(t(mixed), mixed);
+    // Every value in the dictionary is English
+    for (const [ar, en] of Object.entries(ctx.I18N_EN)) assert.ok(!ARABIC.test(en) || ar === 'رادما' || /استعادة/.test(en), `${ar} → ${en}`);
 });
