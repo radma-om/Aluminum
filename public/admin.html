@@ -2613,9 +2613,9 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     /* =============================================================
        Clear All Items
        ============================================================= */
-    function clearAllItems() {
+    async function clearAllItems() {
         if (items.length === 0) return;
-        if (confirm('هل تريد مسح جميع البنود؟')) {
+        if (await askYes('هل تريد مسح جميع البنود؟', { danger: true })) {
             items = [];
             recalculateAll();
         }
@@ -2994,6 +2994,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     renderSlatSelects();
     calcWeight();
     </script>
+    <script src="admin-dialog.js"></script>
     <script src="admin.js"></script>
     <script src="admin-crm.js"></script>
     <script src="admin-users.js"></script>

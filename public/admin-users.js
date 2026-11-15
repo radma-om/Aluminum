@@ -99,7 +99,7 @@ async function saveUser() {
     };
     if ($id('uPassword').value) body.password = $id('uPassword').value;
     if (id && $id('uReset2fa').checked) {
-        if (!confirm('إعادة ضبط التحقق بخطوتين لهذا الحساب؟ يخرج من كل الأجهزة، ويضبطه من جديد بجواله عند الدخول.')) return;
+        if (!await askYes('إعادة ضبط التحقق بخطوتين لهذا الحساب؟ يخرج من كل الأجهزة، ويضبطه من جديد بجواله عند الدخول.')) return;
         body.reset_2fa = true;
     }
     try {
@@ -115,7 +115,7 @@ async function saveUser() {
 
 async function deleteUser(id) {
     const u = usersData.users.find((x) => x.id === id);
-    if (!u || !confirm(`حذف حساب «${u.display_name}»؟ تبقى تقاريره ورسائله السابقة باسمه.\nلإيقافه مؤقتاً استخدم «تعديل» وألغِ «الحساب مفعّل».`)) return;
+    if (!u || !await askYes(`حذف حساب «${u.display_name}»؟ تبقى تقاريره ورسائله السابقة باسمه.\nلإيقافه مؤقتاً استخدم «تعديل» وألغِ «الحساب مفعّل».`)) return;
     try {
         await api('DELETE', `/api/admin/users/${id}`);
         await loadUsers();

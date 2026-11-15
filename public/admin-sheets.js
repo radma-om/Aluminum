@@ -26,8 +26,8 @@
     function closeButton(sheet) { return sheet.querySelector('.sheet-bar .sheet-close, .sheet-close'); }
 
     // Close the way its own × does (some panels do more than hide themselves)
-    function requestClose(sheet, { ask = true } = {}) {
-        if (ask && dirty.has(sheet.id) && !confirm('إغلاق النافذة؟ ما كتبته ولم تحفظه سيُفقد.')) return false;
+    async function requestClose(sheet, { ask = true } = {}) {
+        if (ask && dirty.has(sheet.id) && !(await askYes('إغلاق النافذة؟ ما كتبته ولم تحفظه سيُفقد.', { okLabel: 'إغلاق', cancelLabel: 'متابعة الكتابة' }))) return false;
         const x = closeButton(sheet);
         if (x) x.click(); else sheet.hidden = true;
         return true;
@@ -72,8 +72,12 @@
         // The back button: close the top panel(s) the history has stepped past
         while (stack.length && stack[stack.length - 1].id !== want) {
             const top = stack[stack.length - 1];
-            if (dirty.has(top.id) && !confirm('إغلاق النافذة؟ ما كتبته ولم تحفظه سيُفقد.')) {
+            if (dirty.has(top.id)) {
+                // Keep the panel's step in the history while asking; closing then takes it out as usual
                 history.pushState({ ...(history.state || {}), sheet: top.id }, '');
+                askYes('إغلاق النافذة؟ ما كتبته ولم تحفظه سيُفقد.', { okLabel: 'إغلاق', cancelLabel: 'متابعة الكتابة' }).then((yes) => {
+                    if (yes) { dirty.delete(top.id); requestClose(top, { ask: false }); }
+                });
                 return;
             }
             closed(top, { fromHistory: true });
