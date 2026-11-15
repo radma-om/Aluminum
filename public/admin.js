@@ -1033,13 +1033,13 @@ let kbItems = [];
 
 function renderKnowledge(data) {
     kbItems = data.items;
-    $id('kbStats').textContent = `— الحجم المفعّل: ${data.active_chars.toLocaleString('ar-OM')} حرف` +
+    $id('kbStats').textContent = `— الحجم المفعّل: ${data.active_chars.toLocaleString(APP_LOCALE)} حرف` +
         (data.mode === 'full' ? ' (يقرأها المساعد كاملة)' : ' (كبيرة: يبحث فيها المساعد عند كل سؤال)');
     $id('kbRows').innerHTML = kbItems.map((i) => `
         <tr>
             <td>${esc(KB_KINDS[i.kind] || i.kind)}</td>
             <td>${esc(i.title)}${i.source_name ? `<br><small class="status-text">${esc(i.source_name)}</small>` : ''}</td>
-            <td>${i.content.length.toLocaleString('ar-OM')}</td>
+            <td>${i.content.length.toLocaleString(APP_LOCALE)}</td>
             <td><input type="checkbox" ${i.active ? 'checked' : ''} onchange="toggleKnowledge(${i.id}, this.checked)"></td>
             <td>
                 <button class="btn btn-outline btn-sm" onclick="editKnowledge(${i.id})">تعديل</button>
@@ -1155,7 +1155,7 @@ async function loadBackups() {
         <tr>
             <td dir="ltr" style="text-align:right"><small>${esc(b.name)}</small></td>
             <td>${esc(BACKUP_KINDS[b.kind] || b.kind)}</td>
-            <td>${esc(new Date(b.created_at).toLocaleString('ar-OM'))}</td>
+            <td>${esc(new Date(b.created_at).toLocaleString(APP_LOCALE))}</td>
             <td>${(b.size / 1024).toFixed(0)} KB</td>
             <td>
                 <button class="btn btn-outline btn-sm" onclick="downloadSaved('${esc(b.name)}')">تنزيل</button>
@@ -1632,7 +1632,7 @@ async function checkMyAddress() {
 
 /* ------------------- WhatsApp diagnostics (MazBot) ------------------- */
 
-const fmtWhen = (t) => new Date(String(t).replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' });
+const fmtWhen = (t) => new Date(String(t).replace(' ', 'T') + 'Z').toLocaleString(APP_LOCALE, { dateStyle: 'medium', timeStyle: 'short' });
 
 async function runDiagnose() {
     setStatus('diagStatus', 'جاري الفحص…');
@@ -1666,7 +1666,7 @@ async function runDiagnose() {
             ${r.other_events.map((e) => `<div class="diag-msg"><span class="m-when">${esc(fmtWhen(e.at))}</span>
                 <span><strong dir="ltr">${esc(e.raw_summary.type)}</strong>${e.raw_summary.status ? ' — ' + esc(e.raw_summary.status) : ''}${e.raw_summary.error ? ' — <span class="m-note bad">' + esc(e.raw_summary.error) + '</span>' : ''}</span>
                 <span></span><span class="status-text" dir="ltr" style="word-break:break-all">${esc(e.raw_summary.text)}</span></div>`).join('')}` : '';
-        setStatus('diagStatus', 'آخر فحص: ' + new Date().toLocaleTimeString('ar-OM', { hour: '2-digit', minute: '2-digit' }));
+        setStatus('diagStatus', 'آخر فحص: ' + new Date().toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
         setStatus('diagStatus', err.message, 'err');
     }
@@ -1743,6 +1743,7 @@ async function loadSystemStatus() {
 
 async function initAdmin() {
     ME = (await api('GET', '/api/admin/me')).user;
+    if (typeof applyAccountLanguage === 'function') applyAccountLanguage(ME);
     if (ME.must_setup_2fa) {
         // Manager accounts: nothing else until two-step sign-in is on (the server refuses the rest)
         $id('meName').textContent = ME.display_name;

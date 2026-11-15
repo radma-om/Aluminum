@@ -883,6 +883,12 @@ function createApp(db, { agentClient } = {}) {
     /* ---- The signed-in user, and staff accounts (managers) ---- */
 
     admin.get('/me', (req, res) => res.json({ user: req.user, sections: staff.SECTIONS }));
+    // The panel's language for this account (the general manager's is kept on the device only)
+    admin.put('/me/lang', (req, res) => {
+        const lang = (req.body || {}).lang === 'en' ? 'en' : 'ar';
+        if (!req.user.owner && req.user.id) db.prepare('UPDATE staff_users SET lang = ? WHERE id = ?').run(lang, req.user.id);
+        res.json({ lang });
+    });
     /* "Your address as the system sees it": checks TRUSTED_PROXIES from the outside. The panel calls it
        twice — normally and with a forged X-Forwarded-For — to see whether the proxy can be fooled. */
     admin.get('/me/address', (req, res) => {

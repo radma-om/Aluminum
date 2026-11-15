@@ -28,7 +28,7 @@ function renderUsers() {
             <td data-label="متابعة العملاء">${u.permissions.includes('leads') ? esc(u.leads_scope === 'mine' ? 'عملاؤه فقط' : 'كل العملاء') : '—'}</td>
             <td data-label="التحقق بخطوتين">${u.totp_enabled ? '<span class="badge on">مفعّل</span>' : u.role === 'manager' ? '<span class="badge lme">يُطلب عند الدخول</span>' : '<span class="badge">غير مفعّل</span>'}</td>
             <td data-label="الحالة">${u.active ? '<span class="badge on">مفعّل</span>' : '<span class="badge">موقوف</span>'}</td>
-            <td data-label="آخر دخول"><small>${u.last_login_at ? esc(new Date(u.last_login_at.replace(' ', 'T') + 'Z').toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' })) : 'لم يدخل بعد'}</small></td>
+            <td data-label="آخر دخول"><small>${u.last_login_at ? esc(new Date(u.last_login_at.replace(' ', 'T') + 'Z').toLocaleString(APP_LOCALE, { dateStyle: 'medium', timeStyle: 'short' })) : 'لم يدخل بعد'}</small></td>
             <td data-label="" style="white-space:nowrap">
                 <button class="btn btn-outline btn-sm" onclick="editUser(${u.id})">تعديل</button>
                 <button class="btn btn-outline btn-sm" onclick="deleteUser(${u.id})">حذف</button>

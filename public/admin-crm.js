@@ -41,7 +41,7 @@ async function loadDashboard() {
     try {
         dash = await api('GET', '/api/admin/dashboard?days=' + dashDays);
         renderDashboard();
-        $id('dashUpdated').textContent = 'آخر تحديث ' + new Date().toLocaleTimeString('ar-OM', { hour: '2-digit', minute: '2-digit' });
+        $id('dashUpdated').textContent = 'آخر تحديث ' + new Date().toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' });
     } catch (err) {
         $id('dashUpdated').textContent = err.message;
     } finally {
@@ -239,7 +239,7 @@ function niceScale(max) {
 }
 
 const shortDate = (iso) => { const [, m, d] = iso.split('-'); return `${Number(d)}/${Number(m)}`; };
-const longDate = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('ar-OM', { weekday: 'long', day: 'numeric', month: 'long' });
+const longDate = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString(APP_LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
 
 /* Daily requests (or value): area + 2px line, RTL time axis, crosshair tooltip */
 function renderTrend() {
@@ -423,10 +423,10 @@ function ago(s) {
     const h = Math.round(min / 60);
     if (h < 24) return `منذ ${h} س`;
     const d = Math.round(h / 24);
-    return d < 30 ? `منذ ${d} يوم` : parseUtc(s).toLocaleDateString('ar-OM');
+    return d < 30 ? `منذ ${d} يوم` : parseUtc(s).toLocaleDateString(APP_LOCALE);
 }
-const timeOf = (s) => parseUtc(s).toLocaleTimeString('ar-OM', { hour: '2-digit', minute: '2-digit' });
-const dayOf = (s) => parseUtc(s).toLocaleDateString('ar-OM', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const timeOf = (s) => parseUtc(s).toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' });
+const dayOf = (s) => parseUtc(s).toLocaleDateString(APP_LOCALE, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
 function avatar(lead, cls = '') {
     const name = lead.name || lead.phone || '؟';
@@ -585,16 +585,16 @@ function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: p
                 <div class="meta">
                     ${phone ? `<a href="https://wa.me/${esc(phone)}" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp"></i> +${esc(phone)}</a>` : '<span>بدون رقم</span>'}
                     <span><i class="${CH_ICONS[lead.channel] || 'fas fa-user'}"></i> ${esc(leadMeta.channels[lead.channel] || lead.channel)}</span>
-                    <span><i class="far fa-clock"></i> أول تواصل ${esc(parseUtc(lead.created_at).toLocaleDateString('ar-OM'))}</span>
+                    <span><i class="far fa-clock"></i> أول تواصل ${esc(parseUtc(lead.created_at).toLocaleDateString(APP_LOCALE))}</span>
                     <span><i class="far fa-comment"></i> ${lead.message_count} رسالة</span>
                     ${customerId && canSee('customers') ? `<button class="link-btn" style="margin:0" onclick="openCustomer(${customerId})"><i class="fas fa-address-book"></i> ملف العميل</button>` : ''}
                 </div>
             </div>
         </div>
         ${stop && stop.kind === 'manual'
-            ? `<div class="lead-paused"><i class="fas fa-circle-pause"></i> الرد الآلي متوقف لهذا العميل ${stop.forever ? '<strong>دائماً</strong>' : 'حتى ' + esc(parseUtc(stop.until).toLocaleDateString('ar-OM', { dateStyle: 'medium' }))}${stop.reason ? ' — ' + esc(stop.reason) : ''}${stop.by ? ` (${esc(stop.by)})` : ''}. رسائله تصل هنا ويرد عليه الموظفون.
+            ? `<div class="lead-paused"><i class="fas fa-circle-pause"></i> الرد الآلي متوقف لهذا العميل ${stop.forever ? '<strong>دائماً</strong>' : 'حتى ' + esc(parseUtc(stop.until).toLocaleDateString(APP_LOCALE, { dateStyle: 'medium' }))}${stop.reason ? ' — ' + esc(stop.reason) : ''}${stop.by ? ` (${esc(stop.by)})` : ''}. رسائله تصل هنا ويرد عليه الموظفون.
                 <button class="btn btn-outline btn-sm" id="ldResume">تشغيل الرد الآلي</button></div>`
-            : pausedUntil ? `<div class="lead-paused"><i class="fas fa-circle-pause"></i> المساعد الذكي لا يرد على هذا العميل حتى ${esc(parseUtc(pausedUntil).toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' }))} (طلب موظفاً أو ردّ عليه موظف).
+            : pausedUntil ? `<div class="lead-paused"><i class="fas fa-circle-pause"></i> المساعد الذكي لا يرد على هذا العميل حتى ${esc(parseUtc(pausedUntil).toLocaleString(APP_LOCALE, { dateStyle: 'medium', timeStyle: 'short' }))} (طلب موظفاً أو ردّ عليه موظف).
             <button class="btn btn-outline btn-sm" id="ldResume">ليرد المساعد عليه الآن</button></div>` : ''}
         <div class="lead-controls">
             <label>الحالة
@@ -640,7 +640,7 @@ function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: p
                     <div class="row"><button class="btn btn-primary btn-sm" id="ldAddNote"><i class="fas fa-plus"></i> إضافة</button><span id="ldNoteStatus" class="status-text"></span></div>
                 </div>
                 <div class="notes">${notes.map((n) => `<div class="note k-${esc(n.kind)}">
-                    <div class="n-head"><span class="n-kind">${esc(leadMeta.note_kinds[n.kind] || n.kind)}</span><span>${esc(n.author || '')} · ${esc(parseUtc(n.created_at).toLocaleString('ar-OM', { dateStyle: 'medium', timeStyle: 'short' }))}</span></div>
+                    <div class="n-head"><span class="n-kind">${esc(leadMeta.note_kinds[n.kind] || n.kind)}</span><span>${esc(n.author || '')} · ${esc(parseUtc(n.created_at).toLocaleString(APP_LOCALE, { dateStyle: 'medium', timeStyle: 'short' }))}</span></div>
                     <div class="n-text">${esc(n.text)}</div></div>`).join('') || '<div class="empty-chart">لا توجد تقارير بعد — اكتب أول تقرير متابعة</div>'}</div>
             </div>
         </div>`;

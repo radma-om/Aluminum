@@ -726,6 +726,8 @@ function migrate(db) {
     addColumns('work_order_events', { by_technician: 'INTEGER NOT NULL DEFAULT 0' });
     // Monthly commission: a salesperson's target and % over it; a technician's % of installation
     addColumns('staff_users', { bonus_target: 'REAL', bonus_percent: 'REAL' });
+    // The panel's language for this account (ar / en)
+    addColumns('staff_users', { lang: 'TEXT' });
     // An invoice edited after it was issued: what it was before each edit (who, why, when)
     db.exec(`CREATE TABLE IF NOT EXISTS invoice_revisions (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
