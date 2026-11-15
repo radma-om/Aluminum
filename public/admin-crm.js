@@ -665,10 +665,10 @@ function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: p
                 } else {
                     let until = null;
                     if (mode === 'until') {
-                        until = prompt('أوقف الرد الآلي حتى نهاية يوم (YYYY-MM-DD):', new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
+                        until = await askText('أوقف الرد الآلي حتى نهاية يوم (YYYY-MM-DD):', new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
                         if (!until) return renderLeadDetail(await api('GET', `/api/admin/leads/${lead.id}`), true);
                     }
-                    const reason = prompt('السبب (اختياري) — مثلاً: عميل كبير يتابعه المدير:', '') || '';
+                    const reason = await askText('السبب (اختياري) — مثلاً: عميل كبير يتابعه المدير:', '') || '';
                     renderLeadDetail(await api('PUT', `/api/admin/leads/${lead.id}/pause`, { forever: mode === 'forever', until, reason }), true);
                 }
                 loadLeads();
@@ -681,9 +681,9 @@ function renderLeadDetail({ lead, messages, notes, quotes, agent_paused_until: p
     $id('ldStatus').addEventListener('change', (e) => patch({ status: e.target.value }));
     $id('ldNext').addEventListener('change', (e) => patch({ next_follow_up: e.target.value }));
     $id('ldName').addEventListener('change', (e) => patch({ name: e.target.value }));
-    $id('ldAssigned').addEventListener('change', (e) => {
+    $id('ldAssigned').addEventListener('change', async (e) => {
         const to = e.target.value;
-        const text = to ? prompt(`ملاحظة التسليم إلى ${to} (اختياري): ما الذي يجب أن يعرفه عن هذا العميل؟`, '') : '';
+        const text = to ? await askText(`ملاحظة التسليم إلى ${to} (اختياري): ما الذي يجب أن يعرفه عن هذا العميل؟`, '') : '';
         if (text === null) { e.target.value = lead.assigned_to || ''; return; }
         patch({ assigned_to: to, handover_text: text || undefined });
     });

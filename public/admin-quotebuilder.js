@@ -576,7 +576,7 @@ async function saveBuiltQuote() {
     try {
         let q;
         if (qbInvoice) {
-            const reason = prompt(`سبب تعديل الفاتورة ${qbInvoice.number}؟ (مثلاً: تغيير المقاس بعد المعاينة) — يُحفظ في سجل التعديلات`);
+            const reason = await askText(`سبب تعديل الفاتورة ${qbInvoice.number}؟ (مثلاً: تغيير المقاس بعد المعاينة) — يُحفظ في سجل التعديلات`);
             if (!reason || !reason.trim()) return;
             const inv = await api('PUT', `/api/admin/invoices/${qbInvoice.id}/items`, { ...body, reason: reason.trim() });
             closeSheet('qbSheet');
@@ -597,7 +597,7 @@ async function saveBuiltQuote() {
         closeSheet('qbSheet');
         if (document.querySelector('#tab-quotes.active')) loadQuotes().catch(() => {});
         else switchTab('quotes');
-        if (confirm(`تم حفظ العرض ${q.ref} ✓ — الإجمالي ${qbMoney(q.total)} ر.ع\nفتح ملف PDF الآن؟`)) openQuotePdf(q.id);
+        if (await askYes(`تم حفظ العرض ${q.ref} ✓ — الإجمالي ${qbMoney(q.total)} ر.ع\nفتح ملف PDF الآن؟`)) openQuotePdf(q.id);
     } catch (err) {
         setStatus('qbStatus', err.message, 'err');
     }
