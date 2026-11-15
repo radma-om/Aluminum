@@ -16,6 +16,7 @@ let qbCustomer = null;   // a customer record chosen (from the profile or the su
 let qbEditing = null;    // the quote whose lines are being changed
 let qbInvoice = null;    // the issued invoice whose lines are being changed (its payments stay)
 let qbAnchor = null;     // an invoice opened for editing: its amount before tax, matched on the first preview
+let qbRebuiltMissing = []; // choices of a calculator's quote no longer in the catalog (the employee picks them)
 let qbTimer = null;
 let qbLastPreview = null;
 let qbCostOnly = false;  // «حاسبة التكلفة والربح»: no customer, nothing saved
@@ -31,6 +32,7 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
         qbCatalog = await api('GET', '/api/admin/quotes/catalog');
     } catch (err) { return alert(err.message); }
     qbInvoice = invoice;
+    qbRebuiltMissing = [];
     // An invoice is opened like a quote: its gates can be re-sized, its other lines keep the invoiced price
     if (invoice) quote = { ...invoice, ref: invoice.number, details: invoice.details || {}, items: invoice.items || [] };
     qbEditing = quote;
@@ -55,9 +57,13 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
         qbLines = [];
         // A customer calculator's quote / invoice: its lines all belong to one gate (slats, color, accessories,
         // installation, delivery, gift) — reopened as that gate's card when its choices are still in the catalog
-        const fromCalc = !groups.length ? qbFromCalculator(d) : null;
+        const rebuilt = !groups.length ? qbFromCalculator(d, quote.items) : null;
+        const fromCalc = rebuilt && rebuilt.line;
+        qbRebuiltMissing = rebuilt ? rebuilt.missing : [];
         if (fromCalc) qbLines.push({ ...fromCalc, params: qbScreenParams(fromCalc.calc, fromCalc.params), price_level: 'from', disc_type: '', disc_value: '' });
-        for (const i of fromCalc ? [] : quote.items) {
+        // Its lines all belong to that gate; anything else on it (a line added by hand) stays a line
+        const own = new Set(['slats', 'accessories', 'motor', 'installation', 'delivery', 'gate', 'kit', 'parts']);
+        for (const i of fromCalc ? quote.items.filter((x) => !x.gift && !own.has(x.part)) : quote.items) {
             if (i.group !== undefined && groups[i.group]) {
                 if (seen.has(i.group)) continue;
                 seen.add(i.group);
@@ -78,11 +84,13 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
         if (d.quote_discount) { $id('qbDiscType').value = d.quote_discount.type; $id('qbDiscValue').value = d.quote_discount.value; }
         // An invoice opens at its own amount: whatever is above it on the first pricing (a promotion that has ended,
         // today's prices, the «المبلغ النهائي» agreed at issue) becomes a discount on the total — see qbPreview
-        qbAnchor = invoice ? invoice.subtotal : null;
+        // (only when the gate was rebuilt as it was: with a choice to pick again, the employee sets the price)
+        qbAnchor = invoice && !qbRebuiltMissing.length ? invoice.subtotal : null;
         $id('qbNotes').value = quote.notes || '';
     } else {
         qbLines = [];
     }
+    if (invoice) qbApplyMode(); // the note names what could not be matched
     qbFillRegions(quote ? (quote.details || {}).region_id : null,
         quote ? ((quote.details || {}).region || quote.customer_city) : (customer && customer.city));
     qbFillAddButtons();
@@ -103,51 +111,67 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
 }
 
 /* A saved gate / motor (as the server keeps it) → the screen's form: one accessory per group, parts by id */
-/* A quote saved by a customer calculator keeps its choices by name (type, thickness, color, accessories, motor…).
-   Find them in today's catalog to reopen it as a gate / motor card, priced the same way as when it was made.
-   null when something is no longer in the catalog (the lines are then shown as they were invoiced). */
-function qbFromCalculator(d) {
+/* A quote saved by a customer calculator (or the assistant) keeps its choices by name (type, thickness, color,
+   accessories, motor…). Reopen it as the gate / motor card, as when it was made: each choice found in today's
+   catalog is selected; one that is not (renamed or removed since) starts at the first of its list, like a new gate,
+   and is named in `missing` so the employee checks it. null: not a calculator's quote. */
+function qbFromCalculator(d, items = []) {
     const c = qbCatalog.calculators;
     const same = (a, b) => String(a || '').trim() === String(b || '').trim();
-    if (d.shutter_type && d.width_cm && c.rolling_shutter) {
-        const t = c.rolling_shutter.shutter_types.find((x) => same(x.name, d.shutter_type));
-        const v = t && (t.variants.find((x) => same(x.label, d.variant)) || (t.variants.length === 1 ? t.variants[0] : null));
-        if (!v) return null;
-        const color = d.color ? v.colors.find((x) => same(x.name, d.color)) : null;
-        if (d.color && !color) return null;
+    const parts = new Set(items.map((i) => i.part).filter(Boolean));
+    const missing = [];
+    const kind = d.shutter_type || parts.has('slats') ? 'rolling_shutter'
+        : d.calculator === 'overhead' || d.gate_type || parts.has('gate') ? 'overhead'
+            : d.calculator === 'motors' || parts.has('kit') ? 'motors' : null;
+    if (!kind || !c[kind]) return null;
+    if (kind === 'rolling_shutter') {
+        const types = c.rolling_shutter.shutter_types;
+        if (!types.length) return null;
+        let t = types.find((x) => same(x.name, d.shutter_type));
+        if (!t) { t = types[0]; missing.push(`نوع البوابة${d.shutter_type ? ` (كان: ${d.shutter_type})` : ''}`); }
+        let v = t.variants.find((x) => same(x.label, d.variant)) || (t.variants.length === 1 ? t.variants[0] : null);
+        if (!v) { v = t.variants[0]; missing.push(`السماكة${d.variant ? ` (كانت: ${d.variant})` : ''}`); }
+        let color = d.color ? v.colors.find((x) => same(x.name, d.color)) : null;
+        if (!color && v.colors.length) { color = v.colors[0]; if (d.color || !d.shutter_type) missing.push(`اللون${d.color ? ` (كان: ${d.color})` : ''}`); }
         const acc = Array.isArray(d.accessories) ? d.accessories : [];
-        const option_ids = [];
-        for (const g of c.rolling_shutter.accessory_groups) {
+        const option_ids = c.rolling_shutter.accessory_groups.map((g) => {
             const a = acc.find((x) => same(x.group, g.name));
-            if (!a) { option_ids.push(''); continue; }
-            const o = g.options.find((x) => same(x.label, a.option));
-            if (!o) return null;
-            option_ids.push(o.id);
-        }
-        return { calc: 'rolling_shutter', params: { shutter_type_id: t.id, variant_id: v.id, color_id: color ? color.id : '',
-            width_cm: Number(d.width_cm), height_cm: Number(d.height_cm), count: Number(d.count) || 1, option_ids } };
+            const o = a && g.options.find((x) => same(x.label, a.option));
+            if (o) return o.id;
+            if (a || !d.shutter_type) missing.push(`${g.name}${a ? ` (كان: ${a.option})` : ''}`);
+            return g.allow_none && !a ? '' : g.options[0].id;
+        });
+        if (!(Number(d.width_cm) > 0 && Number(d.height_cm) > 0)) missing.push('العرض والارتفاع');
+        return { line: { calc: kind, params: { shutter_type_id: t.id, variant_id: v.id, color_id: color ? color.id : '',
+            width_cm: Number(d.width_cm) || '', height_cm: Number(d.height_cm) || '', count: Number(d.count) || 1, option_ids } }, missing };
     }
-    if (d.calculator === 'overhead' && d.gate_type && c.overhead) {
-        const m = c.overhead.motors.find((x) => same(x.name, d.motor));
-        if (!m || !c.overhead.gate_types.some((x) => same(x.name, d.gate_type))) return null;
-        return { calc: 'overhead', params: { gate_type: d.gate_type, height_cm: Number(d.height_cm), width_cm: Number(d.width_cm), motor_id: m.id } };
+    if (kind === 'overhead') {
+        const oh = c.overhead;
+        if (!oh.gate_types.length || !oh.motors.length) return null;
+        let t = oh.gate_types.find((x) => same(x.name, d.gate_type));
+        if (!t) { t = oh.gate_types[0]; missing.push(`نوع البوابة${d.gate_type ? ` (كان: ${d.gate_type})` : ''}`); }
+        let h = t.heights.find((x) => Number(x.height_cm) === Number(d.height_cm));
+        if (!h) { h = t.heights[0]; missing.push('الارتفاع'); }
+        let w = h.widths.find((x) => Number(x) === Number(d.width_cm));
+        if (w === undefined) { w = h.widths[0]; missing.push('العرض'); }
+        let m = oh.motors.find((x) => same(x.name, d.motor));
+        if (!m) { m = oh.motors[0]; missing.push(`المحرك${d.motor ? ` (كان: ${d.motor})` : ''}`); }
+        return { line: { calc: kind, params: { gate_type: t.name, height_cm: h.height_cm, width_cm: w, motor_id: m.id } }, missing };
     }
-    if (d.calculator === 'motors' && d.section_id && c.motors) {
-        const s = c.motors.sections.find((x) => x.id === Number(d.section_id));
-        if (!s) return null;
-        const kit = d.kit ? s.kits.find((x) => same(x.name, d.kit)) : null;
-        if (d.kit && !kit) return null;
-        const parts = {};
-        for (const txt of Array.isArray(d.parts) ? d.parts : []) {
-            const m = String(txt).match(/^(.*) × (\d+)$/);
-            const p = m && s.parts.find((x) => same(x.name, m[1]));
-            if (!p) return null;
-            parts[p.id] = Number(m[2]);
-        }
-        return { calc: 'motors', params: { section_id: s.id, kit_id: kit ? kit.id : '', kit_count: Number(d.kit_count) || 1, parts,
-            installation: !/بدون تركيب/.test(String(d.fees_note || '')) } };
+    const secs = c.motors.sections;
+    if (!secs.length) return null;
+    let s = secs.find((x) => x.id === Number(d.section_id) || same(x.name, d.section_label));
+    if (!s) { s = secs[0]; missing.push(`نوع البوابة${d.section_label ? ` (كان: ${d.section_label})` : ''}`); }
+    let kit = d.kit ? s.kits.find((x) => same(x.name, d.kit)) : null;
+    if (d.kit && !kit) { kit = s.kits[0] || null; missing.push(`الطقم (كان: ${d.kit})`); }
+    const partsQty = {};
+    for (const txt of Array.isArray(d.parts) ? d.parts : []) {
+        const m = String(txt).match(/^(.*) × (\d+)$/);
+        const p = m && s.parts.find((x) => same(x.name, m[1]));
+        if (p) partsQty[p.id] = Number(m[2]); else missing.push(`قطعة (كانت: ${txt})`);
     }
-    return null;
+    return { line: { calc: 'motors', params: { section_id: s.id, kit_id: kit ? kit.id : '', kit_count: Number(d.kit_count) || 1, parts: partsQty,
+        installation: !/بدون تركيب/.test(String(d.fees_note || '')) } }, missing };
 }
 
 function qbScreenParams(calc, saved) {
@@ -179,6 +203,7 @@ function qbApplyMode() {
         $id('qbInvoiceNote').innerHTML = `<b>تعديل فاتورة صادرة.</b> رقمها وتاريخها ودفعاتها تبقى كما هي${qbInvoice.paid > 0.004 ? ` — المدفوع <b>${qbMoney(qbInvoice.paid)}</b> ر.ع` : ''}.
             الإجمالي الحالي <b>${qbMoney(qbInvoice.total)}</b> ر.ع، والجديد يظهر أسفل الصفحة.
             <br>غيّر المقاس أو الخيارات في بطاقة البوابة، أو احذف بنداً، أو أضف بنداً. البوابات تُسعَّر بأسعار اليوم؛ البنود الأخرى تبقى بسعر الفاتورة.
+            ${qbRebuiltMissing.length ? `<br><b style="color:#a93226">⚠️ اختر من القوائم:</b> ${qbRebuiltMissing.map(esc).join('، ')} — لم تُطابَق مع الإعدادات الحالية، فبدأت بأول خيار. ثم راجع الإجمالي.` : ''}
             ${qbInvoice.adjustment > 0.004 ? `<br>⚠️ هذه الفاتورة صدرت بمبلغ نهائي متفق عليه (${qbMoney(qbInvoice.subtotal)} قبل الضريبة) — راجع الإجمالي الجديد وعدّل الخصم أو مستوى السعر ليطابق الاتفاق.` : ''}`;
     }
     const v = $id('qbValidity').closest('.form-group');
