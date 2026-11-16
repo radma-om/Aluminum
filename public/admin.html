@@ -10,6 +10,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="RADMA">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="app-version" content="__APP_VERSION__">
     <title>نظام تسعير شرائح الألمنيوم</title>
     <!-- The panel's language (Arabic / English): before anything is drawn, so the page opens already in it -->
     <script>/* The English dictionary is fetched only by those who chose English */
@@ -752,6 +753,7 @@
             <button class="tab-btn" data-tab="backup" onclick="switchTab('backup')" title="النسخ الاحتياطي" hidden><i class="fas fa-database"></i><span class="t-label">النسخ الاحتياطي</span></button>
             <button class="tab-btn" data-tab="audit" onclick="switchTab('audit')" title="سجل النشاط" hidden><i class="fas fa-clock-rotate-left"></i><span class="t-label">سجل النشاط</span></button>
         </nav>
+        <button type="button" class="sb-version" onclick="openVersions()" title="الإصدارات"><i class="fas fa-code-branch"></i><span class="t-label">الإصدار <bdi id="sbVersion" dir="ltr"></bdi></span></button>
         <button type="button" class="sb-fold" onclick="toggleSidebar()" title="طي القائمة / فتحها">
             <i class="fas fa-angles-right"></i><span class="t-label">طي القائمة</span>
         </button>
@@ -778,6 +780,7 @@
     </header>
 
     <div class="main-container">
+        <div id="appNotices" hidden></div>
         <div id="systemWarnings" hidden></div>
 
         <!-- ==================== TAB 1: Pricing Calculator ==================== -->
@@ -1035,6 +1038,29 @@
                     <button class="btn btn-primary btn-sm" onclick="saveStaff()">حفظ الأسماء</button>
                     <span id="staffStatus" class="status-text"></span>
                 </div>
+            </div>
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-bell"></i></span> إشعارات التطبيق للموظفين 🔔</div>
+                <p class="status-text" style="margin:0 0 10px">يصل الإشعار لكل الموظفين والفنيين داخل التطبيق، وإشعاراً على الجوال لمن فعّل الإشعارات. «تحديث إجباري» يغطي التطبيق حتى يضغط الموظف «حدّث الآن». «إيقاف التطبيق مؤقتاً» يوقفه للموظفين حتى تنهيه أنت (المديرون لا يتوقف عندهم). والتطبيق يعرف وحده أن إصداراً جديداً منشور ويعرض «حدّث الآن» دون إرسال شيء.</p>
+                <div class="form-grid">
+                    <div class="form-group"><label>نوع الإشعار</label>
+                        <select id="anKind">
+                            <option value="info">إشعار عام</option>
+                            <option value="update">تحديث متاح</option>
+                            <option value="force">تحديث إجباري</option>
+                            <option value="maintenance">إيقاف التطبيق مؤقتاً (صيانة)</option>
+                        </select></div>
+                    <div class="form-group"><label>العنوان</label><input type="text" id="anTitle" maxlength="120" placeholder="مثلاً: تحديث جديد للنظام"></div>
+                </div>
+                <div class="form-group"><label>الرسالة</label><textarea id="anBody" rows="3" maxlength="1000" placeholder="مثلاً: أغلق التطبيق وافتحه من جديد لتظهر الإضافات الجديدة"></textarea></div>
+                <div class="form-buttons" style="margin-top:0">
+                    <button class="btn btn-primary" onclick="sendAppNotice()"><i class="fas fa-paper-plane"></i> إرسال للموظفين</button>
+                    <span id="anStatus" class="status-text"></span>
+                </div>
+                <div class="table-wrapper"><table class="stack-table">
+                    <thead><tr><th>النوع</th><th>العنوان</th><th>أرسله</th><th>التاريخ</th><th>الحالة</th><th></th></tr></thead>
+                    <tbody id="anBody2"></tbody>
+                </table></div>
             </div>
         </div>
 
@@ -2205,6 +2231,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
             <button class="btn btn-primary" type="submit">دخول</button>
             <span id="loginStatus" class="status-text"></span>
             <button type="button" class="link-btn" onclick="forgotPassword()">نسيت كلمة المرور؟</button>
+            <small class="status-text login-version">الإصدار <bdi dir="ltr" class="app-version-text"></bdi></small>
             <button type="button" class="link-btn lang-link" onclick="setLanguage(APP_LANG === 'en' ? 'ar' : 'en')"><i class="fas fa-language"></i> <span class="lang-name" data-no-i18n>English</span></button>
         </form>
     </div>
@@ -2283,6 +2310,25 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     </div>
 
     <!-- One invoice: amounts, payments, actions -->
+    <!-- Versions: the current one and what changed -->
+    <div id="versionsSheet" class="sheet" hidden>
+        <div class="sheet-card" style="max-width:620px">
+            <button type="button" class="sheet-close" onclick="closeSheet('versionsSheet')" aria-label="إغلاق">×</button>
+            <h3><i class="fas fa-code-branch"></i> الإصدارات</h3>
+            <div id="versionsBody"></div>
+        </div>
+    </div>
+    <!-- A forced update or a stop by the manager: covers the app -->
+    <div id="appBlock" class="app-block" hidden>
+        <div class="app-block-card">
+            <div class="app-block-icon" id="appBlockIcon">⚠️</div>
+            <h3 id="appBlockTitle"></h3>
+            <p id="appBlockBody" class="no-i18n"></p>
+            <p id="appBlockHint" class="status-text"></p>
+            <button class="btn btn-primary" id="appBlockBtn" type="button"></button>
+        </div>
+    </div>
+
     <!-- A quote shown on screen (no download) -->
     <div id="quoteSheet" class="sheet" hidden>
         <div class="sheet-card">
@@ -2997,5 +3043,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-customers.js"></script>
     <script src="admin-quotebuilder.js"></script>
     <script src="admin-sheets.js"></script>
+    <script src="admin-updates.js"></script>
 </body>
 </html>

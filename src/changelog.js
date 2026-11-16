@@ -1,0 +1,48 @@
+/* =============================================================
+   The app's versions and what changed in each (newest first), shown to
+   staff in «الإصدارات» and in «ما الجديد» after an update.
+   Add an entry with every release: a test checks that the newest entry
+   is the version in package.json.
+   ============================================================= */
+module.exports = [
+    {
+        version: '3.37.0', date: '2026-11-16',
+        ar: ['إشعارات التحديث 🔔: يرسل المدير إشعاراً عاماً، أو «تحديث متاح»، أو تحديثاً إجبارياً، أو إيقافاً مؤقتاً للتطبيق — ويصل إشعاراً على الجوال', 'التطبيق يعرف وحده أن إصداراً جديداً متاح ويعرض زر «حدّث الآن»', 'صفحة «الإصدارات»: رقم الإصدار الحالي وما الجديد في كل إصدار', 'عرض السعر من ملف العميل متاح أيضاً لمن لديه قسم «متابعة العملاء» فقط'],
+        en: ['Update notices 🔔: the manager sends a general notice, «update available», a forced update or a temporary stop of the app — also as a phone notification', 'The app detects a new version by itself and shows «Update now»', '«Versions» page: the current version and what is new in each one', 'Viewing a quote from a customer file also works for staff with only the «Customer Follow-up» section']
+    },
+    {
+        version: '3.36.2', date: '2026-11-16',
+        ar: ['عرض السعر من ملف العميل يظهر فوق الملف', 'عرض السعر مضبوط على شاشة الجوال: كل بند في بطاقة'],
+        en: ['A quote opened from a customer file now shows on top of it', 'The quote view fits a phone screen: each item is a card']
+    },
+    {
+        version: '3.36.1', date: '2026-11-16',
+        ar: ['حاسبة التسعير تطابق أسعار النظام: الضريبة تُضاف مرة واحدة على البيع (ضريبة المشتريات تُسترد)'],
+        en: ['The pricing calculator matches the system prices: VAT is added once, on the sale (purchase VAT is reclaimed)']
+    },
+    {
+        version: '3.36.0', date: '2026-11-16',
+        ar: ['رقم تسلسلي ثابت لكل عميل (C-0012) وأعمدة جديدة في قائمة العملاء', 'البحث في طلبات العروض باسم العميل أو رقم الجوال أو رقم العرض', 'زر «عرض» يفتح عرض السعر على الشاشة دون تحميل PDF'],
+        en: ['A fixed number for each customer (C-0012) and new columns in the customers list', 'Search quote requests by customer name, mobile or quote number', 'The «View» button opens a quote on screen without downloading the PDF']
+    },
+    {
+        version: '3.35.0', date: '2026-11-16',
+        ar: ['الإنجليزية: رسائل الخادم والتحذيرات وتشخيص الربط', 'اختيار اللغة من صفحة الدخول يبقى بعد الدخول'],
+        en: ['English: server messages, warnings and link diagnostics', 'The language chosen on the sign-in page is kept after sign-in']
+    },
+    {
+        version: '3.34.1', date: '2026-11-15',
+        ar: ['القائمة الجانبية تختفي على الجوال بالإنجليزية'],
+        en: ['The side menu hides on a phone in English']
+    },
+    {
+        version: '3.34.0', date: '2026-11-15',
+        ar: ['الإنجليزية: النصوص داخل الأقسام (القوائم والبطاقات والإحصائيات والنوافذ)'],
+        en: ['English: the texts inside the sections (lists, cards, statistics, windows)']
+    },
+    {
+        version: '3.33.0', date: '2026-11-15',
+        ar: ['اللغة الإنجليزية للوحة التحكم (زر EN)', 'الاسم «ردما للبوابات الإلكترونية» بجانب الشعار'],
+        en: ['English for the admin panel (EN button)', 'The name «Radma Electronic Gates» beside the logo']
+    }
+];

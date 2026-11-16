@@ -5,7 +5,8 @@
      there is no network. Data (/api) is never cached: prices and
      customers always come from the server.
    - Shows the notifications the server pushes, and opens the right
-     page of the app when one is tapped.
+     page of the app when one is tapped. A manager's notice (update,
+     stop) also tells the open app to look at it at once.
    ============================================================= */
 const CACHE = 'radma-admin-v2';
 const OFFLINE = '/offline.html';
@@ -29,7 +30,11 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
     let data = {};
     try { data = e.data ? e.data.json() : {}; } catch { data = { title: 'RADMA', body: e.data ? e.data.text() : '' }; }
-    e.waitUntil(self.registration.showNotification(data.title || 'RADMA', {
+    // A notice from the manager (update / stop): an open app looks at it now
+    const tell = String(data.tag || '').startsWith('app-notice')
+        ? self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => cs.forEach((c) => c.postMessage({ type: 'app-status' })))
+        : Promise.resolve();
+    e.waitUntil(tell.then(() => self.registration.showNotification(data.title || 'RADMA', {
         body: data.body || '',
         icon: '/icons/icon-192.png',
         badge: '/icons/badge-96.png',
@@ -38,7 +43,7 @@ self.addEventListener('push', (e) => {
         dir: 'rtl',
         lang: 'ar',
         data: { url: data.url || '/admin' }
-    }));
+    })));
 });
 
 self.addEventListener('notificationclick', (e) => {
