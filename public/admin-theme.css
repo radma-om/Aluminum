@@ -669,3 +669,30 @@ body.sb-collapsed .sb-version { justify-content: center; padding: 8px 0; }
 .version-head small { color: var(--text-light); }
 .version-head .badge.new { background: #e3f4ea; color: #1e8449; }
 .version-entry ul { margin: 6px 0 0; padding-inline-start: 20px; line-height: 1.7; font-size: 0.9rem; }
+
+/* ===== Phones: forms that fit, and no zoom when a field is tapped ===== */
+/* The quote builder's description box: the full width of the line, like the other fields */
+.qb-line textarea { width: 100%; padding: 8px 10px; border: 2px dashed var(--border); border-radius: 8px; font-family: inherit; font-size: 0.88rem; line-height: 1.6; resize: vertical; min-height: 58px; background: #fff; }
+.qb-line textarea:focus { outline: none; border-color: var(--primary-light, #2980b9); border-style: solid; }
+.qb-line.qb-service { background: #f7fbff; border-radius: 10px; padding: 8px; margin: 6px 0; border: 1px solid #d6e6f5; }
+.form-grid.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+/* A number field does not shrink below its natural width unless told to: it pushed the window off the screen */
+.form-grid.two > *, .form-grid.two input, .form-grid.two select, .mobile-form input, .mobile-form textarea { min-width: 0; max-width: 100%; }
+.mobile-form input, .mobile-form textarea, .mobile-form select { width: 100%; box-sizing: border-box; }
+.mobile-form textarea { width: 100%; resize: vertical; }
+.check-line { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-weight: 600; font-size: 0.92rem; }
+.check-line input { width: 20px; height: 20px; flex: none; }
+.sv-line { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px 4px; margin-bottom: 10px; background: #fafcfe; }
+.sv-line .link-btn { margin: 0 0 8px; color: #a93226; }
+@media (max-width: 700px) {
+    /* iPhone zooms into any field under 16px when it is tapped, and the window no longer fits the screen */
+    input, select, textarea, .ui-dialog-input { font-size: 16px !important; }
+    .qb-line { grid-template-columns: 1fr 1fr; }
+    .qb-line .qb-desc { grid-column: 1 / -1; }
+    .mobile-form .form-group { margin-bottom: 10px; }
+    .form-buttons.stack-mobile { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    .form-buttons.stack-mobile .btn { width: 100%; justify-content: center; text-align: center; }
+    .wo-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .wo-actions .btn { width: 100%; margin: 0; }
+    .ui-dialog textarea.ui-dialog-input { min-height: 96px; }
+}

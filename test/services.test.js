@@ -129,3 +129,44 @@ test('staff add a «خدمة» in the quote builder: a description is required; 
     assert.deepEqual([item.part, item.category, item.description], ['service', 'service', 'صيانة دورية للمحرك']);
     assert.ok(!JSON.parse(db.prepare('SELECT details_json FROM quotes WHERE id = ?').get(ok.body.id).details_json).free_lines, 'a service is not a free line');
 });
+
+test('a technician opens a service invoice for a new customer, or a known one, with several services', async (t) => {
+    const { db, call, login, base } = await start(t);
+    staff.create(db, { username: 'ahmed', display_name: 'أحمد الفني', password: 'pass-12345', role: 'technician' });
+    const tk = await login('ahmed');
+    const svc = [{ title: 'صيانة محرك', description: 'تنظيف وتشحيم وضبط', unit_price: 25 }, { title: 'ريموت', description: 'برمجة ريموت جديد', quantity: 2, unit_price: 7.5 }];
+
+    // Checked before anything is written
+    assert.equal((await call('POST', '/api/admin/work-orders/service-visit', { customer: { phone: '123', name: 'x' }, services: svc }, tk)).status, 400);
+    assert.equal((await call('POST', '/api/admin/work-orders/service-visit', { customer: { phone: '93334444', name: 'مريم' }, services: [{ description: '', unit_price: 5 }] }, tk)).status, 400);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM work_orders').get().n, 0);
+
+    assert.deepEqual((await call('GET', '/api/admin/work-orders/customer-lookup?phone=93334444', null, tk)).body, { found: false });
+    const r = await call('POST', '/api/admin/work-orders/service-visit', { customer: { phone: '93334444', name: 'مريم', city: 'نزوى', address: 'حي الشرق' }, services: svc, done: true }, tk);
+    assert.equal(r.status, 201);
+    assert.equal(r.body.new_customer, true);
+    assert.equal(r.body.invoice.subtotal, 40);
+    assert.equal(r.body.invoice.items.length, 2);
+    assert.equal(r.body.order.kind, 'service');
+    assert.equal(r.body.order.status, 'done', 'the work is finished on the spot');
+    assert.equal(r.body.order.technician_name, 'أحمد الفني');
+    assert.ok(r.body.invoice.invoice_date, 'the invoice date: the work is complete');
+    const pdf = await fetch(base + r.body.invoice.pdf_url);
+    assert.equal(pdf.status, 200);
+
+    // The customer is now known: the form fills in from the record
+    const known = (await call('GET', '/api/admin/work-orders/customer-lookup?phone=93334444', null, tk)).body;
+    assert.deepEqual([known.found, known.name, known.city], [true, 'مريم', 'نزوى']);
+    const again = await call('POST', '/api/admin/work-orders/service-visit', { customer: { phone: '93334444' }, services: [svc[0]] }, tk);
+    assert.equal(again.status, 201);
+    assert.equal(again.body.new_customer, false);
+    assert.equal(again.body.invoice.customer_name, 'مريم');
+    assert.equal(again.body.order.status, 'scheduled', 'not done: it stays open on the technician\'s list');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM customers WHERE phone = ?').get('96893334444').n, 1, 'one record');
+
+    // The commission: the technician's
+    db.prepare("UPDATE staff_users SET bonus_percent = 10 WHERE username = 'ahmed'").run();
+    const ahmed = bonuses.compute(db, bonuses.thisMonth()).people.find((p) => p.name === 'أحمد الفني');
+    assert.equal(ahmed.base, 40);
+    assert.equal(ahmed.commission, 4);
+});

@@ -15,7 +15,7 @@ const leads = require('./leads');
 const mailer = require('./mailer');
 const { getSettings } = require('./db');
 
-const KINDS = { installation: 'تركيب', maintenance: 'صيانة', inspection: 'معاينة / قياس' };
+const KINDS = { installation: 'تركيب', maintenance: 'صيانة', inspection: 'معاينة / قياس', service: 'خدمة' };
 const STATUSES = { new: 'بانتظار الجدولة', scheduled: 'مجدول', in_progress: 'قيد التنفيذ', done: 'مكتمل', cancelled: 'ملغى' };
 /* What a technician may do with their own order */
 const TECH_MOVES = { in_progress: ['scheduled'], done: ['scheduled', 'in_progress'], new: ['scheduled', 'in_progress'] };
@@ -102,7 +102,7 @@ function nextNumber(db, year) {
  * input: { kind, invoice_id? | quote_id? | customer_name + customer_phone, location?, address?, map_url?,
  *          scheduled_date?, scheduled_time?, technician_id?, description? }
  */
-function create(db, input, author, { source = null } = {}) {
+function create(db, input, author, { source = null, notify = true } = {}) {
     const kind = KINDS[input.kind] ? input.kind : 'installation';
     let base = { customer_name: clip(input.customer_name, 120), customer_phone: String(input.customer_phone || '').replace(/\D/g, '').slice(0, 20), location: clip(input.location, 120) || null };
     let quoteId = null;
@@ -144,7 +144,8 @@ function create(db, input, author, { source = null } = {}) {
         return orderId;
     });
     const order = get(db, id);
-    if (techId) notifyTechnician(db, order).catch(() => {});
+    // (a technician opening a service call for themselves is not told about it)
+    if (techId && notify) notifyTechnician(db, order).catch(() => {});
     return order;
 }
 
