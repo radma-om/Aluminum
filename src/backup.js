@@ -9,6 +9,8 @@
      secret); login sessions are not saved, and every session ends after a
      successful restore. Accounts and outgoing Webhooks keep their current
      live secrets when a backup is restored.
+   Petty cash books and requests are saved, and the receipt photos in their
+   own sheet (Base64 in pieces); a file without that sheet keeps the current photos.
    Logs (webhook deliveries, incoming webhook requests, AI conversation
    history, temporary agent pauses) are not included; the webhook delivery
    log is emptied when the webhooks are replaced, so it never points at a
@@ -51,6 +53,8 @@ const TABLES = [
     ['motor_items', 'مكائن البوابات'],
     ['motor_extra_fees', 'رسوم المكائن الإضافية'],
     ['staff_users', 'حسابات الموظفين'],
+    ['wallet_requests', 'طلبات العهدة'],
+    ['wallet_entries', 'دفاتر العهدة'],
     ['customers', 'العملاء'],
     ['leads', 'متابعة العملاء'],
     ['lead_assignments', 'سجل إسناد المتابعة'],
@@ -59,11 +63,16 @@ const TABLES = [
 ];
 /* Sheets added after the first backups: an older file without them keeps the current data */
 const OPTIONAL = new Set(['invoice_revisions', 'overhead_sizes', 'overhead_motors', 'overhead_types', 'bonus_months', 'knowledge_items', 'motor_sections', 'motor_items', 'motor_extra_fees',
-    'staff_users', 'leads', 'lead_assignments', 'lead_messages', 'lead_notes', 'invoices', 'payments', 'work_orders', 'work_order_events', 'customers', 'service_requests']);
+    'staff_users', 'leads', 'lead_assignments', 'lead_messages', 'lead_notes', 'invoices', 'payments', 'work_orders', 'work_order_events', 'customers', 'service_requests',
+    'wallet_requests', 'wallet_entries']);
 /* Restored together or not at all (a customer without its messages, or messages of another
    backup's customers, would be inconsistent) */
-const GROUPS = [['leads', 'lead_messages', 'lead_notes'], ['invoices', 'payments'], ['work_orders', 'work_order_events']];
+const GROUPS = [['leads', 'lead_messages', 'lead_notes'], ['invoices', 'payments'], ['work_orders', 'work_order_events'], ['wallet_requests', 'wallet_entries']];
 const INFO_SHEET = 'معلومات';
+/* Receipt photos (wallet_receipts) are images: each one is written as Base64 text in pieces of
+   at most 30,000 characters (an Excel cell holds 32,767), one piece per row, joined on restore. */
+const RECEIPTS_SHEET = 'صور الإيصالات';
+const PIECE = 30000;
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
 
 /* Never written to the file: two-step sign-in and outgoing Webhook secrets (a copy sent by email
@@ -77,7 +86,8 @@ const NOT_EXPORTED = {
 const columnsOf = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
 const exportedColumns = (db, table) => columnsOf(db, table).filter((c) => !(NOT_EXPORTED[table] && NOT_EXPORTED[table].has(c)));
 
-async function exportWorkbook(db) {
+async function exportWorkbook(db, { receipts = true } = {}) {
+    require('./wallets').ensureTables(db);
     const wb = new (xl().Workbook)();
     wb.creator = 'Radma pricing';
     wb.created = new Date();
@@ -97,6 +107,21 @@ async function exportWorkbook(db) {
         ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
         ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
         for (const row of rows) ws.addRow(cols.map((c) => row[c]));
+    }
+    if (receipts) {
+        const photos = db.prepare('SELECT entry_id, mime, data FROM wallet_receipts ORDER BY entry_id').all();
+        info.addRow([RECEIPTS_SHEET, `${photos.length} صورة`]);
+        const ws = wb.addWorksheet(RECEIPTS_SHEET, { views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }] });
+        ws.columns = [{ header: 'entry_id', key: 'entry_id', width: 12 }, { header: 'mime', key: 'mime', width: 14 },
+            { header: 'part', key: 'part', width: 8 }, { header: 'data', key: 'data', width: 60 }];
+        ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+        for (const p of photos) {
+            const b64 = Buffer.from(p.data).toString('base64');
+            for (let i = 0, part = 1; i < b64.length; i += PIECE, part++) ws.addRow([p.entry_id, p.mime, part, b64.slice(i, i + PIECE)]);
+        }
+    } else {
+        info.addRow([RECEIPTS_SHEET, 'غير مضمّنة في هذه النسخة (الحجم) — تبقى الصور الحالية عند الاستعادة']);
     }
     return Buffer.from(await wb.xlsx.writeBuffer());
 }
@@ -135,11 +160,30 @@ async function readWorkbook(buffer) {
         });
         data[table] = { header: header.filter(Boolean), rows };
     }
+    const photos = wb.getWorksheet(RECEIPTS_SHEET);
+    if (photos) {
+        const byEntry = new Map();
+        photos.eachRow({ includeEmpty: false }, (row, n) => {
+            if (n === 1) return;
+            const id = Number(cellValue(row.getCell(1).value));
+            const mime = String(cellValue(row.getCell(2).value) || '');
+            const part = Number(cellValue(row.getCell(3).value));
+            const text = String(cellValue(row.getCell(4).value) || '');
+            if (!Number.isInteger(id) || id <= 0 || !/^image\/(jpeg|png|webp)$/.test(mime) || !text) return;
+            if (!byEntry.has(id)) byEntry.set(id, { mime, parts: [] });
+            byEntry.get(id).parts.push([part, text]);
+        });
+        data.wallet_receipts = [...byEntry].map(([entry_id, p]) => ({
+            entry_id, mime: p.mime,
+            data: Buffer.from(p.parts.sort((a, b) => a[0] - b[0]).map((x) => x[1]).join(''), 'base64')
+        }));
+    }
     return data;
 }
 
 /* Replace all the data with the workbook's; all-or-nothing */
 async function restoreWorkbook(db, buffer) {
+    require('./wallets').ensureTables(db);
     const data = await readWorkbook(buffer);
     if (!data.settings.rows.length) throw err400('ورقة الإعدادات فارغة — الملف غير صالح للاستعادة');
     for (const group of GROUPS) {
@@ -185,6 +229,16 @@ async function restoreWorkbook(db, buffer) {
                         lead.assigned_at || lead.last_staff_at || lead.created_at);
                 }
             }
+            // Receipt photos: replaced by the file's when it carries them; otherwise the current
+            // photos stay, only for entries that still exist. «has_receipt» follows what is kept.
+            if (data.wallet_receipts) {
+                db.prepare('DELETE FROM wallet_receipts').run();
+                const put = db.prepare('INSERT INTO wallet_receipts (entry_id, mime, data) VALUES (?, ?, ?)');
+                for (const r of data.wallet_receipts) put.run(r.entry_id, r.mime, r.data);
+                counts.wallet_receipts = data.wallet_receipts.length;
+            }
+            db.prepare('DELETE FROM wallet_receipts WHERE entry_id NOT IN (SELECT id FROM wallet_entries)').run();
+            db.prepare('UPDATE wallet_entries SET has_receipt = EXISTS (SELECT 1 FROM wallet_receipts r WHERE r.entry_id = wallet_entries.id)').run();
             const keep2fa = db.prepare('UPDATE staff_users SET totp_secret = ?, totp_last_step = ? WHERE username = ?');
             for (const u of twoStep) keep2fa.run(u.totp_secret, u.totp_last_step, u.username);
             const keepWebhookSecret = db.prepare('UPDATE webhooks SET secret = ? WHERE id = ? AND name = ? AND url = ?');
