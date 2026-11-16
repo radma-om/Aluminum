@@ -1963,7 +1963,7 @@
                     </select>
                 </div>
                 <div class="table-wrapper"><table class="stack-table">
-                    <thead><tr><th>الرقم</th><th>التاريخ</th><th>العميل</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th></th></tr></thead>
+                    <thead><tr><th>الرقم</th><th>تاريخ الإصدار</th><th>تاريخ الفاتورة</th><th>العميل</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th></th></tr></thead>
                     <tbody id="invBody"></tbody>
                 </table></div>
                 <span id="invStatus" class="status-text"></span>
@@ -2285,7 +2285,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
             <h3><i class="fas fa-receipt"></i> إصدار فاتورة</h3>
             <p class="status-text" id="invNewQuote" style="margin:0 0 12px"></p>
             <div class="form-grid">
-                <div class="form-group"><label>تاريخ الفاتورة</label><input type="date" id="invIssue" required></div>
+                <div class="form-group"><label>تاريخ الإصدار <span class="unit">(تاريخ الفاتورة يُسجَّل عند اكتمال العمل)</span></label><input type="date" id="invIssue" required></div>
                 <div class="form-group"><label>تاريخ الاستحقاق <span class="unit">(اختياري)</span></label><input type="date" id="invDue"></div>
                 <div class="form-group"><label id="invFinalLabel">المبلغ النهائي قبل الضريبة <span class="unit">(اختياري — للخصم)</span></label><input type="number" id="invFinal" min="0" step="0.01" placeholder="كما في العرض"></div>
                 <div class="form-group"><label>عنوان العميل <span class="unit">(اختياري)</span></label><input type="text" id="invAddress" maxlength="200"></div>
