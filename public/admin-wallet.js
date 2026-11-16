@@ -89,7 +89,7 @@ async function loadWalletAll() {
         $id('walletBody').innerHTML = w.accounts.map((a) => `<tr>
             <td data-label="الموظف"><strong class="no-i18n">${esc(a.name)}</strong> <small class="status-text">${a.role === 'technician' ? 'فني' : a.role === 'manager' ? 'مدير' : 'موظف'}</small>${a.pending ? ` <span class="badge" style="background:#fdf2e1;color:#8a5a00">طلب</span>` : ''}</td>
             <td data-label="الرصيد"><strong style="color:${a.low ? '#a93226' : a.balance < 0 ? '#a93226' : 'inherit'}">${wMoney(a.balance)}</strong>${a.low ? ' ⚠️' : ''}</td>
-            <td data-label="الحد الأدنى"><button class="link-btn" style="margin:0" onclick="walletSetMin(${a.id}, ${a.own_min === null ? 'null' : a.own_min})">${a.min ? wMoney(a.min) : '—'}${a.own_min === null && a.min ? ' <small>(عام)</small>' : ''}</button></td>
+            <td data-label="الحد الأدنى"><button class="link-btn" style="margin:0" onclick="walletSetMin(${a.id}, ${a.own_min === null ? 'null' : a.own_min}, '${esc(a.name).replace(/'/g, '&#39;')}')">${a.own_min === 0 ? '🔕 بلا تنبيه' : a.min ? wMoney(a.min) : '—'}${a.own_min === null && a.min ? ' <small>(عام)</small>' : ''}</button>${!a.entries ? ' <small class="status-text">لا يستخدم العهدة</small>' : ''}</td>
             <td data-label="آخر عملية"><small>${a.last ? `${esc(a.last.kind_label)} ${wMoney(a.last.amount)} — ${wWhen(a.last.occurred_on)}` : '—'}</small></td>
             <td data-label=""><button class="btn btn-primary btn-sm" onclick="walletGive(${a.id}, '${esc(a.name).replace(/'/g, '&#39;')}')">إعطاء مبلغ</button>
                 <button class="btn btn-outline btn-sm" onclick="walletOpenBook(${a.id})">الحركات</button></td></tr>`).join('')
@@ -277,8 +277,11 @@ async function walletDecide(id, approve, asked) {
     } catch (err) { tell(err.message); }
 }
 
-async function walletSetMin(id, current) {
-    const v = await askText('الحد الأدنى لعهدة هذا الموظف (ر.ع) — أقل منه يصلك تنبيه. اتركه فارغاً لاستخدام الحد العام:', current === null ? '' : String(current), { type: 'number' });
+/* A lowest balance of the employee's own: an amount, 0 = no warning for them, empty = the general one */
+async function walletSetMin(id, current, name = '') {
+    const general = walletAll ? Number(walletAll.min_default) || 0 : 0;
+    const v = await askText(`تنبيه الحد الأدنى لعهدة ${name || 'هذا الموظف'} (ر.ع):\n• اكتب مبلغاً: يصلك تنبيه إذا قلّ رصيده عنه\n• اكتب 0: بلا تنبيه لهذا الموظف\n• اتركه فارغاً: الحد العام (${general ? wMoney(general) + ' ر.ع' : 'بلا تنبيه'})`,
+        current === null ? '' : String(current), { type: 'number', okLabel: 'حفظ' });
     if (v === null) return;
     try { await api('PUT', `/api/admin/wallet/${id}/min`, { min: v.trim() === '' ? null : Number(v) }); await loadWalletAll(); } catch (err) { tell(err.message); }
 }
