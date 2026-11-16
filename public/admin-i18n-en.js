@@ -2,6 +2,11 @@
    Used by admin-i18n.js only when the user chose English. To add a text, add
    its exact Arabic (spaces collapsed) and the English. */
 window.I18N_EN = {
+    "طريقة الحساب: التكلفة قبل الضريبة (ضريبة المشتريات تُسترد) × (1 + نسبة الربح) = سعر البيع قبل الضريبة، ثم تُضاف ضريبة القيمة المضافة مرة واحدة على سعر البيع.": "How it is calculated: cost before VAT (purchase VAT is reclaimed) × (1 + profit %) = sale price before VAT, then VAT is added once on the sale price.",
+    "التكلفة قبل الضريبة (ر.ع)": "Cost before VAT (OMR)",
+    "سعر البيع شامل الضريبة (ر.ع)": "Sale price incl. VAT (OMR)",
+    "سعر المتر قبل الضريبة (ر.ع)": "Price per meter before VAT (OMR)",
+    "سعر م² قبل الضريبة (ر.ع)": "Price per m² before VAT (OMR)",
     "التسلسل": "No.",
     "تاريخ التسجيل": "Registered",
     "بحث: اسم العميل، رقم الجوال، رقم العرض": "Search: customer name, mobile, quote no.",
