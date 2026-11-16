@@ -37,6 +37,8 @@ const costs = require('./costs');
 const team = require('./team');
 const bonuses = require('./bonuses');
 const push = require('./push');
+const appNotices = require('./appnotices');
+const changelog = require('./changelog');
 const autoreply = require('./autoreply');
 const customers = require('./customers');
 const staffquotes = require('./staffquotes');
@@ -883,6 +885,23 @@ function createApp(db, { agentClient } = {}) {
     /* ---- The signed-in user, and staff accounts (managers) ---- */
 
     admin.get('/me', (req, res) => res.json({ user: req.user, sections: staff.SECTIONS }));
+    /* ---- Versions and the manager's notices to everyone (forced update, stop, info) ---- */
+    // Every signed-in user: the server's version (a page loaded with an older one offers «حدّث الآن») and the notices now
+    admin.get('/me/app-status', (req, res) => res.json({ version: APP_VERSION, notices: appNotices.current(db) }));
+    admin.get('/me/changelog', (req, res) => res.json({ version: APP_VERSION, versions: changelog }));
+    // Managers only (not mapped to a section)
+    admin.get('/app-notices', (req, res) => {
+        const devices = db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'push_subscriptions'").get().n
+            ? db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions').get().n : 0;
+        res.json({ notices: appNotices.list(db), kinds: appNotices.KINDS, version: APP_VERSION, devices });
+    });
+    admin.post('/app-notices', asyncRoute(async (req, res) => {
+        const notice = appNotices.create(db, req.body || {}, audit.actorOf(req.user), APP_VERSION);
+        // Every device of every active account (and the general manager's)
+        const sent = await push.send(db, push.accountsOf(db, () => true), appNotices.pushMessage(notice));
+        res.status(201).json({ notice, sent });
+    }));
+    admin.post('/app-notices/:id/end', (req, res) => res.json({ notice: appNotices.end(db, req.params.id, audit.actorOf(req.user)) }));
     // The panel's language for this account (the general manager's is kept on the device only)
     admin.put('/me/lang', (req, res) => {
         const lang = (req.body || {}).lang === 'en' ? 'en' : 'ar';
@@ -2388,7 +2407,8 @@ function createApp(db, { agentClient } = {}) {
     const sendPage = (file) => (req, res) => {
         if (!stamped.has(file)) {
             const html = fs.readFileSync(path.join(publicDir, file), 'utf8')
-                .replace(/(src|href)="([A-Za-z0-9._-]+\.(?:js|css))"/g, `$1="$2?v=${APP_VERSION}"`);
+                .replace(/(src|href)="([A-Za-z0-9._-]+\.(?:js|css))"/g, `$1="$2?v=${APP_VERSION}"`)
+                .replace(/__APP_VERSION__/g, APP_VERSION);
             stamped.set(file, html);
         }
         res.type('html').send(stamped.get(file));
