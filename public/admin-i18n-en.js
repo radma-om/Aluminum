@@ -2,6 +2,17 @@
    Used by admin-i18n.js only when the user chose English. To add a text, add
    its exact Arabic (spaces collapsed) and the English. */
 window.I18N_EN = {
+    "— اختر القسم: بوابة أو مكينة (أسعار الحاسبة)، قطعة من المنتجات، خدمة، أو بند حر": "— choose the section: a gate or motor (calculator prices), a product item, a service, or a free line",
+    "فاتورة خدمة لعميل": "Service invoice for a customer",
+    "الخدمات": "Services",
+    "اكتمل العمل الآن (يُسجَّل أمر العمل مكتملاً)": "The work is done now (the work order is recorded as completed)",
+    "ما الذي تم عمله؟": "What was done?",
+    "حذف هذه الخدمة": "Remove this service",
+    "✓ عميل موجود في السجل": "✓ Customer already in the records",
+    "عميل جديد — يُضاف إلى السجل": "New customer — added to the records",
+    "اكتب رقم جوال العميل (8 أرقام)": "Type the customer's mobile number (8 digits)",
+    "أضف خدمة واحدة على الأقل": "Add at least one service",
+    "أُضيف العميل إلى السجل": "the customer was added to the records",
     "إضافة خدمة": "Add service",
     "خدمة أخرى": "Another service",
     "اسم الخدمة": "Service name",
@@ -2535,6 +2546,8 @@ window.I18N_EN = {
 
 /* Texts with a number or name inside: [regular expression, replacement] */
 window.I18N_EN_PATTERNS = [
+    [/^✓ صدرت الفاتورة (\S+)$/, '✓ Invoice $1 issued'],
+    [/^أمر العمل (\S+) — (.+)$/, (m, n, rest) => `Work order ${n} — ${window.t ? window.t(rest) : rest}`],
     [/^✓ أُضيفت الخدمة إلى الفاتورة (\S+)$/, '✓ The service was added to invoice $1'],
     [/^المجموع ([\d.]+) ر\.ع قبل الضريبة$/, 'Total $1 OMR before VAT'],
     [/^منها خدمات ([\d.,]+)$/, 'of which services $1'],

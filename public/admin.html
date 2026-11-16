@@ -1981,6 +1981,7 @@
                     <div id="woChips" class="check-row" style="margin:0; gap:6px"></div>
                     <select id="woTech" class="office-only" onchange="loadWorkOrders()"></select>
                     <input type="search" id="woSearch" placeholder="بحث: الرقم، العميل، الهاتف، المكان" style="flex:1; min-width:160px; padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-family:inherit" oninput="debouncedWorkOrders()">
+                    <button class="btn btn-primary btn-sm" onclick="newServiceVisit()"><i class="fas fa-file-invoice"></i> فاتورة خدمة لعميل</button>
                     <button class="btn btn-primary btn-sm office-only" onclick="newWorkOrder()">أمر عمل جديد</button>
                     <button class="btn btn-outline btn-sm office-only" id="srNew" hidden onclick="newRequest()">تسجيل طلب موعد</button>
                 </div>
@@ -2377,7 +2378,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
                 <div class="form-group"><label>ولاية التركيب <span class="unit">(التركيب والتوصيل حسبها كما في حاسبة العملاء)</span></label><select id="qbRegion"></select></div>
             </div>
             <div id="qbPromo" class="status-text" hidden style="background:#e8f7ee;color:#1b6b3a;padding:8px 10px;border-radius:8px;margin:6px 0"></div>
-            <p class="sub-heading">البنود <span class="status-text">— اختر القسم: بوابة أو مكينة (أسعار الحاسبة)، قطعة من المنتجات، أو بند حر</span></p>
+            <p class="sub-heading">البنود <span class="status-text">— اختر القسم: بوابة أو مكينة (أسعار الحاسبة)، قطعة من المنتجات، خدمة، أو بند حر</span></p>
             <div id="qbLines"></div>
             <div class="qb-add" id="qbAdd"></div>
             <div class="form-grid" style="margin-top:10px">
@@ -2434,16 +2435,44 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     </div>
 
     <!-- Create / schedule a work order -->
+    <!-- A service call for a new or known customer: customer, services, invoice and PDF on the spot -->
+    <div id="svSheet" class="sheet" hidden>
+        <div class="sheet-card" style="max-width:560px">
+            <button type="button" class="sheet-close" onclick="closeSheet('svSheet')" aria-label="إغلاق">×</button>
+            <h3><i class="fas fa-file-invoice"></i> فاتورة خدمة لعميل</h3>
+            <form id="svForm" class="mobile-form" onsubmit="event.preventDefault(); submitServiceVisit();">
+                <p class="sub-heading" style="margin-top:0">العميل</p>
+                <div class="form-group"><label>جوال العميل</label><input type="tel" id="svPhone" inputmode="tel" dir="ltr" required placeholder="9XXXXXXX" onchange="svLookup()" oninput="svLookupSoon()"></div>
+                <p class="status-text" id="svKnown" style="margin:-6px 0 8px"></p>
+                <div class="form-group"><label>اسم العميل</label><input type="text" id="svName" maxlength="120" required></div>
+                <div class="form-grid two">
+                    <div class="form-group"><label>المنطقة / الولاية</label><input type="text" id="svCity" maxlength="120"></div>
+                    <div class="form-group"><label>العنوان</label><input type="text" id="svAddress" maxlength="200"></div>
+                </div>
+                <p class="sub-heading">الخدمات</p>
+                <div id="svLines"></div>
+                <button type="button" class="btn btn-outline btn-sm" onclick="svAddLine()"><i class="fas fa-plus"></i> خدمة أخرى</button>
+                <p class="status-text" id="svTotal" style="font-weight:700"></p>
+                <label class="check-line"><input type="checkbox" id="svDone" checked> اكتمل العمل الآن (يُسجَّل أمر العمل مكتملاً)</label>
+                <div class="form-buttons">
+                    <button class="btn btn-primary" type="submit" id="svSave"><i class="fas fa-file-invoice"></i> إصدار الفاتورة</button>
+                    <span id="svStatus" class="status-text"></span>
+                </div>
+            </form>
+            <div id="svDoneBox" hidden></div>
+        </div>
+    </div>
+
     <!-- A service done on site: added to the work order's invoice -->
     <div id="woServiceSheet" class="sheet" hidden>
         <div class="sheet-card" style="max-width:520px">
             <button type="button" class="sheet-close" onclick="closeSheet('woServiceSheet')" aria-label="إغلاق">×</button>
             <h3><i class="fas fa-screwdriver-wrench"></i> إضافة خدمة</h3>
             <p class="status-text" id="woServiceFor" style="margin:0 0 10px"></p>
-            <form id="woServiceForm" onsubmit="event.preventDefault(); submitWoService();">
+            <form id="woServiceForm" class="mobile-form" onsubmit="event.preventDefault(); submitWoService();">
                 <div class="form-group"><label>اسم الخدمة</label><input type="text" id="wsTitle" maxlength="120" value="خدمة" placeholder="مثلاً: صيانة محرك، تغيير ريموت"></div>
                 <div class="form-group"><label>وصف الخدمة <span class="unit">(يظهر للعميل في الفاتورة)</span></label><textarea id="wsDesc" rows="3" maxlength="1000" required placeholder="مثلاً: فحص المحرك وتغيير المكثف وضبط حساسات الأمان"></textarea></div>
-                <div class="form-grid">
+                <div class="form-grid two">
                     <div class="form-group"><label>الكمية</label><input type="number" id="wsQty" min="0.01" step="0.01" value="1" oninput="woServiceTotal()"></div>
                     <div class="form-group"><label>سعر الوحدة <span class="unit">(ر.ع — قبل الضريبة)</span></label><input type="number" id="wsPrice" min="0.01" step="0.01" required oninput="woServiceTotal()"></div>
                 </div>

@@ -104,16 +104,114 @@ function renderWorkOrders() {
 async function woMove(id, status) {
     let note = '';
     if (status === 'done') {
-        note = await askText('ما الذي تم إنجازه؟ (مثلاً: رُكّبت البوابة وجُرّبت مع العميل وسُلّم الريموت)');
+        note = await askText('ما الذي تم إنجازه؟ (مثلاً: رُكّبت البوابة وجُرّبت مع العميل وسُلّم الريموت)', '', { multiline: true, okLabel: 'اكتمل' });
         if (note === null || !note.trim()) return;
     } else if (status === 'new') {
-        note = await askText('سبب الحاجة لموعد جديد (مثلاً: العميل غير موجود، الموقع غير جاهز):');
+        note = await askText('سبب الحاجة لموعد جديد (مثلاً: العميل غير موجود، الموقع غير جاهز):', '', { multiline: true });
         if (note === null || !note.trim()) return;
     }
     try {
         await api('POST', `/api/admin/work-orders/${id}/status`, { status, note: note.trim() });
         await loadWorkOrders();
     } catch (err) { alert(err.message); }
+}
+
+/* After a service is saved: the invoice, its PDF and the WhatsApp message to the customer */
+function serviceResult(r, again) {
+    const link = location.origin + r.invoice.pdf_url;
+    const phone = String(r.invoice.customer_phone || '').replace(/\D/g, '');
+    const wa = `https://wa.me/${encodeURIComponent(phone)}?text=${encodeURIComponent(`فاتورة رقم ${r.invoice.number} — الإجمالي ${Number(r.invoice.total).toFixed(2)} ر.ع\n${link}`)}`;
+    const added = (r.lines || [r.line]).reduce((s, l) => s + Number(l.line_total || 0), 0);
+    return `
+        <p class="status-text ok" style="font-weight:700">✓ أُضيفت الخدمة إلى الفاتورة ${esc(r.invoice.number)}</p>
+        <div class="money-grid">
+            <div><small>الخدمة</small><strong>${added.toFixed(2)}</strong></div>
+            <div><small>إجمالي الفاتورة (شامل الضريبة)</small><strong>${Number(r.invoice.total).toFixed(2)}</strong></div>
+            <div><small>المتبقي على العميل</small><strong>${Number(r.invoice.balance).toFixed(2)}</strong></div>
+        </div>
+        <div class="form-buttons stack-mobile">
+            <a class="btn btn-primary" href="${esc(link)}" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> فتح الفاتورة PDF</a>
+            <a class="btn btn-outline" href="${esc(wa)}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> إرسال للعميل</a>
+            <button class="btn btn-outline" type="button" onclick="${again}">خدمة أخرى</button>
+        </div>`;
+}
+
+/* ---- A service call for a new or known customer (no work order yet) ---- */
+let svTimer = null;
+function newServiceVisit() {
+    $id('svForm').reset();
+    $id('svForm').hidden = false;
+    $id('svDoneBox').hidden = true;
+    $id('svKnown').textContent = '';
+    $id('svLines').innerHTML = '';
+    $id('svDone').checked = true;
+    $id('svSave').disabled = false;
+    setStatus('svStatus', '');
+    svAddLine();
+    $id('svSheet').hidden = false;
+    setTimeout(() => $id('svPhone').focus(), 50);
+}
+function svAddLine() {
+    const box = document.createElement('div');
+    box.className = 'sv-line';
+    box.innerHTML = `
+        <div class="form-group"><label>اسم الخدمة</label><input type="text" data-f="title" maxlength="120" value="خدمة" placeholder="مثلاً: صيانة محرك، تغيير ريموت"></div>
+        <div class="form-group"><label>وصف الخدمة <span class="unit">(يظهر للعميل في الفاتورة)</span></label><textarea data-f="description" rows="2" maxlength="1000" placeholder="ما الذي تم عمله؟"></textarea></div>
+        <div class="form-grid two">
+            <div class="form-group"><label>الكمية</label><input type="number" data-f="quantity" min="0.01" step="0.01" value="1" inputmode="decimal"></div>
+            <div class="form-group"><label>السعر <span class="unit">(ر.ع — قبل الضريبة)</span></label><input type="number" data-f="unit_price" min="0.01" step="0.01" inputmode="decimal"></div>
+        </div>
+        ${$id('svLines').children.length ? '<button type="button" class="link-btn" onclick="this.closest(\'.sv-line\').remove(); svSum()">حذف هذه الخدمة</button>' : ''}`;
+    box.addEventListener('input', svSum);
+    $id('svLines').appendChild(box);
+    svSum();
+}
+const svServices = () => [...$id('svLines').querySelectorAll('.sv-line')].map((b) => ({
+    title: b.querySelector('[data-f="title"]').value.trim(),
+    description: b.querySelector('[data-f="description"]').value.trim(),
+    quantity: Number(b.querySelector('[data-f="quantity"]').value) || 1,
+    unit_price: Number(b.querySelector('[data-f="unit_price"]').value) || 0
+}));
+function svSum() {
+    const t = svServices().reduce((s, l) => s + l.quantity * l.unit_price, 0);
+    $id('svTotal').textContent = t > 0 ? `المجموع ${t.toFixed(2)} ر.ع قبل الضريبة` : '';
+}
+function svLookupSoon() { clearTimeout(svTimer); svTimer = setTimeout(svLookup, 400); }
+async function svLookup() {
+    const phone = $id('svPhone').value.replace(/\D/g, '');
+    if (phone.length < 8) { $id('svKnown').textContent = ''; return; }
+    try {
+        const r = await api('GET', '/api/admin/work-orders/customer-lookup?phone=' + encodeURIComponent(phone));
+        if (r.found) {
+            $id('svKnown').textContent = '✓ عميل موجود في السجل';
+            if (!$id('svName').value) $id('svName').value = r.name || '';
+            if (!$id('svCity').value) $id('svCity').value = r.city || '';
+            if (!$id('svAddress').value) $id('svAddress').value = r.address || '';
+        } else {
+            $id('svKnown').textContent = 'عميل جديد — يُضاف إلى السجل';
+        }
+    } catch { /* the save checks it anyway */ }
+}
+async function submitServiceVisit() {
+    const services = svServices();
+    if (services.some((l) => !l.description)) return setStatus('svStatus', 'اكتب وصف الخدمة', 'err');
+    if (services.some((l) => !(l.unit_price > 0))) return setStatus('svStatus', 'اكتب سعر الخدمة', 'err');
+    $id('svSave').disabled = true;
+    setStatus('svStatus', 'جاري الحفظ...');
+    try {
+        const r = await api('POST', '/api/admin/work-orders/service-visit', {
+            customer: { phone: $id('svPhone').value, name: $id('svName').value.trim(), city: $id('svCity').value.trim(), address: $id('svAddress').value.trim() },
+            services, done: $id('svDone').checked
+        });
+        $id('svForm').hidden = true;
+        $id('svDoneBox').innerHTML = serviceResult(r, 'newServiceVisit()').replace('✓ أُضيفت الخدمة إلى الفاتورة', '✓ صدرت الفاتورة')
+            + `<p class="status-text">أمر العمل ${esc(r.order.number)} — ${esc(r.order.status_label)}${r.new_customer ? ' — أُضيف العميل إلى السجل' : ''}</p>`;
+        $id('svDoneBox').hidden = false;
+        loadWorkOrders().catch(() => {});
+    } catch (err) {
+        setStatus('svStatus', err.message, 'err');
+        $id('svSave').disabled = false;
+    }
 }
 
 /* ---- A service done on site: its description and price go on the order's invoice, then the PDF ---- */
@@ -147,22 +245,8 @@ async function submitWoService() {
     setStatus('wsStatus', 'جاري الحفظ...');
     try {
         const r = await api('POST', `/api/admin/work-orders/${woServiceOrder.id}/services`, body);
-        const link = location.origin + r.invoice.pdf_url;
-        const phone = String(r.invoice.customer_phone || '').replace(/\D/g, '');
-        const wa = `https://wa.me/${encodeURIComponent(phone)}?text=${encodeURIComponent(`فاتورة رقم ${r.invoice.number} — الإجمالي ${Number(r.invoice.total).toFixed(2)} ر.ع\n${link}`)}`;
         $id('woServiceForm').hidden = true;
-        $id('woServiceDone').innerHTML = `
-            <p class="status-text ok" style="font-weight:700">✓ أُضيفت الخدمة إلى الفاتورة ${esc(r.invoice.number)}</p>
-            <div class="money-grid">
-                <div><small>الخدمة</small><strong>${Number(r.line.line_total).toFixed(2)}</strong></div>
-                <div><small>إجمالي الفاتورة (شامل الضريبة)</small><strong>${Number(r.invoice.total).toFixed(2)}</strong></div>
-                <div><small>المتبقي على العميل</small><strong>${Number(r.invoice.balance).toFixed(2)}</strong></div>
-            </div>
-            <div class="form-buttons">
-                <a class="btn btn-primary" href="${esc(link)}" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> فتح الفاتورة PDF</a>
-                <a class="btn btn-outline" href="${esc(wa)}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> إرسال للعميل</a>
-                <button class="btn btn-outline" type="button" onclick="woService(${woServiceOrder.id})">خدمة أخرى</button>
-            </div>`;
+        $id('woServiceDone').innerHTML = serviceResult(r, `woService(${woServiceOrder.id})`);
         $id('woServiceDone').hidden = false;
         woServiceOrder = { ...woServiceOrder, invoice_number: r.invoice.number };
         loadWorkOrders().catch(() => {});
@@ -173,7 +257,7 @@ async function submitWoService() {
 }
 
 async function woNote(id) {
-    const text = await askText('الملاحظة:');
+    const text = await askText('الملاحظة:', '', { multiline: true });
     if (!text || !text.trim()) return;
     try { await api('POST', `/api/admin/work-orders/${id}/notes`, { text: text.trim() }); await woHistory(id, null, true); } catch (err) { alert(err.message); }
 }
