@@ -2,7 +2,8 @@
    Monthly commissions (المكافآت والعمولات)
    - Sales staff: a monthly target and a %. Their sales = the invoices
      whose payments reached half of their total (50%) in the month —
-     counted in the month that happened, whenever the invoice was issued;
+     counted in the month that happened, whenever the invoice was issued
+     (never before its issue month: an earlier-dated deposit counts at issue);
      cancelled ones out — before VAT, without the installation and
      delivery share. An invoice paid less than half waits. The commission is the % of what
      goes over the target: target 7000, sales 8000, 2.5% → 25.
@@ -70,6 +71,9 @@ function invoicesWithPayments(db) {
                 paid += Number(p.amount) || 0;
                 if (!qualified && paid >= r.total * PAID_SHARE - 0.005) qualified = p.paid_on;
             }
+            // Never before the invoice was issued: a deposit dated earlier (paid on the quote) counts
+            // in the month of issue, not in a past month that may already be closed
+            if (qualified && qualified < r.issue_date) qualified = r.issue_date;
             const items = parse(r.items_json, []);
             const excluded = round2(r.subtotal * share(items, (i) => isInstallation(i) || isDelivery(i) || isService(i)));
             return {

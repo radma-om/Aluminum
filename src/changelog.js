@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.43.2', date: '2026-11-17',
+        ar: ['العمولات: عربون مؤرخ قبل إصدار الفاتورة يُحتسب في شهر الإصدار، لا في شهر سابق قد يكون أُغلق'],
+        en: ['Commissions: a deposit dated before the invoice was issued counts in the month of issue, not in an earlier month that may already be closed']
+    },
+    {
         version: '3.43.1', date: '2026-11-17',
         ar: ['العهدة تتحدث تلقائياً: عند تأكيد الإرجاع أو إعطاء مبلغ أو أي عملية من جوال آخر يتغير الرصيد والدفتر دون الخروج من التبويب', 'التحديث فوري مع إشعار العهدة، وعند الرجوع إلى التطبيق، وكل 20 ثانية والتبويب مفتوح'],
         en: ['Petty cash refreshes by itself: when a return is confirmed, money is given or any entry is made on another phone, the balance and the book change without leaving the tab', 'At once with a petty cash notification, when you come back to the app, and every 20 seconds while the tab is open']
