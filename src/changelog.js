@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.43.1', date: '2026-11-17',
+        ar: ['العهدة تتحدث تلقائياً: عند تأكيد الإرجاع أو إعطاء مبلغ أو أي عملية من جوال آخر يتغير الرصيد والدفتر دون الخروج من التبويب', 'التحديث فوري مع إشعار العهدة، وعند الرجوع إلى التطبيق، وكل 20 ثانية والتبويب مفتوح'],
+        en: ['Petty cash refreshes by itself: when a return is confirmed, money is given or any entry is made on another phone, the balance and the book change without leaving the tab', 'At once with a petty cash notification, when you come back to the app, and every 20 seconds while the tab is open']
+    },
+    {
         version: '3.43.0', date: '2026-11-17',
         ar: ['«تسليم للمكتب» أصبح «إرجاع مبلغ للمكتب»، ولا يُخصم من الرصيد حتى يؤكد المدير أنه استلم المبلغ («استلمته» أو «لم أستلمه» بسبب)', 'زر جديد «استلمت مبلغ»: يسجّل الموظف مبلغاً استلمه (ممن؟) فيُضاف إلى عهدته فوراً، ويصل إشعار للإدارة'],
         en: ['«Return to office» is now «Return money to the office», and it is deducted only once the manager confirms receiving the money («Received» or «Not received» with a reason)', 'A new «I received money» button: the employee records money received (from whom?) and it is added to their petty cash at once; the office is notified']
