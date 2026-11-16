@@ -19,6 +19,7 @@ let walletAll = null;
 let walletTarget = null; // { id, name } of the book an entry is written to
 let walletKind = 'expense';
 let walletCat = '';
+let walletBookId = null; // the book open in «الحركات» (managers)
 
 const wWhen = (s) => {
     const d = new Date(String(s).replace(' ', 'T') + ':00');
@@ -219,9 +220,10 @@ async function walletPhoto(entryId) {
 /* ---- Managers ---- */
 function walletGive(id, name) { walletNew('receive', { id, name }); }
 
-async function walletOpenBook(id) {
+async function walletOpenBook(id, { quiet = false } = {}) {
     try {
         const b = await api('GET', `/api/admin/wallet/${id}`);
+        walletBookId = b.user.id;
         $id('walletBookBody').innerHTML = `
             <h3><i class="fas fa-wallet"></i> <span class="no-i18n">${esc(b.user.name)}</span></h3>
             <div class="wallet-hero"><div class="wh-balance ${b.low ? 'low' : ''}"><small>الرصيد</small><strong dir="ltr">${wMoney(b.balance)}</strong><span>ر.ع</span></div>
@@ -234,7 +236,7 @@ async function walletOpenBook(id) {
             ${walletBookHtml(b, { manage: true })}`;
         walletMine = walletMine || { categories: b.categories };
         $id('walletBookSheet').hidden = false;
-    } catch (err) { tell(err.message); }
+    } catch (err) { if (!quiet) tell(err.message); }
 }
 
 /* A return the employee recorded: the manager received the cash → it counts */
@@ -294,5 +296,26 @@ window.switchTab = function (tabId) {
     switchTabBeforeWallet(tabId);
     if (tabId === 'wallet') loadWallet().catch(() => {});
 };
+/* Live: what changes on another phone (the manager confirms a return or gives money, the employee
+   spends or returns) shows without leaving the tab — at a petty cash notification, when the app
+   comes back to the screen, and every 20 seconds while the tab is open. */
+let walletLast = 0;
+function walletRefresh() {
+    if (!ME || document.hidden) return;
+    walletLast = Date.now();
+    const open = $id('tab-wallet').classList.contains('active');
+    if (open) loadWallet().catch(() => {});
+    else if (wIsManager()) loadWalletAll().catch(() => {}); // the badge
+    if (wIsManager() && walletBookId && !$id('walletBookSheet').hidden) walletOpenBook(walletBookId, { quiet: true });
+}
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.type === 'wallet') walletRefresh(); });
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - walletLast > 3000) walletRefresh(); });
+window.addEventListener('focus', () => { if (Date.now() - walletLast > 3000) walletRefresh(); });
+setInterval(() => {
+    if (!document.hidden && ME && $id('tab-wallet').classList.contains('active')) walletRefresh();
+}, 20_000);
+
 // The badge of requests waiting (managers), once signed in
 document.addEventListener('admin-ready', () => { if (wIsManager()) loadWalletAll().catch(() => {}); });

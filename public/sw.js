@@ -6,7 +6,8 @@
      customers always come from the server.
    - Shows the notifications the server pushes, and opens the right
      page of the app when one is tapped. A manager's notice (update,
-     stop) also tells the open app to look at it at once.
+     stop) also tells the open app to look at it at once, and a petty
+     cash notification tells it to refresh the petty cash.
    ============================================================= */
 const CACHE = 'radma-admin-v2';
 const OFFLINE = '/offline.html';
@@ -31,8 +32,11 @@ self.addEventListener('push', (e) => {
     let data = {};
     try { data = e.data ? e.data.json() : {}; } catch { data = { title: 'RADMA', body: e.data ? e.data.text() : '' }; }
     // A notice from the manager (update / stop): an open app looks at it now
-    const tell = String(data.tag || '').startsWith('app-notice')
-        ? self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => cs.forEach((c) => c.postMessage({ type: 'app-status' })))
+    // A petty cash change (money given, a return confirmed, a new expense…): an open app refreshes it
+    const tag = String(data.tag || '');
+    const kind = tag.startsWith('app-notice') ? 'app-status' : tag.startsWith('wallet') ? 'wallet' : null;
+    const tell = kind
+        ? self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => cs.forEach((c) => c.postMessage({ type: kind })))
         : Promise.resolve();
     e.waitUntil(tell.then(() => self.registration.showNotification(data.title || 'RADMA', {
         body: data.body || '',
