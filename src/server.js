@@ -1573,7 +1573,7 @@ function createApp(db, { agentClient } = {}) {
 
     /* ---- Petty cash (العهدة): every account its own book; managers see and run all of them ---- */
     const isManager = (req) => req.user.role === 'manager';
-    const walletActor = (req) => ({ name: staffName(req), manager: isManager(req) });
+    const walletActor = (req) => ({ id: req.user.id, name: staffName(req), manager: isManager(req) });
     const ownOrManager = (req, userId) => {
         if (isManager(req) || Number(userId) === Number(req.user.id)) return;
         throw httpError(404, 'العهدة غير موجودة');
@@ -1603,11 +1603,16 @@ function createApp(db, { agentClient } = {}) {
         const r = wallets.add(db, req.params.userId, req.body || {}, walletActor(req), getSettings(db));
         const e = r.entry;
         const self = Number(req.params.userId) === Number(req.user.id);
-        // The managers hear of every expense and return made by the employee; the employee of money handed over
-        if (self && e.kind !== 'receive') {
+        // The managers hear of every entry the employee makes (a return asks them to confirm it);
+        // the employee of one a manager makes in their book
+        if (self && !isManager(req)) {
+            const icon = { expense: '💸', receive: '💰', return: '↩️' }[e.kind];
             push.send(db, managersOf(), {
-                title: `${e.kind === 'expense' ? '💸' : '↩️'} ${r.user.display_name}: ${e.kind_label} ${wallets.money(e.amount)} ر.ع`,
-                body: `${[e.category, e.details].filter(Boolean).join(' — ')} — الرصيد ${wallets.money(r.balance)} ر.ع`, url: '/admin#tab=wallet', tag: `wallet-${r.user.id}`
+                title: `${icon} ${r.user.display_name}: ${e.kind === 'receive' ? 'استلمت' : e.kind_label} ${wallets.money(e.amount)} ر.ع`,
+                body: e.pending
+                    ? `بانتظار تأكيدك أنك استلمت المبلغ${e.details ? ` — ${e.details}` : ''}`
+                    : `${[e.category, e.details].filter(Boolean).join(' — ')} — الرصيد ${wallets.money(r.balance)} ر.ع`,
+                url: '/admin#tab=wallet', tag: e.pending ? `wallet-return-${e.id}` : `wallet-${r.user.id}`
             }).catch(() => {});
         }
         if (!self) {
@@ -1618,6 +1623,16 @@ function createApp(db, { agentClient } = {}) {
         }
         tellLow(r);
         res.status(201).json({ entry: e, balance: r.balance, low: r.min > 0 && r.balance < r.min });
+    });
+    // A manager confirms the cash of a return was received (declining it = «إلغاء» with the reason)
+    admin.post('/wallet/entries/:id/confirm', (req, res) => {
+        if (!isManager(req)) throw httpError(403, 'تأكيد الاستلام للإدارة');
+        const r = wallets.confirm(db, req.params.id, walletActor(req), getSettings(db));
+        push.send(db, [`u:${r.user.id}`], {
+            title: `✅ أكدت الإدارة استلام ${wallets.money(r.entry.amount)} ر.ع`, body: `الرصيد ${wallets.money(r.balance)} ر.ع`, url: '/admin#tab=wallet', tag: 'wallet-mine'
+        }).catch(() => {});
+        tellLow(r);
+        res.json({ entry: r.entry, balance: r.balance });
     });
     // The receipt's photo: sent as the image itself (the phone shrinks it first)
     admin.post('/wallet/entries/:id/receipt', express.raw({ type: 'image/*', limit: '1600kb' }), (req, res) => {
@@ -1638,7 +1653,14 @@ function createApp(db, { agentClient } = {}) {
     });
     admin.post('/wallet/entries/:id/cancel', (req, res) => {
         if (!isManager(req)) throw httpError(403, 'إلغاء العمليات للإدارة');
-        res.json({ entry: wallets.cancel(db, req.params.id, (req.body || {}).reason, walletActor(req)) });
+        const before = wallets.entry(db, req.params.id);
+        const entry = wallets.cancel(db, req.params.id, (req.body || {}).reason, walletActor(req));
+        if (before && before.pending) {
+            push.send(db, [`u:${entry.user_id}`], {
+                title: `❌ لم تؤكد الإدارة استلام ${wallets.money(entry.amount)} ر.ع`, body: entry.cancel_reason || 'راجع الإدارة', url: '/admin#tab=wallet', tag: 'wallet-mine'
+            }).catch(() => {});
+        }
+        res.json({ entry });
     });
     admin.post('/wallet/requests', (req, res) => {
         if (!req.user.id) throw httpError(400, 'الطلب من حساب موظف');
