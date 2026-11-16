@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.43.3', date: '2026-11-17',
+        ar: ['تحذير الحد الأدنى للعهدة لا يظهر لموظف لم يستخدم العهدة أبداً', 'لكل موظف حده الخاص أو «بلا تنبيه» (0) من عمود «الحد الأدنى» في جدول العهد'],
+        en: ['The petty cash minimum warning no longer shows for an employee who never used petty cash', 'Each employee can have a limit of their own, or «No alert» (0), from the «Minimum» column of the petty cash table']
+    },
+    {
         version: '3.43.2', date: '2026-11-17',
         ar: ['العمولات: عربون مؤرخ قبل إصدار الفاتورة يُحتسب في شهر الإصدار، لا في شهر سابق قد يكون أُغلق'],
         en: ['Commissions: a deposit dated before the invoice was issued counts in the month of issue, not in an earlier month that may already be closed']
