@@ -12,8 +12,9 @@
      and does not count). One recorded by a manager counts at once.
    - طلب مبلغ: the employee asks for money; the manager approves it (it
      becomes a «استلام», possibly for another amount) or declines it.
-   - Each employee has a lowest balance (their own, or the general one):
-     below it, the managers are told and the panel shows a warning.
+   - Each employee has a lowest balance (their own, or the general one; 0 =
+     no warning for them): below it, the managers are told and the panel
+     shows a warning. An employee who never had petty cash is never warned.
    Entries are never edited; a manager can cancel one (with the reason),
    and it stays in the book, struck through.
    ============================================================= */
@@ -89,6 +90,9 @@ function balanceOf(db, userId) {
     return round3(r.b);
 }
 
+/* The lowest balance before the managers are warned: the employee's own, or the general one (0 = none).
+   Only for an account that uses petty cash (has entries): others are not warned at all. */
+const lowFor = (min, balance, used) => used && min > 0 && balance < min;
 /* The lowest balance before the managers are warned: the employee's own, or the general one (0 = none) */
 const minOf = (u, settings) => (u.wallet_min != null ? Number(u.wallet_min) : Number(settings.wallet_min_default) || 0);
 
@@ -114,7 +118,7 @@ function book(db, userId, settings, { limit = 200 } = {}) {
     const min = minOf(u, settings);
     return {
         user: { id: u.id, name: u.display_name, role: u.role, active: Boolean(u.active) },
-        balance: running, min, pending_return: round3(all.filter((e) => e.pending && !e.cancelled_at).reduce((s, e) => s + e.amount, 0)), low: min > 0 && running < min, spent_this_month: spentMonth,
+        balance: running, min, pending_return: round3(all.filter((e) => e.pending && !e.cancelled_at).reduce((s, e) => s + e.amount, 0)), low: lowFor(min, running, all.length > 0), spent_this_month: spentMonth,
         entries,
         requests: db.prepare('SELECT * FROM wallet_requests WHERE user_id = ? ORDER BY id DESC LIMIT 30').all(u.id),
         categories: categories(settings)
@@ -132,7 +136,7 @@ function overview(db, settings) {
         const pending = db.prepare("SELECT COUNT(*) AS n FROM wallet_requests WHERE user_id = ? AND status = 'pending'").get(u.id).n
             + db.prepare('SELECT COUNT(*) AS n FROM wallet_entries WHERE user_id = ? AND pending = 1 AND cancelled_at IS NULL').get(u.id).n;
         const min = minOf(u, settings);
-        return { id: u.id, name: u.display_name, role: u.role, active: Boolean(u.active), balance, min, own_min: u.wallet_min, low: min > 0 && balance < min,
+        return { id: u.id, name: u.display_name, role: u.role, active: Boolean(u.active), balance, min, own_min: u.wallet_min, low: lowFor(min, balance, count > 0),
             last: last ? { ...last, kind_label: KINDS[last.kind] } : null, entries: count, pending };
     }).filter((r) => r.active || r.entries || r.balance);
     const requests = db.prepare(`SELECT r.*, u.display_name AS name FROM wallet_requests r JOIN staff_users u ON u.id = r.user_id

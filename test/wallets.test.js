@@ -172,3 +172,33 @@ test('«استلمت مبلغ» counts at once; «إرجاع مبلغ للمكت
     assert.equal(direct.body.entry.pending, false);
     assert.equal(direct.body.balance, 10);
 });
+
+test('the low balance warning: only for those who use petty cash; a limit of their own, or none (0)', async (t) => {
+    const { db, call, login } = await start(t);
+    const tech = staff.create(db, { username: 'ahmed', display_name: 'أحمد الفني', password: 'pass-12345', role: 'technician' });
+    const office = staff.create(db, { username: 'mona', display_name: 'منى', password: 'pass-12345', permissions: ['quotes'] });
+    const driver = staff.create(db, { username: 'ali', display_name: 'علي', password: 'pass-12345', role: 'technician' });
+    saveSettings(db, { wallet_min_default: 20 });
+    const warnings = async () => (await call('GET', '/api/admin/system-status')).body.warnings.map((w) => w.text).filter((w) => /رصيد عهدة/.test(w));
+
+    // Nobody has petty cash yet: no warning, though every balance (0) is under 20
+    assert.deepEqual(await warnings(), []);
+    let all = (await call('GET', '/api/admin/wallet')).body.accounts;
+    assert.equal(all.find((a) => a.id === office.id).low, false);
+    assert.equal((await call('GET', '/api/admin/wallet/me', undefined, await login('mona'))).body.low, false);
+
+    // The technician uses it and goes under the general limit: warned
+    await call('POST', `/api/admin/wallet/${tech.id}/entries`, { kind: 'receive', amount: 10, details: 'عهدة' });
+    await call('POST', `/api/admin/wallet/${driver.id}/entries`, { kind: 'receive', amount: 10, details: 'عهدة' });
+    assert.equal((await warnings()).length, 2);
+
+    // A limit of his own for one (5: 10 is fine), none at all (0) for the other
+    await call('PUT', `/api/admin/wallet/${tech.id}/min`, { min: 5 });
+    await call('PUT', `/api/admin/wallet/${driver.id}/min`, { min: 0 });
+    assert.deepEqual(await warnings(), []);
+    all = (await call('GET', '/api/admin/wallet')).body.accounts;
+    assert.deepEqual([all.find((a) => a.id === tech.id).min, all.find((a) => a.id === driver.id).own_min], [5, 0]);
+    // Back to the general limit (empty)
+    await call('PUT', `/api/admin/wallet/${tech.id}/min`, { min: null });
+    assert.equal((await warnings()).length, 1);
+});
