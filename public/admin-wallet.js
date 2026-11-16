@@ -2,15 +2,16 @@
    Petty cash (العهدة) — like a cash book.
    - «عهدتي» (every staff and technician account): the balance, «صرف»
      (amount, category, details, a photo of the receipt), «طلب مبلغ»,
-     «تسليم للمكتب», the book with the balance after each entry, and the
+     «استلمت مبلغ» (money received, with where it came from), «إرجاع مبلغ
+     للمكتب» (counted once a manager confirms receiving it), the book with the balance after each entry, and the
      requests with their answers.
-   - Managers: every account's balance and lowest balance, the requests to
+   - Managers: every account's balance and lowest balance, the returns to
+     confirm or decline, the requests to
      approve (another amount is possible) or decline, money handed over,
      an employee's book (entries can be cancelled, never edited), and the
      general lowest balance and the expense categories.
    Uses api(), $id(), esc(), setStatus(), askText(), askYes(), closeSheet(), ME, APP_LOCALE.
    ============================================================= */
-const W_KINDS = { receive: 'استلام', expense: 'صرف', return: 'تسليم للمكتب' };
 const wMoney = (n) => Number(n || 0).toFixed(2);
 const wIsManager = () => ME && ME.role === 'manager';
 let walletMine = null;
@@ -32,13 +33,15 @@ const wWhen = (s) => {
 function walletBookHtml(book, { manage = false } = {}) {
     if (!book.entries.length) return '<p class="status-text">لا توجد عمليات بعد.</p>';
     return `<div class="wallet-book">${book.entries.map((e) => `
-        <div class="wallet-entry ${esc(e.kind)}${e.cancelled ? ' cancelled' : ''}">
+        <div class="wallet-entry ${esc(e.kind)}${e.cancelled ? ' cancelled' : ''}${e.pending ? ' pending' : ''}">
             <div class="we-main">
                 <div><b class="we-kind">${esc(e.kind_label)}</b> <small>${wWhen(e.occurred_on)}</small></div>
                 <div class="we-details no-i18n">${esc([e.category, e.details].filter(Boolean).join(' — ') || '')}</div>
                 ${e.cancelled ? `<div class="we-cancel">ملغاة: ${esc(e.cancel_reason || '')}</div>` : ''}
+                ${e.pending ? '<div class="we-pending">⏳ بانتظار تأكيد المدير — لم يُخصم بعد</div>' : ''}
+                ${manage && e.pending ? `<button class="link-btn we-photo" style="color:#1e8449" onclick="walletConfirm(${e.id})">تأكيد الاستلام</button>` : ''}
                 ${e.has_receipt ? `<button class="link-btn we-photo" onclick="walletPhoto(${e.id})"><i class="fas fa-image"></i> صورة الإيصال</button>` : ''}
-                ${manage && !e.cancelled ? `<button class="link-btn we-photo" style="color:#a93226" onclick="walletCancel(${e.id})">إلغاء</button>` : ''}
+                ${manage && !e.cancelled ? `<button class="link-btn we-photo" style="color:#a93226" onclick="walletCancel(${e.id}, ${e.pending})">${e.pending ? 'لم أستلمه' : 'إلغاء'}</button>` : ''}
             </div>
             <div class="we-amount"><span dir="ltr">${e.signed > 0 ? '+' : '−'}${wMoney(Math.abs(e.signed))}</span>
                 <small>الرصيد <span dir="ltr">${wMoney(e.balance_after)}</span></small></div>
@@ -54,7 +57,7 @@ async function loadWalletMine() {
         const b = walletMine;
         $id('walletHero').innerHTML = `
             <div class="wh-balance ${b.low ? 'low' : ''}"><small>رصيد العهدة</small><strong dir="ltr">${wMoney(b.balance)}</strong><span>ر.ع</span></div>
-            <div class="wh-figs"><span>صُرف هذا الشهر <b>${wMoney(b.spent_this_month)}</b></span>${b.min ? `<span>الحد الأدنى <b>${wMoney(b.min)}</b></span>` : ''}</div>
+            <div class="wh-figs"><span>صُرف هذا الشهر <b>${wMoney(b.spent_this_month)}</b></span>${b.min ? `<span>الحد الأدنى <b>${wMoney(b.min)}</b></span>` : ''}${b.pending_return ? `<span>بانتظار تأكيد الإرجاع <b>${wMoney(b.pending_return)}</b></span>` : ''}</div>
             ${b.low ? '<p class="wh-low">⚠️ الرصيد أقل من الحد — اطلب مبلغاً من الإدارة</p>' : ''}`;
         const open = b.requests.filter((r) => r.status === 'pending' || Date.now() - Date.parse(String(r.decided_at || r.created_at).replace(' ', 'T') + 'Z') < 3 * 86400_000);
         $id('walletMineRequests').innerHTML = open.length ? `<p class="sub-heading">طلباتي</p>${open.map((r) => `
@@ -72,8 +75,12 @@ async function loadWalletAll() {
         const low = w.accounts.filter((a) => a.low).length;
         $id('walletTotals').innerHTML = `
             <div><small>مجموع العهد عند الموظفين</small><strong>${wMoney(w.total_out)}</strong></div>
-            <div><small>طلبات بانتظارك</small><strong style="color:${w.requests.length ? '#8a5a00' : 'inherit'}">${w.requests.length}</strong></div>
+            <div><small>بانتظارك</small><strong style="color:${w.requests.length + w.returns.length ? '#8a5a00' : 'inherit'}">${w.requests.length + w.returns.length}</strong></div>
             <div><small>أقل من الحد</small><strong style="color:${low ? '#a93226' : 'inherit'}">${low}</strong></div>`;
+        $id('walletReturns').innerHTML = w.returns.length ? `<p class="sub-heading">مبالغ أُرجعت للمكتب — أكّد استلامها</p>${w.returns.map((r) => `
+            <div class="wallet-req pending"><span><b class="no-i18n">${esc(r.name)}</b> أرجع <b>${wMoney(r.amount)} ر.ع</b> — ${wWhen(r.occurred_on)}${r.details ? ` — <span class="no-i18n">${esc(r.details)}</span>` : ''}</span>
+                <span class="wallet-req-btns"><button class="btn btn-primary btn-sm" onclick="walletConfirm(${r.id})">استلمته</button>
+                <button class="btn btn-outline btn-sm" onclick="walletCancel(${r.id}, true)">لم أستلمه</button></span></div>`).join('')}` : '';
         $id('walletRequests').innerHTML = w.requests.length ? `<p class="sub-heading">طلبات المبالغ</p>${w.requests.map((r) => `
             <div class="wallet-req pending"><span><b class="no-i18n">${esc(r.name)}</b> يطلب <b>${wMoney(r.amount)} ر.ع</b> — <span class="no-i18n">${esc(r.reason || '')}</span></span>
                 <span class="wallet-req-btns"><button class="btn btn-primary btn-sm" onclick="walletDecide(${r.id}, true, ${r.amount})">موافقة</button>
@@ -89,8 +96,9 @@ async function loadWalletAll() {
         $id('walletMinDefault').value = w.min_default || 0;
         $id('walletCats').value = w.categories.join('، ');
         const badge = $id('walletBadge');
-        badge.textContent = w.requests.length;
-        badge.hidden = !w.requests.length;
+        const waiting = w.requests.length + w.returns.length;
+        badge.textContent = waiting;
+        badge.hidden = !waiting;
     } catch (err) { $id('walletBody').innerHTML = `<tr><td colspan="5">${esc(err.message)}</td></tr>`; }
 }
 
@@ -104,18 +112,27 @@ function loadWallet() {
 function walletNew(kind, target = null) {
     walletKind = kind;
     walletTarget = target || { id: ME.id, name: ME.display_name, self: true };
-    $id('walletSheetTitle').innerHTML = { expense: '<i class="fas fa-cart-shopping"></i> صرف من العهدة', return: '<i class="fas fa-rotate-left"></i> تسليم للمكتب', receive: '<i class="fas fa-hand-holding-dollar"></i> إعطاء مبلغ للعهدة' }[kind];
-    $id('walletFor').textContent = walletTarget.self ? '' : `عهدة: ${walletTarget.name}`;
+    const self = walletTarget.self;
+    $id('walletSheetTitle').innerHTML = {
+        expense: '<i class="fas fa-cart-shopping"></i> صرف من العهدة',
+        return: self ? '<i class="fas fa-rotate-left"></i> إرجاع مبلغ للمكتب' : '<i class="fas fa-rotate-left"></i> استلام مبلغ من الموظف',
+        receive: self ? '<i class="fas fa-circle-plus"></i> استلمت مبلغ' : '<i class="fas fa-hand-holding-dollar"></i> إعطاء مبلغ للعهدة'
+    }[kind];
+    $id('walletFor').textContent = !self ? `عهدة: ${walletTarget.name}`
+        : kind === 'return' && !wIsManager() ? 'يُخصم من رصيدك بعد أن يؤكد المدير أنه استلم المبلغ.'
+            : kind === 'receive' ? 'يُضاف المبلغ إلى رصيد عهدتك، ويصل إشعار للإدارة.' : '';
+    $id('wDetailsLabel').textContent = kind === 'receive' && self ? 'ممن استلمت المبلغ؟' : 'التفاصيل';
+    $id('wDetails').placeholder = kind === 'receive' && self ? 'مثلاً: من المدير نقداً، أو من العميل فلان' : kind === 'expense' ? 'مثلاً: بترول السيارة، غداء الفريق، مسامير وبراغي' : '';
     $id('walletForm').reset();
     const now = new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 16);
     $id('wWhen').value = now;
     $id('wWhen').max = now;
     $id('wCatBox').hidden = kind !== 'expense';
-    $id('wPhotoBox').hidden = kind === 'receive';
+    $id('wPhotoBox').hidden = kind === 'receive' && !self;
     const cats = (walletMine && walletMine.categories) || (walletAll && walletAll.categories) || [];
     walletCat = '';
     $id('wCats').innerHTML = cats.map((c) => `<button type="button" class="wallet-cat" data-c="${esc(c)}" onclick="walletPickCat(this)">${esc(c)}</button>`).join('');
-    $id('wSave').textContent = kind === 'receive' ? 'إعطاء المبلغ' : 'حفظ';
+    $id('wSave').textContent = kind === 'receive' && !self ? 'إعطاء المبلغ' : 'حفظ';
     $id('wSave').disabled = false;
     setStatus('wStatus', '');
     $id('walletSheet').hidden = false;
@@ -149,6 +166,7 @@ async function walletSave() {
     const amount = Number($id('wAmount').value);
     if (!(amount > 0)) return setStatus('wStatus', 'اكتب المبلغ', 'err');
     if (walletKind === 'expense' && !walletCat) return setStatus('wStatus', 'اختر التصنيف', 'err');
+    if (walletKind === 'receive' && walletTarget.self && !wIsManager() && !$id('wDetails').value.trim()) return setStatus('wStatus', 'اكتب ممن استلمت المبلغ', 'err');
     $id('wSave').disabled = true;
     setStatus('wStatus', 'جاري الحفظ...');
     try {
@@ -156,7 +174,7 @@ async function walletSave() {
             kind: walletKind, amount, category: walletCat, details: $id('wDetails').value.trim(), occurred_on: $id('wWhen').value
         });
         const file = $id('wPhoto').files[0];
-        if (file && walletKind !== 'receive') {
+        if (file && !$id('wPhotoBox').hidden) {
             setStatus('wStatus', 'جاري رفع الصورة...');
             const blob = await shrinkPhoto(file);
             let token = '';
@@ -165,7 +183,8 @@ async function walletSave() {
             if (!up.ok) await tell('حُفظت العملية، لكن تعذر رفع الصورة: ' + ((await up.json().catch(() => ({}))).error || up.status));
         }
         closeSheet('walletSheet');
-        if (r.low && walletTarget.self) await tell(`حُفظت ✓ — رصيدك الآن ${wMoney(r.balance)} ر.ع، وهو أقل من الحد. اطلب مبلغاً من الإدارة.`);
+        if (r.entry.pending) await tell(`سُجّل ✓ — يُخصم ${wMoney(r.entry.amount)} ر.ع من رصيدك بعد أن يؤكد المدير أنه استلم المبلغ.`);
+        else if (r.low && walletTarget.self) await tell(`حُفظت ✓ — رصيدك الآن ${wMoney(r.balance)} ر.ع، وهو أقل من الحد. اطلب مبلغاً من الإدارة.`);
         await loadWallet();
         if (!walletTarget.self && !$id('walletBookSheet').hidden) walletOpenBook(walletTarget.id);
     } catch (err) {
@@ -218,13 +237,24 @@ async function walletOpenBook(id) {
     } catch (err) { tell(err.message); }
 }
 
-async function walletCancel(entryId) {
-    const why = await askText('سبب إلغاء العملية (تبقى في الدفتر مشطوبة):', '', { okLabel: 'إلغاء العملية', danger: true });
+/* A return the employee recorded: the manager received the cash → it counts */
+async function walletConfirm(entryId) {
+    try {
+        const r = await api('POST', `/api/admin/wallet/entries/${entryId}/confirm`, {});
+        await loadWallet();
+        if (!$id('walletBookSheet').hidden) walletOpenBook(r.entry.user_id);
+    } catch (err) { tell(err.message); }
+}
+
+async function walletCancel(entryId, pending = false) {
+    const why = pending
+        ? await askText('لم تستلم المبلغ؟ اكتب السبب (يصل للموظف، وتبقى العملية في الدفتر مشطوبة):', '', { okLabel: 'لم أستلمه', danger: true })
+        : await askText('سبب إلغاء العملية (تبقى في الدفتر مشطوبة):', '', { okLabel: 'إلغاء العملية', danger: true });
     if (!why || !why.trim()) return;
     try {
         const r = await api('POST', `/api/admin/wallet/entries/${entryId}/cancel`, { reason: why.trim() });
         await loadWallet();
-        walletOpenBook(r.entry.user_id);
+        if (!pending || !$id('walletBookSheet').hidden) walletOpenBook(r.entry.user_id);
     } catch (err) { tell(err.message); }
 }
 

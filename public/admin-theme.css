@@ -710,7 +710,12 @@ body.sb-collapsed .sb-version { justify-content: center; padding: 8px 0; }
 .wallet-btn { justify-content: center; padding: 12px 6px; font-weight: 700; border-radius: 12px; color: #fff; border: 0; }
 .wallet-btn.expense { background: #c0392b; }
 .wallet-btn.ask { background: #1a5276; }
-.wallet-btn.return { background: #1e8449; }
+.wallet-btn.return { background: #6c3483; }
+.wallet-btn.receive { background: #1e8449; }
+.wallet-actions.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.we-pending { font-size: 0.8rem; color: #8a5a00; }
+.wallet-entry.pending { background: #fffaf0; }
+.wallet-entry.pending .we-amount > span { opacity: 0.6; }
 .wallet-book { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #fff; }
 .wallet-entry { display: flex; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
 .wallet-entry:last-child { border-bottom: 0; }
@@ -718,7 +723,7 @@ body.sb-collapsed .sb-version { justify-content: center; padding: 8px 0; }
 .we-kind { font-size: 0.95rem; }
 .wallet-entry.expense .we-kind, .wallet-entry.expense .we-amount > span { color: #c0392b; }
 .wallet-entry.receive .we-kind, .wallet-entry.receive .we-amount > span { color: #1e8449; }
-.wallet-entry.return .we-kind, .wallet-entry.return .we-amount > span { color: #1a5276; }
+.wallet-entry.return .we-kind, .wallet-entry.return .we-amount > span { color: #6c3483; }
 .we-main small { color: var(--text-light); }
 .we-details { font-size: 0.9rem; overflow-wrap: anywhere; }
 .we-cancel { font-size: 0.8rem; color: #a93226; }
@@ -743,6 +748,7 @@ body.sb-collapsed .sb-version { justify-content: center; padding: 8px 0; }
 .wallet-settings summary { cursor: pointer; font-weight: 600; color: var(--primary); margin-bottom: 8px; }
 @media (max-width: 700px) {
     .wallet-actions { gap: 6px; }
+    .wallet-actions.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .wallet-btn { padding: 12px 4px; font-size: 0.9rem; }
     .wh-balance strong { font-size: 1.8rem; }
 }
