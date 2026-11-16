@@ -71,11 +71,13 @@ function colorExtras(color, variant, size) {
     return (Number(color.surcharge_per_m2) || 0) * slatArea(variant, size) + (Number(color.fixed_fee) || 0) * size.count;
 }
 
+const round3 = (n) => Math.round(n * 1000) / 1000;
+
 const lineItem = (product, quantity, settings, overrides = {}) => {
     const unitPrice = unitSellPrice(product, settings);
     return {
         product_id: product.id, category: product.category, name: product.name, type: product.type, unit: product.unit,
-        quantity: Math.round(quantity * 1000) / 1000, unit_price: unitPrice, line_total: round2(unitPrice * quantity),
+        quantity: round3(quantity), unit_price: unitPrice, line_total: round2(unitPrice * round3(quantity)),
         ...overrides
     };
 };
@@ -139,8 +141,9 @@ function priceChoice({ widthCm, heightCm, count = 1 }, choice, catalog, region) 
         product_id: slat.id, category: 'slat', part: 'slats', name: `شرائح ${type.name}`,
         type: [variant.label, color && color.name].filter(Boolean).join(' — '),
         ...described([type.description, variant.description].filter((t) => t && String(t).trim()).join(' — ')),
-        unit: line.unit, quantity: Math.round(line.quantity * 1000) / 1000,
-        unit_price: line.unitPrice, line_total: round2(line.unitPrice * line.quantity)
+        // The amount is the quantity shown × the unit price (a customer checking it gets the same figure)
+        unit: line.unit, quantity: round3(line.quantity),
+        unit_price: line.unitPrice, line_total: round2(line.unitPrice * round3(line.quantity))
     }];
     if (color && color.surcharge_per_m2 > 0) {
         const area = round2(slatArea(variant, size));
@@ -250,13 +253,18 @@ function compareOptions(db, { widthCm, heightCm, count = 1, shutterTypeId }) {
     if (!type) throw err400('نوع البوابة غير موجود');
     const vat = 1 + catalog.settings.vat_percent / 100;
     const costs = optionCosts(catalog, type, size);
+    // The running promotion lowers the parts it covers, as it lowers the total (the AI compares like for like)
+    const promo = promotions.active(catalog.settings, 'rolling_shutter');
+    const off = (part) => (promo && promo.parts.includes(part) ? 1 - promo.percent / 100 : 1);
+    const partOf = (option) => (catalog.products.get(option.product_id)?.category === 'machine' ? 'motor' : 'accessories');
     return {
+        ...(promo ? { promotion: { label: promo.label, percent: promo.percent, parts: promo.parts, prices_include_it: true } } : {}),
         shutter_type: { id: type.id, name: type.name, description: type.description },
         thickness_options: type.variants.map((v) => ({
             variant_id: v.id, label: v.label, details: v.description,
             colors: costs.combos.filter((c) => c.variant.id === v.id).map((c) => ({
                 color_id: c.color ? c.color.id : null, name: c.color ? c.color.name : 'بدون اختيار لون',
-                slats_price_with_vat: round2(c.cost * vat)
+                slats_price_with_vat: round2(c.cost * vat * off('slats'))
             }))
         })),
         accessories: costs.groups.map(({ group, options }) => ({
@@ -265,7 +273,7 @@ function compareOptions(db, { widthCm, heightCm, count = 1, shutterTypeId }) {
             can_skip: Boolean(group.allow_none),
             skip_label: group.allow_none ? group.none_label || 'بدون' : null,
             classes: options.map(({ option, cost }) => ({
-                option_id: option.id, label: option.label, details: option.details, price_with_vat: round2(cost * vat)
+                option_id: option.id, label: option.label, details: option.details, price_with_vat: round2(cost * vat * off(partOf(option)))
             }))
         }))
     };

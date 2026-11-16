@@ -18,12 +18,13 @@ const DEFAULT_SETTINGS = {
     staff_members: [],
     quote_validity_days: 15,
     staff_max_discount_percent: 10,
+    staff_free_lines: true,         // يكتب الموظف «بنداً حراً» بسعره في عرض السعر (إيقافه: البنود الحرة للمديرين فقط)
     promo_enabled: false,           // خصم للعملاء يفعّله المدير (عرض موسمي) — يظهر في الحاسبات وعند المساعد الذكي
     promo_percent: 0,               // نسبة الخصم من السعر قبل الضريبة (حتى 50%)
     promo_label: '',                // اسم العرض، مثل «عرض الشتاء»
     promo_until: '',                // آخر يوم (YYYY-MM-DD) — فارغ: حتى يُوقف
     promo_scope: ['rolling_shutter', 'overhead', 'motors'], // الحاسبات التي يشملها العرض
-    promo_parts: {},                // لكل حاسبة: الأجزاء التي يشملها الخصم (فارغ = كل الأجزاء)، مثل { rolling_shutter: ['slats'] }
+    promo_parts: {},                // لكل حاسبة: الأجزاء التي يشملها الخصم (فارغ = البضاعة فقط، بدون التركيب والتوصيل)، مثل { rolling_shutter: ['slats'] }
     gift_enabled: false,            // هدية مع كل بوابة (مثل جهاز GSM opener): تظهر بسعرها وتُخصم 100%
     gift_name: '',
     gift_price: 0,

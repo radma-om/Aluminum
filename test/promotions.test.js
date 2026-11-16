@@ -27,6 +27,11 @@ async function start(t) {
     return { db, call };
 }
 
+const SERVICES = ['installation', 'delivery'];
+const goods = (priced) => priced.items.filter((i) => !SERVICES.includes(i.part)).reduce((a, i) => a + i.line_total, 0);
+const goodsTo = (priced) => priced.items.filter((i) => !SERVICES.includes(i.part)).reduce((a, i) => a + (i.line_total_to ?? i.line_total), 0);
+const r2 = (n) => Math.round(n * 100) / 100;
+
 async function doorRequest(call) {
     const conf = (await call('GET', '/api/public/configurator', null, null)).body;
     const type = conf.shutter_types.find((x) => x.variants.length === 1);
@@ -52,10 +57,14 @@ test('when it runs: switched on, a valid %, the chosen calculators, until its la
         { name: 'التركيب', part: 'installation', line_total: 50 }
     ];
     const p = promotions.apply(s, { items, subtotal: 1000, vat_percent: 5, vat: 50, total: 1050, range: { subtotal_to: 1200, vat_to: 60, total_to: 1260 } }, 'overhead');
-    assert.deepEqual([p.subtotal, p.vat, p.total], [900, 45, 945]);
-    assert.deepEqual(p.range, { subtotal_to: 1080, vat_to: 54, total_to: 1134 });
-    assert.equal(p.promo.amount, 100);
-    assert.equal(p.promo.amount_to, 120);
+    // No parts chosen: the goods (gate 800 – 1000, motor 150), not the installation (50)
+    assert.deepEqual([p.subtotal, p.vat, p.total], [905, 45.25, 950.25]);
+    assert.deepEqual(p.range, { subtotal_to: 1085, vat_to: 54.25, total_to: 1139.25 });
+    assert.equal(p.promo.amount, 95);
+    assert.equal(p.promo.amount_to, 115);
+    // The installation is discounted only when the manager ticks it
+    const all = promotions.apply({ ...s, promo_parts: { overhead: ['gate', 'motor', 'installation'] } }, { items, subtotal: 1000, vat_percent: 5, vat: 50, total: 1050 }, 'overhead');
+    assert.equal(all.promo.amount, 100);
 });
 
 test('the roller-shutter calculator: live price, saved quote and PDF show the discount; a second press is not a duplicate', async (t) => {
@@ -69,7 +78,7 @@ test('the roller-shutter calculator: live price, saved quote and PDF show the di
     const live = (await call('POST', '/api/public/door-price', door, null)).body;
     assert.equal(live.promo.percent, 10);
     assert.equal(live.promo.gross_subtotal, before.subtotal);
-    assert.equal(live.subtotal, Math.round(before.subtotal * 0.9 * 100) / 100);
+    assert.equal(live.subtotal, r2(before.subtotal - r2(goods(before) * 0.1)), 'the goods are discounted, not the installation');
     assert.ok(live.total < before.total);
 
     const body = { ...door, customer_name: 'أحمد', customer_phone: '99123456' };
@@ -96,8 +105,8 @@ test('the overhead range is discounted at both ends; a calculator outside the sc
     const full = (await call('POST', '/api/public/overhead-price', req, null)).body;
     saveSettings(db, { ...ON, promo_scope: ['overhead'] });
     const cut = (await call('POST', '/api/public/overhead-price', req, null)).body;
-    assert.equal(cut.subtotal, Math.round(full.subtotal * 0.9 * 100) / 100);
-    assert.equal(cut.range.subtotal_to, Math.round(full.range.subtotal_to * 0.9 * 100) / 100);
+    assert.equal(cut.subtotal, r2(full.subtotal - r2(goods(full) * 0.1)));
+    assert.equal(cut.range.subtotal_to, r2(full.range.subtotal_to - r2(goodsTo(full) * 0.1)));
     // Roller shutter is not in the scope
     const { door } = await doorRequest(call);
     assert.equal((await call('POST', '/api/public/door-price', door, null)).body.promo, null);
