@@ -200,6 +200,12 @@ test('a salesperson\'s invoice counts once half of it is paid — in the month t
     invoices.addPayment(db, late.id, { amount: late.total, method: 'bank', paid_on: today }, 'المكتب');
     assert.equal(me().base, 5000);
     assert.equal(bonuses.statement(db, last).people.find((p) => p.user_id === ahmed.id).base, 0);
+    // A deposit dated before the invoice was issued (paid on the quote): counted in the month of issue
+    const early = sale(db, 'أحمد عثمان عمر', 1000, 0, 0, 0);
+    invoices.addPayment(db, early.id, { amount: early.total, method: 'cash', paid_on: last + '-20' }, 'المكتب');
+    assert.equal(bonuses.statement(db, last).people.find((p) => p.user_id === ahmed.id).base, 0, 'not in the month before it was issued');
+    assert.equal(me().base, 6000);
+    assert.equal(me().invoices.find((i) => i.id === early.id).qualified_on, today);
     // The employee sees what is waiting, not the invoices
     const mine = bonuses.mine(db, { id: ahmed.id, role: 'staff' }, month);
     assert.equal(mine.pending, 0);
