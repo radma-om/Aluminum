@@ -133,7 +133,6 @@ function applySettings(s) {
     $id('exchangeRate').value = s.exchange_rate;
     $id('profitPercent').value = s.profit_percent;
     $id('vatPercent').value = s.vat_percent;
-    (s.tax_mode === 'industrial' ? $id('taxIndustrial') : $id('taxAccounting')).checked = true;
     $id('companyName').value = s.company_name || '';
     $id('companyWhatsapp').value = s.company_whatsapp || '';
     $id('publicBaseUrl').value = s.public_base_url || '';
@@ -175,7 +174,6 @@ async function saveSettingsToServer() {
             exchange_rate: inputs.exchangeRate,
             profit_percent: inputs.profitPercent,
             vat_percent: inputs.vatPercent,
-            tax_mode: inputs.taxMode,
             company_name: $id('companyName').value,
             company_whatsapp: $id('companyWhatsapp').value,
             public_base_url: $id('publicBaseUrl').value,
