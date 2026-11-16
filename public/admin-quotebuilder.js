@@ -77,6 +77,7 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
                 product_id: i.product_id || '', name: i.name, type: i.type || '', unit: i.unit, quantity: i.quantity,
                 unit_price: i.unit_price, disc_type: i.discount ? i.discount.type : '', disc_value: i.discount ? i.discount.value : '',
                 description: i.description || '', catalog: Boolean(i.product_id) && !invoice, part: i.part || '',
+                ...(i.work_order_id ? { work_order_id: i.work_order_id } : {}),
                 // On an invoice the line keeps what was invoiced (not today's list price)
                 ...(invoice ? { product_id: '', unit_price: i.gross != null && i.quantity ? Math.round((i.gross / i.quantity) * 1000) / 1000 : i.unit_price } : {})
             });
@@ -250,7 +251,18 @@ function qbFillAddButtons() {
     $id('qbAdd').innerHTML = Object.entries(QB_CALCS).filter(([k]) => has[k]).map(([k, label]) =>
         `<button type="button" class="btn btn-outline btn-sm" onclick="qbAddCalc('${k}')"><i class="fas ${QB_ICONS[k]}"></i> ${label}</button>`).join('')
         + (qbCatalog.products.length ? `<button type="button" class="btn btn-outline btn-sm" onclick="qbAddLine(true)"><i class="fas fa-puzzle-piece"></i> قطعة من المنتجات</button>` : '')
+        + `<button type="button" class="btn btn-outline btn-sm" onclick="qbAddService()"><i class="fas fa-screwdriver-wrench"></i> خدمة</button>`
         + `<button type="button" class="btn btn-outline btn-sm" onclick="qbAddLine(false)"><i class="fas fa-pen"></i> بند حر</button>`;
+}
+
+/* A service (خدمة): a line with its own description and price; its commission is the technician's who does the work */
+function qbAddService() {
+    qbLines.push({ ...qbBlankLine(false), name: 'خدمة', unit: 'service', part: 'service', description: '' });
+    renderQbLines();
+    qbSchedule();
+    const rows = $id('qbLines').querySelectorAll('.qb-line');
+    const last = rows[rows.length - 1];
+    if (last) last.querySelector('[data-k="description"]').focus();
 }
 
 function qbAddLine(catalog) { qbLines.push(qbBlankLine(catalog)); renderQbLines(); qbSchedule(); }
@@ -344,8 +356,10 @@ function renderQbLines() {
     $id('qbLines').innerHTML = qbLines.map((l, i) => {
         if (l.calc) return renderQbCalc(l, i);
         const free = !l.product_id && !l.catalog;
-        return `<div class="qb-line" data-i="${i}">
-            ${free ? `<div class="qb-prod"><label>بند حر</label><input type="text" data-k="name" maxlength="200" placeholder="اسم البند (مثلاً: صيانة محرك، قطعة خاصة)" value="${esc(l.name)}"></div>`
+        const service = free && l.part === 'service';
+        return `<div class="qb-line${service ? ' qb-service' : ''}" data-i="${i}">
+            ${service ? `<div class="qb-prod"><label><i class="fas fa-screwdriver-wrench"></i> خدمة</label><input type="text" data-k="name" maxlength="120" placeholder="اسم الخدمة (مثلاً: صيانة محرك، تغيير ريموت)" value="${esc(l.name)}"></div>`
+            : free ? `<div class="qb-prod"><label>بند حر</label><input type="text" data-k="name" maxlength="200" placeholder="اسم البند (مثلاً: صيانة محرك، قطعة خاصة)" value="${esc(l.name)}"></div>`
                 : `<div class="qb-prod"><label>قطعة من المنتجات</label><select data-k="product_id"><option value="">— اختر —</option>${productOptions}</select></div>`}
             <div><label>الكمية</label><input type="number" data-k="quantity" min="0" step="0.01" value="${esc(l.quantity)}"></div>
             <div><label>الوحدة</label><select data-k="unit" ${free ? '' : 'disabled'}>${Object.entries(QB_UNITS).map(([k, v]) => `<option value="${k}" ${k === l.unit ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
@@ -354,7 +368,9 @@ function renderQbLines() {
             <div><label>قيمته</label><input type="number" data-k="disc_value" min="0" step="0.01" value="${esc(l.disc_value)}" ${l.disc_type ? '' : 'disabled'}></div>
             <div><label>المجموع</label><div class="qb-total" id="qbLineTotal${i}">—</div></div>
             <div><button type="button" class="btn btn-outline btn-sm" onclick="qbRemoveLine(${i})" title="حذف البند">×</button></div>
-            <div class="qb-desc"><input type="text" data-k="description" maxlength="600" placeholder="وصف البند — يظهر للعميل تحت البند في العرض والفاتورة (اختياري)" value="${esc(l.description || '')}"></div>
+            <div class="qb-desc">${service
+                ? `<textarea data-k="description" maxlength="600" rows="2" placeholder="وصف الخدمة — ما الذي سيُعمل؟ يظهر للعميل في العرض والفاتورة (مطلوب)">${esc(l.description || '')}</textarea>`
+                : `<input type="text" data-k="description" maxlength="600" placeholder="وصف البند — يظهر للعميل تحت البند في العرض والفاتورة (اختياري)" value="${esc(l.description || '')}">`}</div>
         </div>`;
     }).join('');
     $id('qbLines').querySelectorAll('.qb-line').forEach((row) => {
@@ -473,7 +489,7 @@ function qbPayload(all = false) {
             ...(l.item_notes && Object.keys(l.item_notes).length ? { item_notes: { ...l.item_notes } } : {}) }
             : l.product_id ? { product_id: Number(l.product_id), quantity: Number(l.quantity) }
                 : { name: l.name, unit: l.unit, unit_price: l.unit_price === '' ? '' : Number(l.unit_price), quantity: Number(l.quantity),
-                    ...(l.type ? { type: l.type } : {}), ...(l.part ? { part: l.part } : {}) }),
+                    ...(l.type ? { type: l.type } : {}), ...(l.part ? { part: l.part } : {}), ...(l.work_order_id ? { work_order_id: l.work_order_id } : {}) }),
         ...(!l.calc && String(l.description || '').trim() ? { description: String(l.description).trim() } : {}),
         ...(l.disc_type && l.disc_value !== '' ? { discount: { type: l.disc_type, value: Number(l.disc_value) } } : {})
     }));
@@ -577,6 +593,7 @@ function renderQbCost(c) {
 }
 
 async function saveBuiltQuote() {
+    if (qbLines.some((l) => l.part === 'service' && !l.calc && !l.product_id && !String(l.description || '').trim())) return alert('اكتب وصف الخدمة');
     const body = { ...qbPayload(true), notes: $id('qbNotes').value.trim() };
     try {
         let q;
