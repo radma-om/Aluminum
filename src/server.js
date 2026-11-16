@@ -1472,6 +1472,58 @@ function createApp(db, { agentClient } = {}) {
         if ((req.body || {}).notify_customer && moved) notice = await servicerequests.notifyMoved(db, order);
         res.json({ ...order, notice });
     }));
+    /* A service done on site (الخدمة): the technician of the order — while it is open — or the office adds it
+       with its description and price. It goes on the order's invoice (a new invoice when the order has none),
+       and its commission is the technician's (bonuses.js). No approval: the order's log, the activity log and
+       a notification to the managers record it. */
+    admin.post('/work-orders/:id/services', asyncRoute(async (req, res) => {
+        const order = orderFor(req, req.params.id);
+        const tech = req.user.role === 'technician';
+        if (order.status === 'cancelled') throw httpError(400, 'أمر العمل ملغى');
+        if (tech && order.status === 'done') throw httpError(400, 'أمر العمل مكتمل — اطلب من المكتب إضافة الخدمة');
+        const b = req.body || {};
+        const description = clip(b.description, 1000);
+        if (!description) throw httpError(400, 'اكتب وصف الخدمة');
+        const quantity = b.quantity === undefined || b.quantity === '' ? 1 : Math.round(Number(b.quantity) * 1000) / 1000;
+        if (!(quantity > 0 && quantity <= 1000)) throw httpError(400, 'الكمية غير صالحة');
+        const unitPrice = Math.round(Number(b.unit_price) * 1000) / 1000;
+        if (!(unitPrice > 0 && unitPrice <= 100000)) throw httpError(400, 'اكتب سعر الخدمة (أكبر من صفر)');
+        const who = staffName(req);
+        const line = {
+            product_id: null, category: 'service', part: 'service', name: clip(b.title, 120) || 'خدمة', type: null, description,
+            unit: 'service', quantity, unit_price: unitPrice, line_total: Math.round(quantity * unitPrice * 100) / 100,
+            work_order_id: order.id, added_by: who
+        };
+        let inv = order.invoice_id ? invoices.get(db, order.invoice_id) : null;
+        if (inv && inv.status === 'cancelled') throw httpError(400, 'فاتورة أمر العمل ملغاة — اطلب من المكتب إصدار فاتورة جديدة');
+        const what = `خدمة «${line.name}» (${quantity} × ${unitPrice.toFixed(2)} = ${line.line_total.toFixed(2)} ر.ع)`;
+        if (inv) {
+            inv = invoices.addLines(db, inv.id, [line], `إضافة ${what} — أمر العمل ${order.number}`, who);
+        } else {
+            // A visit with no invoice yet (maintenance, inspection): a quote and its invoice for the service
+            const phone = String(order.customer_phone || '').replace(/\D/g, '');
+            if (phone.length < 8) throw httpError(400, 'لا يوجد رقم جوال للعميل في أمر العمل — اطلب من المكتب إضافته');
+            const vatPercent = Number(getSettings(db).vat_percent) || 0;
+            const subtotal = line.line_total;
+            const vat = Math.round(subtotal * vatPercent) / 100;
+            const quote = saveQuote(db, {
+                customer_name: order.customer_name || 'عميل', customer_phone: phone, customer_city: order.location || null, source: 'staff',
+                priced: { items: [line], subtotal, vat_percent: vatPercent, vat, total: Math.round((subtotal + vat) * 100) / 100 },
+                details: { staff_quote: true, created_by: who, service_for: order.number }, lead_key: leads.phoneKey(phone)
+            });
+            inv = invoices.createFromQuote(db, parseQuote(db.prepare('SELECT * FROM quotes WHERE id = ?').get(quote.id)), { customer_address: order.address || '' }, who);
+            db.prepare('UPDATE work_orders SET invoice_id = ?, quote_id = COALESCE(quote_id, ?) WHERE id = ?').run(inv.id, quote.id, order.id);
+            webhooks.emit(db, 'invoice.created', invoicePublic(inv));
+        }
+        workorders.addNote(db, order.id, `🧾 ${what}: ${description} — الفاتورة ${inv.number}`, req.user);
+        // The managers hear of it (the price was typed on site)
+        push.send(db, push.accountsOf(db, (u) => u.role === 'manager'), {
+            title: `🧾 خدمة على ${order.number}`, body: `${who}: ${line.name} — ${line.line_total.toFixed(2)} ر.ع (الفاتورة ${inv.number})`,
+            url: '/admin#tab=invoices', tag: `service-${order.id}`
+        }).catch(() => {});
+        res.status(201).json({ line, invoice: invoicePublic(inv), order: workorders.get(db, order.id) });
+    }));
+
     admin.post('/work-orders/:id/status', (req, res) => {
         orderFor(req, req.params.id);
         const b = req.body || {};

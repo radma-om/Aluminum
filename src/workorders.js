@@ -311,7 +311,8 @@ function list(db, { status = '', technician = '', q = '', open = false, user = n
     }
     return db.prepare(`SELECT w.*, u.display_name AS technician_name,
                               e.text AS tech_last_text, e.author AS tech_last_author, e.created_at AS tech_last_at,
-                              (SELECT COUNT(*) FROM work_order_events x WHERE x.order_id = w.id AND x.by_technician = 1) AS tech_reports
+                              (SELECT COUNT(*) FROM work_order_events x WHERE x.order_id = w.id AND x.by_technician = 1) AS tech_reports,
+                              (SELECT number FROM invoices i WHERE i.id = w.invoice_id) AS invoice_number
                        FROM work_orders w LEFT JOIN staff_users u ON u.id = w.technician_id
                        LEFT JOIN work_order_events e ON e.id = (SELECT MAX(id) FROM work_order_events WHERE order_id = w.id AND by_technician = 1)
                        ${where.length ? 'WHERE ' + where.join(' AND ') : ''}

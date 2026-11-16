@@ -229,6 +229,31 @@ function revise(db, invoiceId, { priced, details, reason }, author = null) {
     });
 }
 
+/* Lines added to an issued invoice (a service done on site): the totals grow by them and any agreed
+   final amount below the lines stays as it was; kept in the edit history like any change */
+function addLines(db, invoiceId, lines, reason, author = null) {
+    return tx(db, () => {
+        const inv = get(db, invoiceId);
+        if (!inv) throw err(404, 'الفاتورة غير موجودة');
+        if (inv.status === 'cancelled') throw err(400, 'الفاتورة ملغاة — لا تُضاف إليها بنود');
+        const added = round2(lines.reduce((s, l) => s + Number(l.line_total || 0), 0));
+        const subtotal = round2(inv.subtotal + added);
+        const vat = round2(subtotal * (Number(inv.vat_percent) || 0) / 100);
+        const total = round2(subtotal + vat);
+        db.prepare(`INSERT INTO invoice_revisions (invoice_id, items_json, details_json, subtotal, vat, total, new_total, reason, edited_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(inv.id, JSON.stringify(inv.items), inv.details ? JSON.stringify(inv.details) : null, inv.subtotal, inv.vat, inv.total, total, String(reason || '').slice(0, 300), author);
+        const dep = inv.deposit ? cleanDeposit({ type: inv.deposit.type, value: inv.deposit.type === 'percent' ? inv.deposit.value : Math.min(inv.deposit.value, total) }, total) : null;
+        db.prepare(`UPDATE invoices SET items_json = ?, quote_subtotal = ?, subtotal = ?, vat = ?, total = ?,
+                           deposit_type = ?, deposit_value = ?, deposit_amount = ? WHERE id = ?`)
+            .run(JSON.stringify([...inv.items, ...lines]), round2(inv.quote_subtotal + added), subtotal, vat, total,
+                dep ? dep.type : null, dep ? dep.value : null, dep ? dep.amount : null, inv.id);
+        const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(inv.customer_phone);
+        if (lead) leads.addMessage(db, lead, 'system', `🧾 ${reason} — الفاتورة ${inv.number}: الإجمالي ${inv.total.toFixed(2)} ← ${total.toFixed(2)} ر.ع${author ? ` (${author})` : ''}`);
+        return { ...get(db, inv.id), previous_total: inv.total };
+    });
+}
+
 const revisions = (db, invoiceId) => db.prepare('SELECT id, subtotal, vat, total, new_total, reason, edited_by, created_at FROM invoice_revisions WHERE invoice_id = ? ORDER BY id DESC').all(Number(invoiceId));
 
 /* Issuing an invoice made its quote «مقبول» and the customer «تم البيع». Cancelled with no other invoice
@@ -341,4 +366,4 @@ function summary(db, { today = leads.localToday(), mineOf = null } = {}) {
 }
 
 module.exports = {
-    stampWorkDone, createFromQuote, addPayment, deletePayment, cancel, update, list, get, byNumber, activeForQuote, summary, METHODS, PAY_STATES, DEPOSIT_TYPES, repairCancelled, revise, revisions };
+    stampWorkDone, addLines, createFromQuote, addPayment, deletePayment, cancel, update, list, get, byNumber, activeForQuote, summary, METHODS, PAY_STATES, DEPOSIT_TYPES, repairCancelled, revise, revisions };

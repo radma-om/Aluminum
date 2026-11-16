@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.40.0', date: '2026-11-16',
+        ar: ['بند «خدمة» بوصفها وسعرها: يضيفه الموظفون والإدارة في عرض السعر، والفني من أمر العمل وهو عند العميل', 'خدمة الفني تُضاف إلى فاتورة أمر العمل (أو تُصدر لها فاتورة جديدة لزيارة الصيانة) ويُفتح ملف PDF ويُرسل للعميل على واتساب', 'عمولة الخدمة للفني بنسبة التركيب نفسها، ولا تدخل في مبيعات موظف المبيعات', 'كل خدمة تُسجَّل في سجل أمر العمل وسجل النشاط، ويصل إشعار للمديرين بسعرها'],
+        en: ['A «Service» line with its description and price: staff and managers add it in a quote, the technician from the work order on site', 'The technician\'s service goes on the work order\'s invoice (or a new invoice for a maintenance visit); the PDF opens and can be sent to the customer on WhatsApp', 'The service commission is the technician\'s, at the same % as installation, and is not part of the salesperson\'s sales', 'Each service is recorded in the work order log and the activity log, and the managers are notified of its price']
+    },
+    {
         version: '3.39.0', date: '2026-11-16',
         ar: ['الفاتورة لها تاريخان: «تاريخ الإصدار» يوم تحويل العرض إلى فاتورة، و«تاريخ الفاتورة» يوم اكتمال العمل', '«تاريخ الفاتورة» يُسجَّل تلقائياً عندما ينهي الفني أو الإدارة آخر أمر عمل للفاتورة، ويمكن تعديله يدوياً', 'التاريخان يظهران في قائمة الفواتير وفي الفاتورة وملف PDF'],
         en: ['An invoice has two dates: «Issue date» when the quote became an invoice, and «Invoice date» when the work was completed', '«Invoice date» is set automatically when the technician or the office finishes the invoice\'s last work order, and can be edited by hand', 'Both dates show in the invoices list, the invoice and its PDF']

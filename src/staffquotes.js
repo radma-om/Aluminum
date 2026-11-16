@@ -169,8 +169,11 @@ function price(db, input, settings) {
             if (!name) throw err(400, `اكتب اسم البند (${where})`);
             const unitPrice = round2(num(line.unit_price));
             if (!Number.isFinite(unitPrice) || unitPrice < 0) throw err(400, `سعر الوحدة غير صالح (${where})`);
+            const part = typeof line.part === 'string' && /^[a-z_]{2,20}$/.test(line.part) ? line.part : null;
             item = { name, type: clip(line.type, 120) || null, unit: UNITS.includes(line.unit) ? line.unit : 'piece', unit_price: unitPrice,
-                ...(typeof line.part === 'string' && /^[a-z_]{2,20}$/.test(line.part) ? { part: line.part } : {}) };
+                ...(part ? { part } : {}),
+                // A service (خدمة) is a «service» line, and keeps the work order it was added on (the technician's commission)
+                ...(part === 'service' ? { category: 'service', ...(Number(line.work_order_id) > 0 ? { work_order_id: Number(line.work_order_id) } : {}) } : {}) };
         }
         const gross = round2(item.unit_price * quantity);
         const d = discountOf(line.discount, gross, where);
@@ -215,11 +218,17 @@ function price(db, input, settings) {
 }
 
 /* Lines priced by hand: neither a calculator gate nor a catalog product */
-const freeLines = (input) => (Array.isArray(input && input.items) ? input.items : []).filter((l) => l && !l.calc && !l.product_id).length;
+const freeLines = (input) => (Array.isArray(input && input.items) ? input.items : []).filter((l) => l && !l.calc && !l.product_id && l.part !== 'service').length;
+/* Services (خدمة): any employee may add them, with a description */
+function checkServices(input) {
+    const lines = (Array.isArray(input && input.items) ? input.items : []).filter((l) => l && !l.calc && !l.product_id && l.part === 'service');
+    if (lines.some((l) => !String(l.description || '').trim())) throw err(400, 'اكتب وصف الخدمة');
+}
 
 /* Free lines are the manager's to allow: when switched off, only managers add them to a quote
    (an invoice being edited keeps its own lines at the invoiced price) */
 function checkFreeLines(user, settings, input) {
+    checkServices(input);
     const n = freeLines(input);
     if (!n || settings.staff_free_lines !== false || limitFor(user, settings) === null) return;
     throw err(400, 'البنود الحرة (بسعر يُكتب يدوياً) للمديرين فقط — اختر البند من المنتجات أو الحاسبات، أو اطلب من المدير');
