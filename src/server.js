@@ -1443,6 +1443,11 @@ function createApp(db, { agentClient } = {}) {
             feed: tech ? [] : workorders.technicianFeed(db, { limit: 60 }).filter(visible).slice(0, 15)
         });
     });
+    admin.get('/work-orders/customer-lookup', (req, res) => {
+        const c = customers.byPhone(db, req.query.phone);
+        // Only what the form needs (a technician does not see the customers section)
+        res.json(c ? { found: true, name: c.name || '', city: c.city || '', address: c.address || '' } : { found: false });
+    });
     admin.get('/work-orders/:id', (req, res) => res.json(orderFor(req, req.params.id)));
     admin.post('/work-orders', (req, res) => {
         officeOnly(req);
@@ -1472,57 +1477,93 @@ function createApp(db, { agentClient } = {}) {
         if ((req.body || {}).notify_customer && moved) notice = await servicerequests.notifyMoved(db, order);
         res.json({ ...order, notice });
     }));
-    /* A service done on site (الخدمة): the technician of the order — while it is open — or the office adds it
-       with its description and price. It goes on the order's invoice (a new invoice when the order has none),
-       and its commission is the technician's (bonuses.js). No approval: the order's log, the activity log and
-       a notification to the managers record it. */
-    admin.post('/work-orders/:id/services', asyncRoute(async (req, res) => {
-        const order = orderFor(req, req.params.id);
-        const tech = req.user.role === 'technician';
-        if (order.status === 'cancelled') throw httpError(400, 'أمر العمل ملغى');
-        if (tech && order.status === 'done') throw httpError(400, 'أمر العمل مكتمل — اطلب من المكتب إضافة الخدمة');
-        const b = req.body || {};
+    /* A service done on site (الخدمة): a name, a description shown to the customer, a quantity and a price.
+       It goes on the order's invoice (a new invoice when the order has none), and its commission is the
+       technician's (bonuses.js). No approval: the order's log, the activity log and a notification to the
+       managers record it. */
+    const serviceLine = (b, order, who) => {
         const description = clip(b.description, 1000);
         if (!description) throw httpError(400, 'اكتب وصف الخدمة');
         const quantity = b.quantity === undefined || b.quantity === '' ? 1 : Math.round(Number(b.quantity) * 1000) / 1000;
         if (!(quantity > 0 && quantity <= 1000)) throw httpError(400, 'الكمية غير صالحة');
         const unitPrice = Math.round(Number(b.unit_price) * 1000) / 1000;
         if (!(unitPrice > 0 && unitPrice <= 100000)) throw httpError(400, 'اكتب سعر الخدمة (أكبر من صفر)');
-        const who = staffName(req);
-        const line = {
+        return {
             product_id: null, category: 'service', part: 'service', name: clip(b.title, 120) || 'خدمة', type: null, description,
             unit: 'service', quantity, unit_price: unitPrice, line_total: Math.round(quantity * unitPrice * 100) / 100,
             work_order_id: order.id, added_by: who
         };
+    };
+    const addServices = (req, order, inputs) => {
+        const who = staffName(req);
+        const lines = inputs.map((b) => serviceLine(b || {}, order, who));
+        if (!lines.length) throw httpError(400, 'أضف خدمة واحدة على الأقل');
         let inv = order.invoice_id ? invoices.get(db, order.invoice_id) : null;
         if (inv && inv.status === 'cancelled') throw httpError(400, 'فاتورة أمر العمل ملغاة — اطلب من المكتب إصدار فاتورة جديدة');
-        const what = `خدمة «${line.name}» (${quantity} × ${unitPrice.toFixed(2)} = ${line.line_total.toFixed(2)} ر.ع)`;
+        const sum = Math.round(lines.reduce((s, l) => s + l.line_total, 0) * 100) / 100;
+        const what = lines.length === 1
+            ? `خدمة «${lines[0].name}» (${lines[0].quantity} × ${lines[0].unit_price.toFixed(2)} = ${lines[0].line_total.toFixed(2)} ر.ع)`
+            : `${lines.length} خدمات (${lines.map((l) => l.name).join('، ')}) — ${sum.toFixed(2)} ر.ع`;
         if (inv) {
-            inv = invoices.addLines(db, inv.id, [line], `إضافة ${what} — أمر العمل ${order.number}`, who);
+            inv = invoices.addLines(db, inv.id, lines, `إضافة ${what} — أمر العمل ${order.number}`, who);
         } else {
-            // A visit with no invoice yet (maintenance, inspection): a quote and its invoice for the service
+            // A visit with no invoice yet (maintenance, a service call): a quote and its invoice for the services
             const phone = String(order.customer_phone || '').replace(/\D/g, '');
             if (phone.length < 8) throw httpError(400, 'لا يوجد رقم جوال للعميل في أمر العمل — اطلب من المكتب إضافته');
             const vatPercent = Number(getSettings(db).vat_percent) || 0;
-            const subtotal = line.line_total;
-            const vat = Math.round(subtotal * vatPercent) / 100;
+            const vat = Math.round(sum * vatPercent) / 100;
             const quote = saveQuote(db, {
                 customer_name: order.customer_name || 'عميل', customer_phone: phone, customer_city: order.location || null, source: 'staff',
-                priced: { items: [line], subtotal, vat_percent: vatPercent, vat, total: Math.round((subtotal + vat) * 100) / 100 },
+                priced: { items: lines, subtotal: sum, vat_percent: vatPercent, vat, total: Math.round((sum + vat) * 100) / 100 },
                 details: { staff_quote: true, created_by: who, service_for: order.number }, lead_key: leads.phoneKey(phone)
             });
             inv = invoices.createFromQuote(db, parseQuote(db.prepare('SELECT * FROM quotes WHERE id = ?').get(quote.id)), { customer_address: order.address || '' }, who);
             db.prepare('UPDATE work_orders SET invoice_id = ?, quote_id = COALESCE(quote_id, ?) WHERE id = ?').run(inv.id, quote.id, order.id);
             webhooks.emit(db, 'invoice.created', invoicePublic(inv));
         }
-        workorders.addNote(db, order.id, `🧾 ${what}: ${description} — الفاتورة ${inv.number}`, req.user);
+        workorders.addNote(db, order.id, `🧾 ${what}: ${lines.map((l) => l.description).join(' / ')} — الفاتورة ${inv.number}`, req.user);
         // The managers hear of it (the price was typed on site)
         push.send(db, push.accountsOf(db, (u) => u.role === 'manager'), {
-            title: `🧾 خدمة على ${order.number}`, body: `${who}: ${line.name} — ${line.line_total.toFixed(2)} ر.ع (الفاتورة ${inv.number})`,
-            url: '/admin#tab=invoices', tag: `service-${order.id}`
+            title: `🧾 خدمة على ${order.number}`, body: `${who}: ${what} — الفاتورة ${inv.number}`, url: '/admin#tab=invoices', tag: `service-${order.id}`
         }).catch(() => {});
-        res.status(201).json({ line, invoice: invoicePublic(inv), order: workorders.get(db, order.id) });
-    }));
+        return { lines, invoice: inv };
+    };
+    admin.post('/work-orders/:id/services', (req, res) => {
+        const order = orderFor(req, req.params.id);
+        const tech = req.user.role === 'technician';
+        if (order.status === 'cancelled') throw httpError(400, 'أمر العمل ملغى');
+        if (tech && order.status === 'done') throw httpError(400, 'أمر العمل مكتمل — اطلب من المكتب إضافة الخدمة');
+        const b = req.body || {};
+        const { lines, invoice } = addServices(req, order, Array.isArray(b.services) ? b.services : [b]);
+        res.status(201).json({ line: lines[0], lines, invoice: invoicePublic(invoices.get(db, invoice.id)), order: workorders.get(db, order.id) });
+    });
+
+    /* A service call for a customer with no work order yet (new or already known): the technician (or the
+       office) opens it on the spot — the customer record, a «خدمة» work order of their own, its invoice with
+       the services, and the PDF. Marked done at once when the work is finished. */
+    admin.post('/work-orders/service-visit', (req, res) => {
+        const b = req.body || {};
+        const c = b.customer || {};
+        const tech = req.user.role === 'technician';
+        const phone = customers.normalizePhone(c.phone);
+        if (phone.length < 11) throw httpError(400, 'اكتب رقم جوال العميل (8 أرقام)');
+        const known = customers.byPhone(db, phone);
+        const name = clip(c.name, 120) || (known && known.name) || '';
+        if (!name) throw httpError(400, 'اكتب اسم العميل');
+        const services = Array.isArray(b.services) ? b.services.filter(Boolean) : [];
+        if (!services.length) throw httpError(400, 'أضف خدمة واحدة على الأقل');
+        // Checked before anything is written
+        services.forEach((s) => serviceLine(s, { id: 0 }, ''));
+        const order = workorders.create(db, {
+            kind: 'service', customer_name: name, customer_phone: phone, location: clip(c.city, 120) || (known && known.city) || '',
+            address: clip(c.address, 200) || (known && known.address) || '', map_url: c.map_url || '',
+            description: services.map((s) => `${clip(s.title, 120) || 'خدمة'}: ${clip(s.description, 300)}`).join('\n'),
+            technician_id: tech ? req.user.id : (b.technician_id || null), scheduled_date: leads.localToday()
+        }, staffName(req), { notify: !tech });
+        const { lines, invoice } = addServices(req, order, services);
+        if (b.done) workorders.setStatus(db, order.id, 'done', clip(b.note, 500) || lines.map((l) => l.description).join(' / '), req.user);
+        res.status(201).json({ lines, invoice: invoicePublic(invoices.get(db, invoice.id)), order: workorders.get(db, order.id), new_customer: !known });
+    });
 
     admin.post('/work-orders/:id/status', (req, res) => {
         orderFor(req, req.params.id);

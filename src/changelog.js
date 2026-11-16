@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.41.0', date: '2026-11-17',
+        ar: ['«فاتورة خدمة لعميل»: الفني يصدر فاتورة خدمات لعميل جديد أو موجود دون أمر عمل مسبق (يُضاف العميل إلى السجل ويُنشأ أمر عمل «خدمة» باسمه)', 'أكثر من خدمة في الفاتورة الواحدة، و«اكتمل العمل الآن» يسجّل تاريخ الفاتورة والعمولة مباشرة', 'مربع «وصف الخدمة» في عرض السعر بعرض السطر كاملاً', 'النوافذ على الجوال: لا تكبير عند لمس الحقول، والكمية والسعر في صف واحد، وأزرار أمر العمل منظمة، وملاحظة «اكتمل» بعدة أسطر'],
+        en: ['«Service invoice for a customer»: the technician issues a service invoice for a new or known customer without a prior work order (the customer is added to the records and a «Service» work order is created in their name)', 'Several services on one invoice; «The work is done now» records the invoice date and the commission at once', 'The «Service description» box in a quote spans the whole line', 'Windows on a phone: no zoom when a field is tapped, quantity and price on one row, tidy work order buttons, and a multi-line «Done» note']
+    },
+    {
         version: '3.40.0', date: '2026-11-16',
         ar: ['بند «خدمة» بوصفها وسعرها: يضيفه الموظفون والإدارة في عرض السعر، والفني من أمر العمل وهو عند العميل', 'خدمة الفني تُضاف إلى فاتورة أمر العمل (أو تُصدر لها فاتورة جديدة لزيارة الصيانة) ويُفتح ملف PDF ويُرسل للعميل على واتساب', 'عمولة الخدمة للفني بنسبة التركيب نفسها، ولا تدخل في مبيعات موظف المبيعات', 'كل خدمة تُسجَّل في سجل أمر العمل وسجل النشاط، ويصل إشعار للمديرين بسعرها'],
         en: ['A «Service» line with its description and price: staff and managers add it in a quote, the technician from the work order on site', 'The technician\'s service goes on the work order\'s invoice (or a new invoice for a maintenance visit); the PDF opens and can be sent to the customer on WhatsApp', 'The service commission is the technician\'s, at the same % as installation, and is not part of the salesperson\'s sales', 'Each service is recorded in the work order log and the activity log, and the managers are notified of its price']
