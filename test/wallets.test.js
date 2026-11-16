@@ -198,6 +198,11 @@ test('the low balance warning: only for those who use petty cash; a limit of the
     assert.deepEqual(await warnings(), []);
     all = (await call('GET', '/api/admin/wallet')).body.accounts;
     assert.deepEqual([all.find((a) => a.id === tech.id).min, all.find((a) => a.id === driver.id).own_min], [5, 0]);
+    // A limit given to an employee who has no entries yet: they use petty cash — warned (0 < 20)
+    await call('PUT', `/api/admin/wallet/${office.id}/min`, { min: 20 });
+    assert.ok((await warnings()).some((w) => /منى/.test(w)));
+    await call('PUT', `/api/admin/wallet/${office.id}/min`, { min: null });
+    assert.ok(!(await warnings()).some((w) => /منى/.test(w)), 'back to the general limit: no entries, no warning');
     // Back to the general limit (empty)
     await call('PUT', `/api/admin/wallet/${tech.id}/min`, { min: null });
     assert.equal((await warnings()).length, 1);

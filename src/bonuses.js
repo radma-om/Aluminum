@@ -86,14 +86,15 @@ function invoicesWithPayments(db) {
 }
 
 function installationsOf(db, month) {
-    // Installation orders, and any other order with a service its technician added on site
+    // Installation orders, and any other order with a service its technician added on site.
+    // An order whose invoice was cancelled is not a job done (no sale, no commission)
     const rows = db.prepare(`SELECT id, number, kind, customer_name, technician_id, quote_id, invoice_id, date(completed_at, '${TZ}') AS date
                              FROM work_orders WHERE status = 'done' AND technician_id IS NOT NULL
-                             AND (kind = 'installation' OR invoice_id IS NOT NULL)
+                             AND (kind = 'installation' OR invoice_id IS NOT NULL) AND (invoice_id IS NULL OR invoice_id NOT IN (SELECT id FROM invoices WHERE status = 'cancelled'))
                              AND strftime('%Y-%m', completed_at, '${TZ}') = ? ORDER BY completed_at, id`).all(month);
     // An invoice / quote whose installation was already counted (in this month or before) counts once
     const counted = new Set(db.prepare(`SELECT IFNULL('i' || invoice_id, 'q' || quote_id) AS k FROM work_orders
-                                        WHERE status = 'done' AND kind = 'installation' AND (invoice_id IS NOT NULL OR quote_id IS NOT NULL)
+                                        WHERE status = 'done' AND kind = 'installation' AND (invoice_id IS NOT NULL OR quote_id IS NOT NULL) AND (invoice_id IS NULL OR invoice_id NOT IN (SELECT id FROM invoices WHERE status = 'cancelled'))
                                         AND strftime('%Y-%m', completed_at, '${TZ}') < ?`).all(month).map((r) => r.k));
     return rows.map((o) => {
         let fee = 0;
