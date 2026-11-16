@@ -41,6 +41,7 @@ const appNotices = require('./appnotices');
 const changelog = require('./changelog');
 const autoreply = require('./autoreply');
 const customers = require('./customers');
+const wallets = require('./wallets');
 const staffquotes = require('./staffquotes');
 const promotions = require('./promotions');
 const mazbotInbox = require('./mazbot-inbox');
@@ -447,6 +448,7 @@ function createApp(db, { agentClient } = {}) {
     // Pages, scripts, styles and API lists go compressed (about 5× smaller on a phone)
     app.use(compression({ threshold: 1024 }));
     pruneOldLogs(db);
+    wallets.ensureTables(db);
     try { workorders.cancelOrphans(db); } catch (err) { console.error('[work-orders] orphans', err.message); }
     // Statistics: quotes / customers of cancelled invoices no longer counted as sold; no frozen unfinished month
     try { invoices.repairCancelled(db); require('./bonuses').dropUnfinished(db); } catch (err) { console.error('[stats] repair', err.message); }
@@ -959,6 +961,10 @@ function createApp(db, { agentClient } = {}) {
     /* Configuration problems shown as a banner in the admin panel (no secret values, only what is missing) */
     admin.get('/system-status', (req, res) => {
         const warnings = [];
+        // Petty cash below the lowest balance the manager set
+        for (const a of wallets.lowAccounts(db, getSettings(db))) {
+            warnings.push({ level: 'warning', text: `رصيد عهدة ${a.name}: ${wallets.money(a.balance)} ر.ع — أقل من الحد ${wallets.money(a.min)} ر.ع (تبويب «العهدة»).` });
+        }
         if (!process.env.DB_FILE) {
             warnings.push({
                 level: 'danger',
@@ -1563,6 +1569,108 @@ function createApp(db, { agentClient } = {}) {
         const { lines, invoice } = addServices(req, order, services);
         if (b.done) workorders.setStatus(db, order.id, 'done', clip(b.note, 500) || lines.map((l) => l.description).join(' / '), req.user);
         res.status(201).json({ lines, invoice: invoicePublic(invoices.get(db, invoice.id)), order: workorders.get(db, order.id), new_customer: !known });
+    });
+
+    /* ---- Petty cash (العهدة): every account its own book; managers see and run all of them ---- */
+    const isManager = (req) => req.user.role === 'manager';
+    const walletActor = (req) => ({ name: staffName(req), manager: isManager(req) });
+    const ownOrManager = (req, userId) => {
+        if (isManager(req) || Number(userId) === Number(req.user.id)) return;
+        throw httpError(404, 'العهدة غير موجودة');
+    };
+    const managersOf = () => push.accountsOf(db, (u) => u.role === 'manager');
+    const tellLow = (r) => {
+        if (!r.crossed) return;
+        push.send(db, managersOf(), {
+            title: `⚠️ رصيد عهدة ${r.user.display_name} أقل من الحد`, body: `الرصيد ${wallets.money(r.balance)} ر.ع — الحد ${wallets.money(r.min)} ر.ع`,
+            url: '/admin#tab=wallet', tag: `wallet-low-${r.user.id}`
+        }).catch(() => {});
+    };
+    admin.get('/wallet/me', (req, res) => {
+        if (!req.user.id) return res.json({ owner: true });
+        res.json(wallets.book(db, req.user.id, getSettings(db)));
+    });
+    admin.get('/wallet', (req, res) => {
+        if (!isManager(req)) throw httpError(403, 'ليست لديك صلاحية لهذا القسم — راجع المدير العام');
+        res.json(wallets.overview(db, getSettings(db)));
+    });
+    admin.get('/wallet/:userId(\\d+)', (req, res) => {
+        ownOrManager(req, req.params.userId);
+        res.json(wallets.book(db, req.params.userId, getSettings(db)));
+    });
+    admin.post('/wallet/:userId(\\d+)/entries', (req, res) => {
+        ownOrManager(req, req.params.userId);
+        const r = wallets.add(db, req.params.userId, req.body || {}, walletActor(req), getSettings(db));
+        const e = r.entry;
+        const self = Number(req.params.userId) === Number(req.user.id);
+        // The managers hear of every expense and return made by the employee; the employee of money handed over
+        if (self && e.kind !== 'receive') {
+            push.send(db, managersOf(), {
+                title: `${e.kind === 'expense' ? '💸' : '↩️'} ${r.user.display_name}: ${e.kind_label} ${wallets.money(e.amount)} ر.ع`,
+                body: `${[e.category, e.details].filter(Boolean).join(' — ')} — الرصيد ${wallets.money(r.balance)} ر.ع`, url: '/admin#tab=wallet', tag: `wallet-${r.user.id}`
+            }).catch(() => {});
+        }
+        if (!self) {
+            push.send(db, [`u:${r.user.id}`], {
+                title: e.kind === 'receive' ? `💰 استلمت ${wallets.money(e.amount)} ر.ع في عهدتك` : `🧾 ${e.kind_label} ${wallets.money(e.amount)} ر.ع من عهدتك`,
+                body: `${e.details || e.category || ''} — الرصيد ${wallets.money(r.balance)} ر.ع`, url: '/admin#tab=wallet', tag: 'wallet-mine'
+            }).catch(() => {});
+        }
+        tellLow(r);
+        res.status(201).json({ entry: e, balance: r.balance, low: r.min > 0 && r.balance < r.min });
+    });
+    // The receipt's photo: sent as the image itself (the phone shrinks it first)
+    admin.post('/wallet/entries/:id/receipt', express.raw({ type: 'image/*', limit: '1600kb' }), (req, res) => {
+        const e = wallets.entry(db, req.params.id);
+        if (!e) throw httpError(404, 'العملية غير موجودة');
+        ownOrManager(req, e.user_id);
+        if (e.cancelled) throw httpError(400, 'العملية ملغاة');
+        wallets.saveReceipt(db, e.id, String(req.get('content-type') || '').split(';')[0], Buffer.isBuffer(req.body) ? req.body : null);
+        res.status(201).json({ ok: true });
+    });
+    admin.get('/wallet/entries/:id/receipt', (req, res) => {
+        const e = wallets.entry(db, req.params.id);
+        if (!e) throw httpError(404, 'العملية غير موجودة');
+        ownOrManager(req, e.user_id);
+        const r = wallets.receipt(db, e.id);
+        if (!r) throw httpError(404, 'لا توجد صورة');
+        res.set('Cache-Control', 'private, max-age=3600').type(r.mime).send(Buffer.from(r.data));
+    });
+    admin.post('/wallet/entries/:id/cancel', (req, res) => {
+        if (!isManager(req)) throw httpError(403, 'إلغاء العمليات للإدارة');
+        res.json({ entry: wallets.cancel(db, req.params.id, (req.body || {}).reason, walletActor(req)) });
+    });
+    admin.post('/wallet/requests', (req, res) => {
+        if (!req.user.id) throw httpError(400, 'الطلب من حساب موظف');
+        const r = wallets.request(db, req.user.id, req.body || {});
+        push.send(db, managersOf(), {
+            title: `🙋 ${r.user.display_name} يطلب ${wallets.money(r.request.amount)} ر.ع للعهدة`,
+            body: `${r.request.reason} — الرصيد الآن ${wallets.money(wallets.balanceOf(db, r.user.id))} ر.ع`, url: '/admin#tab=wallet', tag: `wallet-request-${r.request.id}`
+        }).catch(() => {});
+        res.status(201).json(r.request);
+    });
+    admin.post('/wallet/requests/:id/decide', (req, res) => {
+        if (!isManager(req)) throw httpError(403, 'الرد على الطلبات للإدارة');
+        const b = req.body || {};
+        const r = wallets.decide(db, req.params.id, { approve: b.approve === true, amount: b.amount, note: b.note }, walletActor(req), getSettings(db));
+        push.send(db, [`u:${r.request.user_id}`], r.added
+            ? { title: `✅ وافقت الإدارة: ${wallets.money(r.added.entry.amount)} ر.ع في عهدتك`, body: `الرصيد ${wallets.money(r.added.balance)} ر.ع${r.request.note ? ` — ${r.request.note}` : ''}`, url: '/admin#tab=wallet', tag: 'wallet-mine' }
+            : { title: `❌ لم تتم الموافقة على طلب ${wallets.money(r.request.amount)} ر.ع`, body: r.request.note || 'راجع الإدارة', url: '/admin#tab=wallet', tag: 'wallet-mine' }).catch(() => {});
+        res.json(r);
+    });
+    admin.put('/wallet/:userId(\\d+)/min', (req, res) => {
+        if (!isManager(req)) throw httpError(403, 'الحد يضبطه المدير');
+        wallets.setMin(db, req.params.userId, (req.body || {}).min);
+        res.json(wallets.book(db, req.params.userId, getSettings(db)));
+    });
+    admin.put('/wallet/settings', (req, res) => {
+        if (!isManager(req)) throw httpError(403, 'الإعدادات للمدير');
+        const b = req.body || {};
+        const patch = {};
+        if (b.min_default !== undefined) patch.wallet_min_default = Number(b.min_default) || 0;
+        if (b.categories !== undefined) patch.wallet_categories = (Array.isArray(b.categories) ? b.categories : String(b.categories).split(/[,،\n]/)).map((c) => clip(c, 40)).filter(Boolean).slice(0, 30);
+        saveSettings(db, patch);
+        res.json(wallets.overview(db, getSettings(db)));
     });
 
     admin.post('/work-orders/:id/status', (req, res) => {

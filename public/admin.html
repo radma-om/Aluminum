@@ -737,6 +737,7 @@
             <button class="tab-btn" data-tab="offers" onclick="switchTab('offers')" title="العروض والهدايا" hidden><i class="fas fa-tags"></i><span class="t-label">العروض والهدايا</span></button>
             <button class="tab-btn" data-tab="invoices" onclick="switchTab('invoices')" title="الفواتير والمدفوعات"><i class="fas fa-receipt"></i><span class="t-label">الفواتير والمدفوعات</span></button>
             <button class="tab-btn" data-tab="work_orders" onclick="switchTab('work_orders')" title="أوامر العمل"><i class="fas fa-screwdriver-wrench"></i><span class="t-label">أوامر العمل</span></button>
+            <button class="tab-btn" data-tab="wallet" onclick="switchTab('wallet')" title="العهدة والمصروفات"><i class="fas fa-wallet"></i><span class="t-label">العهدة</span><span class="count" id="walletBadge" hidden></span></button>
             <div class="nav-group">الحاسبات</div>
             <button class="tab-btn" data-tab="pricing" onclick="switchTab('pricing')" title="حاسبة التسعير"><i class="fas fa-calculator"></i><span class="t-label">حاسبة التسعير</span></button>
             <button class="tab-btn" data-tab="weight" onclick="switchTab('weight')" title="حاسبة الوزن"><i class="fas fa-weight-hanging"></i><span class="t-label">حاسبة الوزن</span></button>
@@ -1971,6 +1972,39 @@
         </div>
 
         <!-- ==================== TAB: Work orders ==================== -->
+        <!-- ==================== TAB: Petty cash (العهدة) ==================== -->
+        <div id="tab-wallet" class="tab-content">
+            <div class="card" id="walletMineCard" hidden>
+                <div class="card-title"><span class="icon"><i class="fas fa-wallet"></i></span> عهدتي</div>
+                <div class="wallet-hero" id="walletHero"></div>
+                <div class="wallet-actions">
+                    <button class="btn wallet-btn expense" onclick="walletNew('expense')"><i class="fas fa-cart-shopping"></i> صرف</button>
+                    <button class="btn wallet-btn ask" onclick="walletAsk()"><i class="fas fa-hand-holding-dollar"></i> طلب مبلغ</button>
+                    <button class="btn wallet-btn return" onclick="walletNew('return')"><i class="fas fa-rotate-left"></i> تسليم للمكتب</button>
+                </div>
+                <div id="walletMineRequests"></div>
+                <div id="walletMineBook"></div>
+            </div>
+            <div class="card manager-only" id="walletAdminCard" hidden>
+                <div class="card-title"><span class="icon"><i class="fas fa-wallet"></i></span> عهد الموظفين والفنيين</div>
+                <p class="status-text" style="margin:0 0 10px">يستلم الموظف مبلغاً للعهدة ويصرف منه (بترول، أكل، أدوات، قطع…) مع صورة الإيصال، فيتناقص الرصيد. يصلك إشعار مع كل صرف، وإشعار وتنبيه أعلى اللوحة إذا قلّ رصيد أحدهم عن الحد. ويستطيع الموظف طلب مبلغ فتوافق عليه أو ترفضه.</p>
+                <div class="money-grid" id="walletTotals"></div>
+                <div id="walletRequests"></div>
+                <div class="table-wrapper"><table class="stack-table">
+                    <thead><tr><th>الموظف</th><th>الرصيد</th><th>الحد الأدنى</th><th>آخر عملية</th><th></th></tr></thead>
+                    <tbody id="walletBody"></tbody>
+                </table></div>
+                <details class="wallet-settings">
+                    <summary>إعدادات العهدة</summary>
+                    <div class="form-grid">
+                        <div class="form-group"><label>الحد الأدنى العام <span class="unit">(ر.ع — أقل منه يصلك تنبيه؛ 0 = بلا تنبيه)</span></label><input type="number" id="walletMinDefault" min="0" step="0.5"></div>
+                        <div class="form-group"><label>تصنيفات الصرف <span class="unit">(افصل بفاصلة)</span></label><input type="text" id="walletCats"></div>
+                    </div>
+                    <button class="btn btn-outline btn-sm" onclick="walletSaveSettings()">حفظ</button> <span id="walletSetStatus" class="status-text"></span>
+                </details>
+            </div>
+        </div>
+
         <div id="tab-work_orders" class="tab-content">
             <div class="card">
                 <div class="card-title"><span class="icon"><i class="fas fa-screwdriver-wrench"></i></span> <span id="woTitle">أوامر العمل — التركيب والصيانة</span></div>
@@ -2435,6 +2469,35 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     </div>
 
     <!-- Create / schedule a work order -->
+    <!-- Petty cash: one entry (spent / returned / handed over) -->
+    <div id="walletSheet" class="sheet" hidden>
+        <div class="sheet-card" style="max-width:480px">
+            <button type="button" class="sheet-close" onclick="closeSheet('walletSheet')" aria-label="إغلاق">×</button>
+            <h3 id="walletSheetTitle"></h3>
+            <form id="walletForm" class="mobile-form" onsubmit="event.preventDefault(); walletSave();">
+                <p class="status-text" id="walletFor" style="margin:0 0 8px"></p>
+                <div class="form-group"><label>المبلغ <span class="unit">(ر.ع)</span></label><input type="number" id="wAmount" class="wallet-amount" min="0.001" step="0.001" inputmode="decimal" required></div>
+                <div class="form-group" id="wCatBox"><label>التصنيف</label><div class="wallet-cats" id="wCats"></div></div>
+                <div class="form-group"><label>التفاصيل</label><textarea id="wDetails" rows="2" maxlength="500" placeholder="مثلاً: بترول السيارة، غداء الفريق، مسامير وبراغي"></textarea></div>
+                <div class="form-grid two">
+                    <div class="form-group"><label>التاريخ</label><input type="datetime-local" id="wWhen"></div>
+                    <div class="form-group" id="wPhotoBox"><label>صورة الإيصال <span class="unit">(اختياري)</span></label><input type="file" id="wPhoto" accept="image/*"></div>
+                </div>
+                <div class="form-buttons">
+                    <button class="btn btn-primary" type="submit" id="wSave">حفظ</button>
+                    <span id="wStatus" class="status-text"></span>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Petty cash: one employee's book (managers) -->
+    <div id="walletBookSheet" class="sheet" hidden>
+        <div class="sheet-card" style="max-width:640px">
+            <button type="button" class="sheet-close" onclick="closeSheet('walletBookSheet')" aria-label="إغلاق">×</button>
+            <div id="walletBookBody"></div>
+        </div>
+    </div>
+
     <!-- A service call for a new or known customer: customer, services, invoice and PDF on the spot -->
     <div id="svSheet" class="sheet" hidden>
         <div class="sheet-card" style="max-width:560px">
@@ -3097,5 +3160,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-quotebuilder.js"></script>
     <script src="admin-sheets.js"></script>
     <script src="admin-updates.js"></script>
+    <script src="admin-wallet.js"></script>
 </body>
 </html>
