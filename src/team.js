@@ -53,7 +53,8 @@ function pulse(db, { days = 30, today = leads.localToday() } = {}) {
                      FROM invoices i LEFT JOIN (SELECT invoice_id, SUM(amount) AS paid FROM payments GROUP BY invoice_id) p ON p.invoice_id = i.id
                      WHERE i.status = 'issued' AND i.issue_date >= ?`, from);
     const jobs = one(`SELECT COUNT(*) AS done, IFNULL(SUM(date(completed_at, '${TZ}') <= scheduled_date), 0) AS on_time
-                      FROM work_orders WHERE status = 'done' AND scheduled_date IS NOT NULL AND date(completed_at, '${TZ}') >= ?`, from);
+                      FROM work_orders WHERE status = 'done' AND scheduled_date IS NOT NULL AND date(completed_at, '${TZ}') >= ?
+                      AND (invoice_id IS NULL OR invoice_id NOT IN (SELECT id FROM invoices WHERE status = 'cancelled'))`, from);
 
     // The latest events, newest first
     const events = [
@@ -128,7 +129,8 @@ function load(db, from, to) {
                                     FROM lead_assignments a JOIN leads l ON l.id = a.lead_id WHERE ${between('a.created_at')}`).all(from, to);
     const jobs = db.prepare(`SELECT w.number, w.kind, w.customer_name, w.scheduled_date, w.completed_at, date(w.completed_at, '${TZ}') AS date, u.display_name AS name
                              FROM work_orders w JOIN staff_users u ON u.id = w.technician_id
-                             WHERE w.status = 'done' AND w.completed_at IS NOT NULL AND ${between('w.completed_at')}`).all(from, to);
+                             WHERE w.status = 'done' AND w.completed_at IS NOT NULL AND ${between('w.completed_at')}
+                             AND (w.invoice_id IS NULL OR w.invoice_id NOT IN (SELECT id FROM invoices WHERE status = 'cancelled'))`).all(from, to);
     const ordersMade = db.prepare(`SELECT created_by AS name, created_at, date(created_at, '${TZ}') AS date FROM work_orders
                                    WHERE created_by IS NOT NULL AND ${between('created_at')}`).all(from, to);
     return { quotes, invoices, payments, notes, replies, assignments, jobs, ordersMade };
