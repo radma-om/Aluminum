@@ -42,14 +42,15 @@ async function loadInvoices() {
         $id('invBody').innerHTML = r.invoices.map((i) => `
             <tr class="${i.state === 'cancelled' ? 'muted-row' : ''}">
                 <td data-label="الرقم"><strong>${esc(i.number)}</strong></td>
-                <td data-label="التاريخ"><small>${esc(i.issue_date)}${i.due_date ? `<br>يستحق ${esc(i.due_date)}` : ''}</small></td>
+                <td data-label="الإصدار"><small>${esc(i.issue_date)}${i.due_date ? `<br>يستحق ${esc(i.due_date)}` : ''}</small></td>
+                <td data-label="تاريخ الفاتورة"><small>${i.invoice_date ? esc(i.invoice_date) : i.state === 'cancelled' ? '—' : '<span class="status-text">بانتظار اكتمال العمل</span>'}</small></td>
                 <td data-label="العميل">${esc(i.customer_name)}<br><small dir="ltr">${esc(i.customer_phone)}</small></td>
                 <td data-label="الإجمالي">${money2(i.total)}</td>
                 <td data-label="المدفوع">${money2(i.paid)}</td>
                 <td data-label="المتبقي"><strong>${money2(i.balance)}</strong></td>
                 <td data-label="الحالة"><span class="badge st-${esc(i.state)}">${esc(i.state_label)}</span>${i.deposit && !i.deposit.paid && i.state !== 'cancelled' ? `<br><small style="color:#8a5a00">بانتظار المقدم ${money2(i.deposit.remaining)}</small>` : ''}</td>
                 <td data-label=""><button class="btn btn-outline btn-sm" onclick="openInvoice(${i.id})">عرض</button></td>
-            </tr>`).join('') || '<tr><td colspan="8">لا توجد فواتير بعد — أصدر أول فاتورة من «طلبات العروض».</td></tr>';
+            </tr>`).join('') || '<tr><td colspan="9">لا توجد فواتير بعد — أصدر أول فاتورة من «طلبات العروض».</td></tr>';
         setStatus('invStatus', '');
     } catch (err) {
         setStatus('invStatus', err.message, 'err');
@@ -159,7 +160,9 @@ function showInvoice(inv) {
         <h3><i class="fas fa-receipt"></i> ${esc(inv.number)} <span class="badge st-${esc(inv.state)}">${esc(inv.state_label)}</span></h3>
         <p class="status-text" style="margin:0">${esc(inv.customer_name)} — <span dir="ltr">${esc(inv.customer_phone)}</span>
             ${inv.customer_city ? ' — ' + esc(inv.customer_city) : ''}${inv.customer_address ? '<br>' + esc(inv.customer_address) : ''}<br>
-            التاريخ ${esc(inv.issue_date)}${inv.due_date ? ` — يستحق ${esc(inv.due_date)}` : ''}${inv.created_by ? ` — أصدرها ${esc(inv.created_by)}` : ''}</p>
+            تاريخ الإصدار ${esc(inv.issue_date)}${inv.due_date ? ` — يستحق ${esc(inv.due_date)}` : ''}${inv.created_by ? ` — أصدرها ${esc(inv.created_by)}` : ''}<br>
+            تاريخ الفاتورة: ${inv.invoice_date ? `<b>${esc(inv.invoice_date)}</b>` : inv.state === 'cancelled' ? '—' : 'بانتظار اكتمال العمل (يُسجَّل تلقائياً عند إنهاء أمر العمل)'}
+            ${inv.state !== 'cancelled' ? ' — <button class="link-btn" style="margin:0" onclick="editInvoiceDate()">تعديل</button>' : ''}</p>
         ${inv.state === 'cancelled' ? `<p style="color:#a93226;font-weight:700">ملغاة: ${esc(inv.cancel_reason || '')}</p>` : ''}
         <div class="money-grid">
             <div><small>الإجمالي</small><strong>${money2(inv.total)}</strong></div>
@@ -241,6 +244,17 @@ async function cancelInvoice() {
         loadQuotes().catch(() => {});
     } catch (err) { alert(err.message); }
 }
+
+/* تاريخ الفاتورة by hand (e.g. work done without a work order in the system) */
+async function editInvoiceDate() {
+    const v = await askText(`تاريخ الفاتورة (YYYY-MM-DD) — يوم اكتمال العمل، لا يسبق تاريخ الإصدار ${invCurrent.issue_date}. اتركه فارغاً لإلغائه:`, invCurrent.invoice_date || invToday());
+    if (v === null) return;
+    try {
+        showInvoice(await api('PATCH', `/api/admin/invoices/${invCurrent.id}`, { invoice_date: v.trim() || null }));
+        loadInvoices().catch(() => {});
+    } catch (err) { alert(err.message); }
+}
+const invToday = () => new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
 
 async function editInvoice() {
     const due = await askText('تاريخ الاستحقاق (YYYY-MM-DD) — اتركه فارغاً لإلغائه:', invCurrent.due_date || '');

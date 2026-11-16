@@ -720,6 +720,8 @@ function migrate(db) {
     addColumns('overhead_sizes', { cost: 'REAL' });
     // Invoices: the deposit asked of the customer before the work (a % of the total or an amount)
     addColumns('invoices', { deposit_type: 'TEXT', deposit_value: 'REAL', deposit_amount: 'REAL' });
+    // تاريخ الفاتورة: the day its work was completed (issue_date stays the day it was issued from the quote)
+    addColumns('invoices', { invoice_date: 'TEXT' });
     addColumns('overhead_motors', { cost: 'REAL' });
     // Product descriptions shown under each line of a quote / invoice / PDF
     addColumns('overhead_motors', { description: 'TEXT' });

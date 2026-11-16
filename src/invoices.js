@@ -254,10 +254,29 @@ function repairCancelled(db) {
     return rows.length;
 }
 
+/* تاريخ الفاتورة = the day the invoice's work was completed: stamped when its last open work order is done
+   (by the technician or the office). Never overwrites a date already there (set by hand or earlier). */
+function stampWorkDone(db, invoiceId) {
+    if (!invoiceId) return null;
+    const open = db.prepare("SELECT COUNT(*) AS n FROM work_orders WHERE invoice_id = ? AND status IN ('new', 'scheduled', 'in_progress')").get(Number(invoiceId)).n;
+    if (open) return null;
+    const last = db.prepare("SELECT MAX(completed_at) AS t FROM work_orders WHERE invoice_id = ? AND status = 'done'").get(Number(invoiceId)).t;
+    if (!last) return null;
+    const day = new Date(Date.parse(String(last).replace(' ', 'T') + 'Z') + 4 * 3600_000).toISOString().slice(0, 10); // Muscat day
+    const r = db.prepare("UPDATE invoices SET invoice_date = ? WHERE id = ? AND status = 'issued' AND invoice_date IS NULL").run(day, Number(invoiceId));
+    return r.changes ? day : null;
+}
+
 function update(db, invoiceId, patch) {
     const inv = get(db, invoiceId);
     if (!inv) throw err(404, 'الفاتورة غير موجودة');
     const set = {};
+    // تاريخ الفاتورة by hand (the office): a day not before the issue, or empty to clear it
+    if (patch.invoice_date !== undefined) {
+        const d = patch.invoice_date ? String(patch.invoice_date).slice(0, 10) : null;
+        if (d && (!isDate(d) || d < inv.issue_date)) throw err(400, `تاريخ الفاتورة غير صالح (لا يسبق تاريخ الإصدار ${inv.issue_date})`);
+        set.invoice_date = d;
+    }
     if (patch.due_date !== undefined) {
         const d = patch.due_date ? String(patch.due_date).slice(0, 10) : null;
         if (d && (!isDate(d) || d < inv.issue_date)) throw err(400, 'تاريخ الاستحقاق غير صالح');
@@ -321,4 +340,5 @@ function summary(db, { today = leads.localToday(), mineOf = null } = {}) {
     return { month, issued_count: issued.n, issued_value: round2(issued.v), collected: round2(collected), outstanding: round2(owed), overdue };
 }
 
-module.exports = { createFromQuote, addPayment, deletePayment, cancel, update, list, get, byNumber, activeForQuote, summary, METHODS, PAY_STATES, DEPOSIT_TYPES, repairCancelled, revise, revisions };
+module.exports = {
+    stampWorkDone, createFromQuote, addPayment, deletePayment, cancel, update, list, get, byNumber, activeForQuote, summary, METHODS, PAY_STATES, DEPOSIT_TYPES, repairCancelled, revise, revisions };

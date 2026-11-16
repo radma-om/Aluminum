@@ -205,6 +205,8 @@ function setStatus(db, id, status, note, user) {
         if (status === 'done') {
             // An installation done is the quote done; the customer hears about it in the follow-up log
             if (order.quote_id && order.kind === 'installation') db.prepare("UPDATE quotes SET status = 'done' WHERE id = ? AND status != 'rejected'").run(order.quote_id);
+            // The invoice's date (تاريخ الفاتورة) is the day its work is completed
+            if (order.invoice_id) require('./invoices').stampWorkDone(db, order.invoice_id);
             const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(order.customer_phone);
             if (lead) leads.addMessage(db, lead, 'system', `✅ اكتمل أمر ${order.kind_label} ${order.number}${author ? ` (${author})` : ''}`);
         }
@@ -249,6 +251,8 @@ function cancel(db, id, reason, author) {
     if (!why) throw err(400, 'اكتب سبب الإلغاء');
     db.prepare("UPDATE work_orders SET status = 'cancelled' WHERE id = ?").run(order.id);
     event(db, order.id, `أُلغي: ${why}`, author);
+    // The other work of the invoice may be all done now: that is its date
+    if (order.invoice_id) require('./invoices').stampWorkDone(db, order.invoice_id);
     return get(db, order.id);
 }
 
