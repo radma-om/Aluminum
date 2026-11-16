@@ -2,6 +2,11 @@
    Used by admin-i18n.js only when the user chose English. To add a text, add
    its exact Arabic (spaces collapsed) and the English. */
 window.I18N_EN = {
+    "تاريخ الإصدار": "Issue date",
+    "(تاريخ الفاتورة يُسجَّل عند اكتمال العمل)": "(the invoice date is set when the work is completed)",
+    "بانتظار اكتمال العمل": "Awaiting work completion",
+    "بانتظار اكتمال العمل (يُسجَّل تلقائياً عند إنهاء أمر العمل)": "Awaiting work completion (set automatically when the work order is finished)",
+    "تاريخ الفاتورة:": "Invoice date:",
     "يكتب الموظفون بنوداً حرة": "Staff may add free lines",
     "البند الحر سعره يكتبه الموظف يدوياً، فلا يراه حد الخصم. عند الإيقاف: البنود الحرة للمديرين فقط": "A free line's price is typed by the employee, so the discount limit cannot see it. When off: free lines are for managers only",
     "أسعار كتبها الموظف يدوياً — لا يراها حد الخصم": "Prices typed by the employee — the discount limit cannot see them",
@@ -2499,6 +2504,8 @@ window.I18N_EN = {
 
 /* Texts with a number or name inside: [regular expression, replacement] */
 window.I18N_EN_PATTERNS = [
+    [/^تاريخ الفاتورة غير صالح \(لا يسبق تاريخ الإصدار (\S+)\)$/, 'Invalid invoice date (not before the issue date $1)'],
+    [/^تاريخ الفاتورة \(YYYY-MM-DD\) — يوم اكتمال العمل، لا يسبق تاريخ الإصدار (\S+)\. اتركه فارغاً لإلغائه:$/, 'Invoice date (YYYY-MM-DD) — the day the work was completed, not before the issue date $1. Leave empty to clear it:'],
     [/^بند حر × (\d+)$/, 'Free line × $1'],
     [/^تم التسجيل ✓ — سعر الشراء الحالي لم يتغير: توجد فاتورة أحدث بتاريخ (\S+)$/, 'Recorded ✓ — the current purchase price is unchanged: there is a newer invoice dated $1'],
     [/^⚠️ في هذا العرض (\d+) بند حر بسعر كتبه الموظف يدوياً — راجع سعره، فحد الخصم لا يراه\.$/, '⚠️ This quote has $1 free line(s) priced by hand by the employee — check the price; the discount limit cannot see it.'],

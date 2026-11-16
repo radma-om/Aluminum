@@ -180,7 +180,7 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
     w.line(settings.company_name, left, 18, nameRight, { size: 18, bold: true, color: '#ffffff' });
     w.line(inv ? (inv.status === 'cancelled' ? 'فاتورة (ملغاة)' : 'فاتورة') : 'عرض سعر', left, 52, nameRight, { size: 13, color: '#ffffff' });
     doc.font('Helvetica-Bold').fontSize(13).fillColor('#ffffff').text(ref, left, 26, { lineBreak: false });
-    const created = inv ? inv.issue_date : String(quote.created_at || new Date().toISOString()).slice(0, 10);
+    const created = inv ? inv.invoice_date || inv.issue_date : String(quote.created_at || new Date().toISOString()).slice(0, 10);
     doc.font('Helvetica').fontSize(10).text(created, left, 50, { lineBreak: false });
     if (settings.company_whatsapp) doc.text('WhatsApp: +' + settings.company_whatsapp.replace(/\D/g, ''), left, 66, { lineBreak: false });
 
@@ -194,6 +194,9 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
     ];
     if (inv && inv.customer_address) infoRows.push(['العنوان', inv.customer_address]);
     if (inv && opts.quoteRef) infoRows.push(['عرض السعر', opts.quoteRef]);
+    // An invoice: the day it was issued from the quote, and its date once the work is completed
+    if (inv) infoRows.push(['تاريخ الإصدار', inv.issue_date]);
+    if (inv && inv.invoice_date) infoRows.push(['تاريخ الفاتورة', inv.invoice_date]);
     if (inv && inv.due_date) infoRows.push(['تاريخ الاستحقاق', inv.due_date]);
     if (!inv && quote.valid_until) infoRows.push(['صالح حتى', quote.valid_until]);
     // Who made it: the employee who priced the quote; on an invoice also who issued it, when that is someone else
