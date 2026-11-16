@@ -12,7 +12,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>نظام تسعير شرائح الألمنيوم</title>
     <!-- The panel's language (Arabic / English): before anything is drawn, so the page opens already in it -->
-    <script src="admin-i18n-en.js"></script>
+    <script>/* The English dictionary is fetched only by those who chose English */
+        try { if (localStorage.getItem('adminLang') === 'en') document.write('<script src="admin-i18n-en.js"><\/script>'); } catch (e) { /* private mode: Arabic */ }
+    </script>
     <script src="admin-i18n.js"></script>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <!-- Icons: loaded without holding the page back (they appear a moment later on a slow line) -->

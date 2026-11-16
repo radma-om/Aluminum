@@ -42,10 +42,11 @@ test('every Arabic text in admin.html has an English translation', () => {
     for (const [ar, en] of Object.entries(I18N_EN)) assert.ok(en && (!ARABIC.test(en) || ar === 'رادما' || /استعادة/.test(en)), `${ar} → ${en}`);
 });
 
-test('the language scripts load in <head>, before the page is drawn', () => {
+test('the language scripts load in <head>; the dictionary only for those who chose English', () => {
     const html = fs.readFileSync(path.join(pub, 'admin.html'), 'utf8');
     const head = html.slice(0, html.indexOf('</head>'));
     assert.ok(head.indexOf('admin-i18n-en.js') > 0 && head.indexOf('admin-i18n-en.js') < head.indexOf('admin-i18n.js'));
+    assert.ok(!head.includes('<script src="admin-i18n-en.js">') || head.includes("=== 'en') document.write"), 'Arabic users do not download the dictionary');
     for (const f of fs.readdirSync(pub).filter((n) => /^admin.*\.js$/.test(n) && n !== 'admin-i18n.js')) {
         assert.ok(!fs.readFileSync(path.join(pub, f), 'utf8').includes("'ar-OM'"), `${f}: use APP_LOCALE`);
     }
@@ -73,7 +74,7 @@ test('each staff account keeps its own language', async (t) => {
     const signIn = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'salem', password: 'salem-pass-1', code: codeFor(db, 'salem') }) });
     const token = (await signIn.json()).token;
 
-    assert.equal((await call('GET', '/api/admin/me', null, token)).body.user.lang, 'ar');
+    assert.equal((await call('GET', '/api/admin/me', null, token)).body.user.lang, null, 'never chosen: the device decides');
     assert.deepEqual((await call('PUT', '/api/admin/me/lang', { lang: 'en' }, token)).body, { lang: 'en' });
     assert.equal((await call('GET', '/api/admin/me', null, token)).body.user.lang, 'en');
     // Anything else falls back to Arabic
@@ -101,6 +102,16 @@ test('texts the scripts build from parts are translated; half-known sentences st
     // Mostly unknown: left whole rather than mixed
     const mixed = 'جملة غير معروفة إطلاقاً مع غير مفعّل';
     assert.equal(t(mixed), mixed);
+    // A label beside a name: the label is translated, the name stays
+    assert.equal(t('صيانة — سالم'), 'Maintenance — سالم');
+    // Data people typed (product names, job descriptions) is never half-translated
+    for (const data of ['صيانة محرك', 'المسارات الجانبية', 'شرائح الإيراني', 'عمود محور الدوران']) assert.equal(t(data), data);
+    // Server messages: a mark in front, sentences joined by a colon and commas
+    assert.equal(t('⚠️ اختر ولاية العميل — التركيب والتوصيل يُحسبان حسبها كما في حاسبة العملاء'),
+        '⚠️ Choose the customer\'s wilayah — installation and delivery are calculated by it as in the customer calculator');
+    assert.equal(t('إعدادات ناقصة في متغيرات البيئة: مفتاح الذكاء الاصطناعي (OPENAI_API_KEY)، سر رابط Webhook (MAZBOT_WEBHOOK_SECRET).'),
+        'Settings missing in the environment variables: the AI key (OPENAI_API_KEY), the Webhook link secret (MAZBOT_WEBHOOK_SECRET).');
+    assert.equal(t('أُنشئ أمر صيانة وأُسند إلى Ali Tech'), 'Maintenance order created and assigned to Ali Tech');
     // Every value in the dictionary is English
     for (const [ar, en] of Object.entries(ctx.I18N_EN)) assert.ok(!ARABIC.test(en) || ar === 'رادما' || /استعادة/.test(en), `${ar} → ${en}`);
 });
