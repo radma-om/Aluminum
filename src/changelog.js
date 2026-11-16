@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.42.0', date: '2026-11-17',
+        ar: ['«العهدة والمصروفات»: لكل موظف وفني دفتر عهدة — يستلم مبلغاً ويصرف منه (بترول، أكل، أدوات، قطع…) مع صورة الإيصال، فيتناقص الرصيد', '«طلب مبلغ»: يطلب الفني مبلغاً فيوافق المدير (بالمبلغ نفسه أو غيره) أو يرفض، ويصله إشعار بالرد', 'الإدارة: إشعار مع كل صرف، وإشعار وتنبيه أعلى اللوحة إذا قلّ الرصيد عن الحد الأدنى (عام أو لكل موظف)', 'العمليات لا تُعدَّل؛ المدير يلغي العملية بسبب وتبقى في الدفتر مشطوبة'],
+        en: ['«Petty cash»: every employee and technician has a cash book — they receive an amount and spend from it (petrol, food, tools, parts…) with a receipt photo, and the balance goes down', '«Request money»: the technician asks for an amount; the manager approves it (the same or another amount) or declines, and the technician is notified', 'Managers: a notification with each expense, and a notification and a warning at the top of the panel when a balance drops below the minimum (general or per employee)', 'Entries are never edited; a manager cancels one with a reason and it stays in the book, struck through']
+    },
+    {
         version: '3.41.0', date: '2026-11-17',
         ar: ['«فاتورة خدمة لعميل»: الفني يصدر فاتورة خدمات لعميل جديد أو موجود دون أمر عمل مسبق (يُضاف العميل إلى السجل ويُنشأ أمر عمل «خدمة» باسمه)', 'أكثر من خدمة في الفاتورة الواحدة، و«اكتمل العمل الآن» يسجّل تاريخ الفاتورة والعمولة مباشرة', 'مربع «وصف الخدمة» في عرض السعر بعرض السطر كاملاً', 'النوافذ على الجوال: لا تكبير عند لمس الحقول، والكمية والسعر في صف واحد، وأزرار أمر العمل منظمة، وملاحظة «اكتمل» بعدة أسطر'],
         en: ['«Service invoice for a customer»: the technician issues a service invoice for a new or known customer without a prior work order (the customer is added to the records and a «Service» work order is created in their name)', 'Several services on one invoice; «The work is done now» records the invoice date and the commission at once', 'The «Service description» box in a quote spans the whole line', 'Windows on a phone: no zoom when a field is tapped, quantity and price on one row, tidy work order buttons, and a multi-line «Done» note']
