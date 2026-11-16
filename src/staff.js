@@ -301,6 +301,8 @@ function sectionsFor(method, path) {
     const p = path.replace(/\/+$/, '');
     const rules = [
         [/^\/me(\/|$)/, 'any'],
+        // Petty cash: each account its own book; the routes themselves keep the rest for managers
+        [/^\/wallet(\/|$)/, 'any'],
         [/^\/settings$/, method === 'GET' ? 'any' : 'settings'],
         [/^\/dashboard$/, ['dashboard']],
         [/^\/leads(\/|$)/, ['leads']],
@@ -342,7 +344,7 @@ const SETTING_SECTIONS = {
     staff_members: 'manager',
     // Where customers and sales alerts are sent: an employee changing these could divert both to their own number
     company_whatsapp: 'manager', mazbot_recipients: 'manager', public_base_url: 'manager',
-    follow_up_stale_days: 'manager', follow_up_emails: 'manager', quote_validity_days: 'manager', staff_max_discount_percent: 'manager', staff_free_lines: 'manager',
+    follow_up_stale_days: 'manager', follow_up_emails: 'manager', quote_validity_days: 'manager', staff_max_discount_percent: 'manager', staff_free_lines: 'manager', wallet_min_default: 'manager', wallet_categories: 'manager',
     promo_enabled: 'manager', promo_percent: 'manager', promo_label: 'manager', promo_until: 'manager', promo_scope: 'manager', promo_parts: 'manager',
     gift_enabled: 'manager', gift_name: 'manager', gift_price: 'manager', gift_until: 'manager', gift_scope: 'manager'
 };
