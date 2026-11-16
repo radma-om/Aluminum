@@ -17,3 +17,11 @@ test('no browser prompt() / confirm() in the admin panel; the in-app dialog is l
     const html = fs.readFileSync(path.join(dir, 'admin.html'), 'utf8');
     assert.ok(html.indexOf('admin-dialog.js') < html.indexOf('src="admin.js"'), 'loaded before the other scripts');
 });
+
+test('a panel opened over another one comes on top (a quote opened from a customer file)', () => {
+    const code = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin-sheets.js'), 'utf8');
+    assert.match(code, /sheet\.style\.zIndex = String\(150 \+ stack\.length\)/);
+    // The quote's item cell is one block, so its description cannot fall outside the card on a phone
+    const admin = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
+    assert.match(admin, /class="qv-item"><div>/);
+});

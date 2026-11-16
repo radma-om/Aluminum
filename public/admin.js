@@ -539,13 +539,13 @@ async function viewQuote(id) {
             ${q.valid_until ? ` — صالح حتى ${esc(q.valid_until)}` : ''} — ${esc(SOURCE_NAMES[q.source] || q.source)}
             ${d.staff_quote && d.created_by ? ` — أعدّ العرض: <span class="no-i18n">${esc(d.created_by)}</span>` : ''}</div>
         ${Array.isArray(d.spec) && d.spec.length ? `<div class="money-grid">${d.spec.map(([k, v]) => `<div><small>${esc(k)}</small><strong>${esc(v)}</strong></div>`).join('')}</div>` : ''}
-        <div class="table-wrapper"><table class="stack-table">
+        <div class="table-wrapper"><table class="stack-table qv-table">
             <thead><tr><th>#</th><th>البند</th><th>الكمية</th><th>سعر الوحدة</th><th>المجموع</th></tr></thead>
             <tbody>${q.items.map((i, n) => `<tr>
-                <td data-label="#">${n + 1}</td>
-                <td data-label="البند"><strong>${esc(i.name)}</strong>${i.type ? ' — ' + esc(i.type) : ''}${i.description ? `<span class="item-desc no-i18n">${esc(i.description)}</span>` : ''}</td>
-                <td data-label="الكمية">${esc(i.quantity)}</td>
-                <td data-label="سعر الوحدة">${unit(i)}</td>
+                <td data-label="#" class="qv-n">${n + 1}</td>
+                <td data-label="" class="qv-item"><div><strong>${esc(i.name)}</strong>${i.type ? ' — ' + esc(i.type) : ''}${i.description ? `<span class="item-desc no-i18n">${esc(i.description)}</span>` : ''}</div></td>
+                <td data-label="الكمية"><span>${esc(i.quantity)}</span></td>
+                <td data-label="سعر الوحدة"><span>${unit(i)}</span></td>
                 <td data-label="المجموع"><strong>${lineTotal(i)}</strong></td></tr>`).join('')}</tbody>
         </table></div>
         <div class="quote-totals">
