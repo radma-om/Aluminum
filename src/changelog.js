@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.42.1', date: '2026-11-17',
+        ar: ['النسخة الاحتياطية (Excel) تشمل دفاتر العهدة وطلبات المبالغ وصور الإيصالات، وتُستعاد كاملة', 'إذا كبرت النسخة على البريد تُرسل بلا صور الإيصالات (تبقى في النسخ اليومية على الخادم)'],
+        en: ['The backup (Excel) includes the petty cash books, money requests and receipt photos, and restores them in full', 'If the backup is too big for email it is sent without the receipt photos (they stay in the daily backups on the server)']
+    },
+    {
         version: '3.42.0', date: '2026-11-17',
         ar: ['«العهدة والمصروفات»: لكل موظف وفني دفتر عهدة — يستلم مبلغاً ويصرف منه (بترول، أكل، أدوات، قطع…) مع صورة الإيصال، فيتناقص الرصيد', '«طلب مبلغ»: يطلب الفني مبلغاً فيوافق المدير (بالمبلغ نفسه أو غيره) أو يرفض، ويصله إشعار بالرد', 'الإدارة: إشعار مع كل صرف، وإشعار وتنبيه أعلى اللوحة إذا قلّ الرصيد عن الحد الأدنى (عام أو لكل موظف)', 'العمليات لا تُعدَّل؛ المدير يلغي العملية بسبب وتبقى في الدفتر مشطوبة'],
         en: ['«Petty cash»: every employee and technician has a cash book — they receive an amount and spend from it (petrol, food, tools, parts…) with a receipt photo, and the balance goes down', '«Request money»: the technician asks for an amount; the manager approves it (the same or another amount) or declines, and the technician is notified', 'Managers: a notification with each expense, and a notification and a warning at the top of the panel when a balance drops below the minimum (general or per employee)', 'Entries are never edited; a manager cancels one with a reason and it stays in the book, struck through']

@@ -40,7 +40,11 @@ async function sendBackup(db, { reason = 'daily' } = {}) {
     const file = `radma-backup-${date}.xlsx`;
     let bytes = null;
     try {
-        const content = await backup.exportWorkbook(db);
+        let content = await backup.exportWorkbook(db);
+        // Too big for the mail server with the receipt photos → send it without them
+        // (they stay in the daily backups on the server)
+        let noPhotos = false;
+        if (content.length > MAX_BYTES) { content = await backup.exportWorkbook(db, { receipts: false }); noPhotos = true; }
         bytes = content.length;
         if (bytes > MAX_BYTES) throw new Error(`حجم النسخة ${(bytes / 1048576).toFixed(1)} MB أكبر من حد البريد (20 MB)`);
         const settings = require('./db').getSettings(db);
@@ -58,7 +62,8 @@ async function sendBackup(db, { reason = 'daily' } = {}) {
                 'الملف حساس: فيه بيانات العملاء وتجزئات كلمات مرور الموظفين — لا تعِد إرساله لأحد.',
                 '',
                 'محتوى النسخة:',
-                counts
+                counts,
+                ...(noPhotos ? ['', 'تنبيه: صور إيصالات العهدة لم تُرفق لأن حجمها كبير على البريد — هي محفوظة في النسخ اليومية على الخادم.'] : [])
             ].join('\n'),
             attachments: [{ filename: file, content, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }]
         });
