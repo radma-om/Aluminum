@@ -23,16 +23,21 @@ async function loadCustomers() {
         const r = await api('GET', '/api/admin/customers?' + p);
         $id('custBody').innerHTML = r.customers.map((c) => `
             <tr>
-                <td data-label="العميل"><strong>${esc(c.name || '—')}</strong></td>
+                <td data-label="التسلسل" dir="ltr"><small>${esc(c.number)}</small></td>
+                <td data-label="العميل"><strong class="no-i18n">${esc(c.name || '—')}</strong></td>
                 <td data-label="الجوال" dir="ltr">+${esc(c.phone)}${c.phone2 ? `<br><small>+${esc(c.phone2)}</small>` : ''}</td>
                 <td data-label="المنطقة">${esc(c.city || '—')}</td>
+                <td data-label="البريد" dir="ltr"><small>${esc(c.email || '—')}</small></td>
+                <td data-label="الموظف المتابع" class="no-i18n">${esc(c.assigned_to || '—')}</td>
                 <td data-label="العروض">${esc(c.quote_count)}</td>
                 <td data-label="الفواتير">${c.invoiced ? custMoney(c.invoiced) : '—'}</td>
+                <td data-label="المدفوع">${c.paid ? custMoney(c.paid) : '—'}</td>
                 <td data-label="المتبقي">${c.balance > 0.0005 ? `<strong style="color:#a93226">${custMoney(c.balance)}</strong>` : '—'}</td>
                 <td data-label="أعمال مفتوحة">${c.open_jobs || '—'}</td>
+                <td data-label="تاريخ التسجيل"><small>${esc(custWhen(c.created_at))}</small></td>
                 <td data-label="آخر نشاط"><small>${esc(custWhen(c.last_activity))}</small></td>
                 <td data-label=""><button class="btn btn-outline btn-sm" onclick="openCustomer(${c.id})">الملف</button></td>
-            </tr>`).join('') || '<tr><td colspan="9">لا يوجد عملاء بهذا البحث.</td></tr>';
+            </tr>`).join('') || '<tr><td colspan="14">لا يوجد عملاء بهذا البحث.</td></tr>';
         setStatus('custStatus', r.customers.length >= 300 ? 'تظهر أحدث 300 — استخدم البحث للوصول لغيرهم' : '');
     } catch (err) {
         setStatus('custStatus', err.message, 'err');
@@ -56,6 +61,7 @@ function renderCustomer({ customer: c, leads, quotes, invoices, work_orders: ord
         : `<p class="status-text">${empty}</p>`;
     $id('custDetail').innerHTML = `
         <h3><i class="fas fa-address-book"></i> ${esc(c.name || 'عميل')}
+            <small class="status-text" dir="ltr">C-${String(c.id).padStart(4, '0')}</small>
             ${stop && stop.kind === 'manual' ? '<span class="badge" title="المساعد الذكي لا يرد على هذا الرقم">بلا رد آلي</span>' : ''}</h3>
         <div class="wo-line"><i class="fas fa-phone"></i> <a href="tel:+${esc(phone)}" dir="ltr">+${esc(phone)}</a>
             — <a href="https://wa.me/${esc(phone)}" target="_blank" rel="noopener">واتساب</a>
@@ -89,7 +95,7 @@ function renderCustomer({ customer: c, leads, quotes, invoices, work_orders: ord
                 <td data-label="الإجمالي">${custMoney(q.total)}${q.total_to ? ' – ' + custMoney(q.total_to) : ''}</td>
                 <td data-label="الحالة">${esc(STATUS_NAMES[q.status] || q.status)}</td>
                 <td data-label="الفاتورة">${q.invoice ? (canSee('invoices') ? `<button class="btn btn-outline btn-sm" onclick="openInvoice(${q.invoice.id})">${esc(q.invoice.number)}</button>` : esc(q.invoice.number)) : '—'}</td>
-                <td data-label="">${canSee('quotes') || canSee('leads') ? `<button class="btn btn-outline btn-sm" onclick="openQuotePdf(${q.id})">PDF</button>` : ''}</td></tr>`),
+                <td data-label="">${canSee('quotes') || canSee('leads') ? `<button class="btn btn-primary btn-sm" onclick="viewQuote(${q.id})">عرض</button> <button class="btn btn-outline btn-sm" onclick="openQuotePdf(${q.id})">PDF</button>` : ''}</td></tr>`),
             'لا توجد عروض أسعار.'))}
         ${section('<i class="fas fa-receipt"></i> الفواتير', table(['الرقم', 'التاريخ', 'الإجمالي', 'المدفوع', 'المتبقي', 'الحالة', ''],
             invoices.map((i) => `<tr><td data-label="الرقم"><strong>${esc(i.number)}</strong></td>

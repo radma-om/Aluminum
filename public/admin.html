@@ -1868,6 +1868,7 @@
                     طلبات عروض الأسعار من العملاء
                 </div>
                 <div class="filter-row">
+                    <input type="search" id="quoteSearch" placeholder="بحث: اسم العميل، رقم الجوال، رقم العرض" style="flex:1; min-width:180px; padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-family:inherit" oninput="debouncedQuotes()">
                     <select id="quoteFilter" onchange="loadQuotes()">
                         <option value="">كل الحالات</option>
                         <option value="new">جديد</option>
@@ -1915,12 +1916,12 @@
                 <div class="card-title"><span class="icon"><i class="fas fa-address-book"></i></span> العملاء</div>
                 <p class="status-text" style="margin:0 0 10px">سجل واحد لكل عميل: بياناته، ومحادثاته ومتابعته، وعروضه، وفواتيره (المدفوع والمتبقي)، وأوامر العمل. يُضاف العميل تلقائياً عند أول تواصل (واتساب، الحاسبة، أمر عمل)، ويمكنك إضافته يدوياً.</p>
                 <div class="filter-row">
-                    <input type="search" id="custSearch" placeholder="بحث: الاسم، الرقم، المنطقة، البريد" style="flex:1; min-width:180px; padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-family:inherit" oninput="debouncedCustomers()">
+                    <input type="search" id="custSearch" placeholder="بحث: الاسم، الجوال، التسلسل، المنطقة، البريد" style="flex:1; min-width:180px; padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-family:inherit" oninput="debouncedCustomers()">
                     <label class="status-text" style="display:flex; gap:6px; align-items:center"><input type="checkbox" id="custOwes" onchange="loadCustomers()"> عليهم مبالغ فقط</label>
                     <button class="btn btn-primary btn-sm" onclick="editCustomer(null)">عميل جديد</button>
                 </div>
                 <div class="table-wrapper"><table class="stack-table">
-                    <thead><tr><th>العميل</th><th>الجوال</th><th>المنطقة</th><th>العروض</th><th>الفواتير</th><th>المتبقي</th><th>أعمال مفتوحة</th><th>آخر نشاط</th><th></th></tr></thead>
+                    <thead><tr><th>التسلسل</th><th>العميل</th><th>الجوال</th><th>المنطقة</th><th>البريد</th><th>الموظف المتابع</th><th>العروض</th><th>الفواتير</th><th>المدفوع</th><th>المتبقي</th><th>أعمال مفتوحة</th><th>تاريخ التسجيل</th><th>آخر نشاط</th><th></th></tr></thead>
                     <tbody id="custBody"></tbody>
                 </table></div>
                 <span id="custStatus" class="status-text"></span>
@@ -2291,6 +2292,14 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     </div>
 
     <!-- One invoice: amounts, payments, actions -->
+    <!-- A quote shown on screen (no download) -->
+    <div id="quoteSheet" class="sheet" hidden>
+        <div class="sheet-card">
+            <button type="button" class="sheet-close" onclick="closeSheet('quoteSheet')" aria-label="إغلاق">×</button>
+            <div id="quoteDetail"></div>
+        </div>
+    </div>
+
     <div id="invSheet" class="sheet" hidden>
         <div class="sheet-card">
             <button type="button" class="sheet-close" onclick="closeSheet('invSheet')" aria-label="إغلاق">×</button>
