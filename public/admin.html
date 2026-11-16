@@ -1073,17 +1073,8 @@
                     </div>
                 </div>
 
-                <!-- Tax Mode Toggle -->
-                <div style="margin-top: 18px;">
-                    <label style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 8px;">وضع الضريبة:</label>
-                    <div class="tax-toggle">
-                        <input type="radio" name="taxMode" id="taxAccounting" value="accounting" checked onchange="recalculateAll()">
-                        <label for="taxAccounting">محاسبي — الضريبة على البيع</label>
-
-                        <input type="radio" name="taxMode" id="taxIndustrial" value="industrial" onchange="recalculateAll()">
-                        <label for="taxIndustrial">صناعي — الضريبة ضمن التكلفة</label>
-                    </div>
-                </div>
+                <!-- One formula, the same as the system's prices (products, quotes, customer calculators) -->
+                <p class="status-text" style="margin-top: 14px;">طريقة الحساب: التكلفة قبل الضريبة (ضريبة المشتريات تُسترد) × (1 + نسبة الربح) = سعر البيع قبل الضريبة، ثم تُضاف ضريبة القيمة المضافة مرة واحدة على سعر البيع.</p>
 
                 <!-- Save to database -->
                 <div class="db-actions">
@@ -1146,11 +1137,11 @@
                                 <th>السماكة</th>
                                 <th>الحالة</th>
                                 <th>الطول (م)</th>
-                                <th>التكلفة (ر.ع)</th>
-                                <th>سعر البيع (ر.ع)</th>
+                                <th>التكلفة قبل الضريبة (ر.ع)</th>
+                                <th>سعر البيع شامل الضريبة (ر.ع)</th>
                                 <th>الربح (ر.ع)</th>
-                                <th>سعر المتر (ر.ع)</th>
-                                <th>سعر م² (ر.ع)</th>
+                                <th>سعر المتر قبل الضريبة (ر.ع)</th>
+                                <th>سعر م² قبل الضريبة (ر.ع)</th>
                                 <th>حذف</th>
                             </tr>
                         </thead>
@@ -2538,8 +2529,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
             painting: parseFloat(document.getElementById('painting').value) || 0,
             exchangeRate: parseFloat(document.getElementById('exchangeRate').value) || 0,
             profitPercent: parseFloat(document.getElementById('profitPercent').value) || 0,
-            vatPercent: parseFloat(document.getElementById('vatPercent').value) || 0,
-            taxMode: document.querySelector('input[name="taxMode"]:checked').value
+            vatPercent: parseFloat(document.getElementById('vatPercent').value) || 0
         };
     }
 
@@ -2557,30 +2547,17 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
         const costPerMeter = metalPerMeter + mfgPerMeter + paintPerMeter;
         const costPiece = costPerMeter * length;
 
-        // Cost with VAT included
-        const costPieceWithVAT = costPiece * (1 + inputs.vatPercent / 100);
-
-        let sellPrice, finalPrice, profit, pricePerMeter;
-
-        if (inputs.taxMode === 'accounting') {
-            // Accounting mode: VAT on sell price
-            const sellBeforeVAT = costPieceWithVAT * (1 + inputs.profitPercent / 100);
-            finalPrice = sellBeforeVAT * (1 + inputs.vatPercent / 100);
-            profit = sellBeforeVAT - costPieceWithVAT;
-            sellPrice = finalPrice;
-            pricePerMeter = sellBeforeVAT / length;
-        } else {
-            // Industrial mode: VAT on cost
-            finalPrice = costPieceWithVAT * (1 + inputs.profitPercent / 100);
-            profit = finalPrice - costPieceWithVAT;
-            sellPrice = finalPrice;
-            pricePerMeter = finalPrice / length;
-        }
+        // Purchase VAT is reclaimed, so it is not a cost: profit on the cost before VAT, then VAT once on the sale
+        // (the same formula as the system's prices: pricing.js unitSellPrice + withTotals)
+        const sellBeforeVAT = costPiece * (1 + inputs.profitPercent / 100);
+        const sellPrice = sellBeforeVAT * (1 + inputs.vatPercent / 100);
+        const profit = sellBeforeVAT - costPiece;
+        const pricePerMeter = sellBeforeVAT / length;
 
         const pricePerM2 = pricePerMeter * SQM_TO_LINEAR;
 
         return {
-            costPiece: costPieceWithVAT,
+            costPiece,
             sellPrice,
             profit,
             pricePerMeter,
@@ -2819,10 +2796,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
         doc.setTextColor(...darkText);
         doc.text('Date: ' + dateStr, pageWidth - 15, 35, { align: 'right' });
 
-        const taxModeLabel = inputs.taxMode === 'accounting'
-            ? 'Accounting (VAT on Sale)'
-            : 'Industrial (VAT in Cost)';
-        doc.text('Tax Mode: ' + taxModeLabel, 15, 35);
+        doc.text('Cost and price per meter before VAT; Sell includes VAT', 15, 35);
 
         // ---- Parameters Box ----
         const paramsY = 40;
