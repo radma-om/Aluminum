@@ -232,3 +232,34 @@ test('the same customer on two numbers: merging joins the history under one reco
     assert.equal(customers.byPhone(db, '96897777777').id, a.id);
     assert.ok((await call('GET', '/api/admin/audit')).body.entries.some((e) => e.action.startsWith('دمج عميلين')));
 });
+
+test('the customers list gives each customer a fixed number, found by search; quotes are searched by name or mobile', async (t) => {
+    const http = require('node:http');
+    const { openDatabase } = require('../src/db');
+    const { createApp, saveQuote } = require('../src/server');
+    const customersLib = require('../src/customers');
+    process.env.ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'test-token';
+    const db = openDatabase(':memory:');
+    const server = http.createServer(createApp(db));
+    await new Promise((r) => server.listen(0, r));
+    t.after(() => server.close());
+    const get = async (url) => (await fetch(`http://127.0.0.1:${server.address().port}${url}`, { headers: { Authorization: `Bearer ${process.env.ADMIN_TOKEN}` } })).json();
+    const priced = { items: [{ name: 'بند', quantity: 1, unit_price: 10, line_total: 10 }], subtotal: 10, vat_percent: 5, vat: 0.5, total: 10.5 };
+    saveQuote(db, { customer_name: 'سالم البلوشي', customer_phone: '96891112222', source: 'web', priced });
+    saveQuote(db, { customer_name: 'مريم الحارثي', customer_phone: '96893334444', source: 'web', priced });
+
+    const list = customersLib.list(db);
+    assert.strictEqual(list.length, 2);
+    for (const c of list) assert.match(c.number, /^C-\d{4}$/);
+    const salem = list.find((c) => c.name === 'سالم البلوشي');
+    assert.deepStrictEqual(customersLib.list(db, { q: salem.number }).map((c) => c.id), [salem.id]);
+    assert.ok('paid' in salem && 'created_at' in salem && 'assigned_to' in salem);
+
+    assert.deepStrictEqual((await get('/api/admin/quotes?q=' + encodeURIComponent('مريم'))).map((q) => q.customer_name), ['مريم الحارثي']);
+    assert.deepStrictEqual((await get('/api/admin/quotes?q=91112222')).map((q) => q.customer_name), ['سالم البلوشي']);
+    assert.strictEqual((await get('/api/admin/quotes?q=' + encodeURIComponent('لا أحد'))).length, 0);
+    assert.strictEqual((await get('/api/admin/quotes')).length, 2);
+    // One quote for the on-screen view: the full data, without the customer's access key
+    const one = await get('/api/admin/quotes/' + (await get('/api/admin/quotes'))[0].id);
+    assert.ok(one.ref && Array.isArray(one.items) && !('access_key' in one));
+});

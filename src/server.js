@@ -1122,9 +1122,18 @@ function createApp(db, { agentClient } = {}) {
     });
 
     admin.get('/quotes', (req, res) => {
-        const where = req.query.status ? 'WHERE status = ?' : '';
-        const args = req.query.status ? [req.query.status] : [];
-        const rows = db.prepare(`SELECT * FROM quotes ${where} ORDER BY id DESC LIMIT 500`).all(...args)
+        const where = [];
+        const args = [];
+        if (req.query.status) { where.push('status = ?'); args.push(String(req.query.status)); }
+        // Search by the customer's name or mobile (with or without 968), or the quote number
+        const q = String(req.query.q || '').trim().slice(0, 60);
+        if (q) {
+            const like = `%${q.replace(/[%_]/g, '')}%`;
+            const digits = q.replace(/\D/g, '');
+            where.push(`(IFNULL(customer_name, '') LIKE ? OR ref LIKE ?${digits.length >= 3 ? ' OR customer_phone LIKE ?' : ''})`);
+            args.push(like, like, ...(digits.length >= 3 ? [`%${digits}%`] : []));
+        }
+        const rows = db.prepare(`SELECT * FROM quotes ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY id DESC LIMIT 500`).all(...args)
             .filter((r) => staff.seesQuote(db, req.user, r));
         const today = leads.localToday();
         res.json(rows.map((r) => {
@@ -1634,6 +1643,17 @@ function createApp(db, { agentClient } = {}) {
         if ((req.body || {}).pause_agent !== false) mazbotInbox.pause(db, String(lead.phone).replace(/\D/g, ''));
         res.status(201).json(withPause(leads.detail(db, lead.id)));
     }));
+
+    /* One quote, to show it on screen (the same data the PDF is drawn from) */
+    admin.get('/quotes/:id', (req, res) => {
+        const { access_key, ...q } = parseQuote(quoteFor(req, req.params.id));
+        const inv = invoices.activeForQuote(db, q.id);
+        res.json({
+            ...q,
+            expired: Boolean(q.valid_until && q.valid_until < leads.localToday() && ['new', 'contacted'].includes(q.status)),
+            invoice: inv ? { id: inv.id, number: inv.number } : null
+        });
+    });
 
     admin.get('/quotes/:id/pdf', (req, res) => {
         const row = quoteFor(req, req.params.id);
