@@ -63,6 +63,7 @@ const LABELS = [
     ['POST', /^\/leads\/\d+\/reply$/, 'رد على عميل'], ['DELETE', /^\/leads\/\d+\/pause$/, 'إعادة تشغيل المساعد لعميل'],
     ['PUT', /^\/leads\/\d+\/pause$/, 'إيقاف الرد الآلي لعميل'], ['POST', /^\/mazbot\/pauses$/, 'إيقاف الرد الآلي لرقم'],
     ['POST', /^\/users$/, 'إضافة حساب موظف'], ['PUT', /^\/users\/\d+$/, 'تعديل حساب موظف'], ['DELETE', /^\/users\/\d+$/, 'حذف حساب موظف'],
+    ['POST', /^\/app-notices$/, 'إرسال إشعار للموظفين (تحديث / صيانة)'], ['POST', /^\/app-notices\/\d+\/end$/, 'إنهاء إشعار للموظفين'],
     ['POST', /^\/webhooks$/, 'إضافة Webhook'], ['PUT', /^\/webhooks\/\d+$/, 'تعديل Webhook'], ['DELETE', /^\/webhooks\/\d+$/, 'حذف Webhook'], ['POST', /^\/webhooks\/\d+\/test$/, 'تجربة Webhook'],
     ['POST', /^\/restore$/, 'استعادة نسخة احتياطية من ملف'], ['POST', /^\/backups\/[^/]+\/restore$/, 'استعادة نسخة احتياطية محفوظة'],
     ['POST', /^\/offsite-backup$/, 'إرسال نسخة احتياطية بالبريد'],
