@@ -39,6 +39,8 @@ function period(month, nowMs = Date.now()) {
 
 const isInstallation = (i) => i.part === 'installation' || /^التركيب/.test(String(i.name || ''));
 const isDelivery = (i) => i.part === 'delivery' || /^التوصيل/.test(String(i.name || ''));
+/* A service line (خدمة): its commission is the technician's — never a salesperson's */
+const isService = (i) => i.part === 'service';
 
 /* The share (0–1) of some lines in all the lines (gift lines are 0 and change nothing) */
 function share(items, pick) {
@@ -69,7 +71,7 @@ function invoicesWithPayments(db) {
                 if (!qualified && paid >= r.total * PAID_SHARE - 0.005) qualified = p.paid_on;
             }
             const items = parse(r.items_json, []);
-            const excluded = round2(r.subtotal * share(items, (i) => isInstallation(i) || isDelivery(i)));
+            const excluded = round2(r.subtotal * share(items, (i) => isInstallation(i) || isDelivery(i) || isService(i)));
             return {
                 id: r.id, number: r.number, customer_name: r.customer_name, date: r.issue_date, qualified_on: qualified,
                 owner: (parse(r.details_json, {}) || {}).created_by || r.created_by || null,
@@ -80,8 +82,10 @@ function invoicesWithPayments(db) {
 }
 
 function installationsOf(db, month) {
-    const rows = db.prepare(`SELECT id, number, customer_name, technician_id, quote_id, invoice_id, date(completed_at, '${TZ}') AS date
-                             FROM work_orders WHERE status = 'done' AND kind = 'installation' AND technician_id IS NOT NULL
+    // Installation orders, and any other order with a service its technician added on site
+    const rows = db.prepare(`SELECT id, number, kind, customer_name, technician_id, quote_id, invoice_id, date(completed_at, '${TZ}') AS date
+                             FROM work_orders WHERE status = 'done' AND technician_id IS NOT NULL
+                             AND (kind = 'installation' OR invoice_id IS NOT NULL)
                              AND strftime('%Y-%m', completed_at, '${TZ}') = ? ORDER BY completed_at, id`).all(month);
     // An invoice / quote whose installation was already counted (in this month or before) counts once
     const counted = new Set(db.prepare(`SELECT IFNULL('i' || invoice_id, 'q' || quote_id) AS k FROM work_orders
@@ -89,20 +93,32 @@ function installationsOf(db, month) {
                                         AND strftime('%Y-%m', completed_at, '${TZ}') < ?`).all(month).map((r) => r.k));
     return rows.map((o) => {
         let fee = 0;
+        let service = 0;
         let note = '';
         const key = o.invoice_id ? 'i' + o.invoice_id : o.quote_id ? 'q' + o.quote_id : null;
         const src = o.invoice_id ? db.prepare("SELECT subtotal, items_json, status FROM invoices WHERE id = ?").get(o.invoice_id)
             : o.quote_id ? db.prepare('SELECT subtotal, items_json FROM quotes WHERE id = ?').get(o.quote_id) : null;
-        if (!src) note = 'بلا فاتورة أو عرض — لا مبلغ تركيب';
+        const items = src ? parse(src.items_json, []) : [];
+        const install = o.kind === 'installation';
+        if (!src) note = install ? 'بلا فاتورة أو عرض — لا مبلغ تركيب' : '';
         else if (src.status === 'cancelled') note = 'الفاتورة ملغاة';
-        else if (counted.has(key)) note = 'تركيب هذه الفاتورة احتُسب في أمر سابق';
         else {
-            fee = round2(src.subtotal * share(parse(src.items_json, []), isInstallation));
-            if (!fee) note = 'لا يوجد بند تركيب';
+            // Services added on this order are its technician's
+            service = round2(src.subtotal * share(items, (i) => isService(i) && Number(i.work_order_id) === o.id));
+            if (install) {
+                if (counted.has(key)) note = 'تركيب هذه الفاتورة احتُسب في أمر سابق';
+                else {
+                    // The installation, and services written in the quote itself (no order of their own): once per invoice
+                    fee = round2(src.subtotal * share(items, isInstallation));
+                    service = round2(service + src.subtotal * share(items, (i) => isService(i) && !i.work_order_id));
+                    if (!fee && !service) note = 'لا يوجد بند تركيب';
+                }
+            }
         }
-        if (key) counted.add(key);
-        return { id: o.id, number: o.number, customer_name: o.customer_name, date: o.date, technician_id: o.technician_id, fee, note };
-    });
+        if (key && install) counted.add(key);
+        return { id: o.id, number: o.number, customer_name: o.customer_name, date: o.date, technician_id: o.technician_id,
+            fee: round2(fee + service), installation: fee, service, note };
+    }).filter((o) => o.fee > 0 || o.note || rows.find((r) => r.id === o.id).kind === 'installation');
 }
 
 /* ------------------------------ Statement ------------------------------ */

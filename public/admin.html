@@ -2434,6 +2434,29 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     </div>
 
     <!-- Create / schedule a work order -->
+    <!-- A service done on site: added to the work order's invoice -->
+    <div id="woServiceSheet" class="sheet" hidden>
+        <div class="sheet-card" style="max-width:520px">
+            <button type="button" class="sheet-close" onclick="closeSheet('woServiceSheet')" aria-label="إغلاق">×</button>
+            <h3><i class="fas fa-screwdriver-wrench"></i> إضافة خدمة</h3>
+            <p class="status-text" id="woServiceFor" style="margin:0 0 10px"></p>
+            <form id="woServiceForm" onsubmit="event.preventDefault(); submitWoService();">
+                <div class="form-group"><label>اسم الخدمة</label><input type="text" id="wsTitle" maxlength="120" value="خدمة" placeholder="مثلاً: صيانة محرك، تغيير ريموت"></div>
+                <div class="form-group"><label>وصف الخدمة <span class="unit">(يظهر للعميل في الفاتورة)</span></label><textarea id="wsDesc" rows="3" maxlength="1000" required placeholder="مثلاً: فحص المحرك وتغيير المكثف وضبط حساسات الأمان"></textarea></div>
+                <div class="form-grid">
+                    <div class="form-group"><label>الكمية</label><input type="number" id="wsQty" min="0.01" step="0.01" value="1" oninput="woServiceTotal()"></div>
+                    <div class="form-group"><label>سعر الوحدة <span class="unit">(ر.ع — قبل الضريبة)</span></label><input type="number" id="wsPrice" min="0.01" step="0.01" required oninput="woServiceTotal()"></div>
+                </div>
+                <p class="status-text" id="wsTotal"></p>
+                <div class="form-buttons" style="margin-top:0">
+                    <button class="btn btn-primary" type="submit" id="wsSave"><i class="fas fa-file-invoice"></i> إضافة إلى الفاتورة</button>
+                    <span id="wsStatus" class="status-text"></span>
+                </div>
+            </form>
+            <div id="woServiceDone" hidden></div>
+        </div>
+    </div>
+
     <div id="woSheet" class="sheet" hidden>
         <form class="sheet-card" onsubmit="event.preventDefault(); submitWorkOrder();">
             <button type="button" class="sheet-close" onclick="closeSheet('woSheet')" aria-label="إغلاق">×</button>

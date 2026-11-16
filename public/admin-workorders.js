@@ -61,11 +61,13 @@ function renderWorkOrders() {
         const open = ['new', 'scheduled', 'in_progress'].includes(o.status);
         const techActions = isTech() && open ? [
             o.status === 'scheduled' ? `<button class="btn btn-primary" onclick="woMove(${o.id}, 'in_progress')"><i class="fas fa-play"></i> بدأت العمل</button>` : '',
+            `<button class="btn btn-outline" onclick="woService(${o.id})"><i class="fas fa-screwdriver-wrench"></i> إضافة خدمة</button>`,
             `<button class="btn btn-primary" style="background:var(--success);border-color:var(--success)" onclick="woMove(${o.id}, 'done')"><i class="fas fa-check"></i> اكتمل</button>`,
             `<button class="btn btn-outline" onclick="woMove(${o.id}, 'new')">تعذّر — موعد جديد</button>`
         ].join('') : '';
         const officeActions = !isTech() && open ? [
             `<button class="btn btn-outline btn-sm" onclick="editWorkOrder(${o.id})">تعديل / جدولة</button>`,
+            `<button class="btn btn-outline btn-sm" onclick="woService(${o.id})">إضافة خدمة</button>`,
             `<button class="btn btn-outline btn-sm" onclick="woMove(${o.id}, 'done')">تسجيل الإنجاز</button>`,
             `<button class="btn btn-outline btn-sm" style="color:#a93226" onclick="woCancel(${o.id})">إلغاء</button>`
         ].join('') : '';
@@ -88,8 +90,9 @@ function renderWorkOrders() {
             ${!isTech() && o.tech_last_text ? `<div class="wo-report"><i class="fas fa-helmet-safety"></i> <b>آخر تقرير من الفني</b>
                 <small>${esc(o.tech_last_author || '')} — ${esc(woAgo(o.tech_last_at))}${o.tech_reports > 1 ? ` — ${o.tech_reports} تقارير` : ''}</small>
                 <div>${esc(o.tech_last_text)}</div></div>` : ''}
+            ${o.invoice_number ? `<div class="wo-line"><i class="fas fa-receipt"></i> الفاتورة ${esc(o.invoice_number)}</div>` : ''}
             <div class="wo-actions">
-                ${techActions}${officeActions}
+                ${techActions}${officeActions}${!isTech() && o.status === 'done' ? `<button class="btn btn-outline btn-sm" onclick="woService(${o.id})">إضافة خدمة</button>` : ''}
                 <button class="btn btn-outline btn-sm" onclick="woNote(${o.id})">ملاحظة</button>
                 <button class="btn btn-outline btn-sm" onclick="woHistory(${o.id}, this)">السجل</button>
             </div>
@@ -111,6 +114,62 @@ async function woMove(id, status) {
         await api('POST', `/api/admin/work-orders/${id}/status`, { status, note: note.trim() });
         await loadWorkOrders();
     } catch (err) { alert(err.message); }
+}
+
+/* ---- A service done on site: its description and price go on the order's invoice, then the PDF ---- */
+let woServiceOrder = null;
+function woService(id) {
+    woServiceOrder = woOrders.find((o) => o.id === id) || { id };
+    const o = woServiceOrder;
+    $id('woServiceFor').textContent = `${o.number || ''} — ${o.customer_name || ''}` + (o.invoice_number
+        ? ` — تُضاف إلى الفاتورة ${o.invoice_number}` : ' — تُصدر لها فاتورة جديدة');
+    $id('wsTitle').value = 'خدمة';
+    $id('wsDesc').value = '';
+    $id('wsQty').value = '1';
+    $id('wsPrice').value = '';
+    $id('woServiceForm').hidden = false;
+    $id('woServiceDone').hidden = true;
+    $id('wsSave').disabled = false;
+    setStatus('wsStatus', '');
+    woServiceTotal();
+    $id('woServiceSheet').hidden = false;
+    setTimeout(() => $id('wsDesc').focus(), 50);
+}
+function woServiceTotal() {
+    const t = (Number($id('wsQty').value) || 0) * (Number($id('wsPrice').value) || 0);
+    $id('wsTotal').textContent = t > 0 ? `المجموع ${t.toFixed(2)} ر.ع قبل الضريبة` : '';
+}
+async function submitWoService() {
+    const body = { title: $id('wsTitle').value.trim(), description: $id('wsDesc').value.trim(), quantity: Number($id('wsQty').value), unit_price: Number($id('wsPrice').value) };
+    if (!body.description) return setStatus('wsStatus', 'اكتب وصف الخدمة', 'err');
+    if (!(body.unit_price > 0)) return setStatus('wsStatus', 'اكتب سعر الخدمة', 'err');
+    $id('wsSave').disabled = true;
+    setStatus('wsStatus', 'جاري الحفظ...');
+    try {
+        const r = await api('POST', `/api/admin/work-orders/${woServiceOrder.id}/services`, body);
+        const link = location.origin + r.invoice.pdf_url;
+        const phone = String(r.invoice.customer_phone || '').replace(/\D/g, '');
+        const wa = `https://wa.me/${encodeURIComponent(phone)}?text=${encodeURIComponent(`فاتورة رقم ${r.invoice.number} — الإجمالي ${Number(r.invoice.total).toFixed(2)} ر.ع\n${link}`)}`;
+        $id('woServiceForm').hidden = true;
+        $id('woServiceDone').innerHTML = `
+            <p class="status-text ok" style="font-weight:700">✓ أُضيفت الخدمة إلى الفاتورة ${esc(r.invoice.number)}</p>
+            <div class="money-grid">
+                <div><small>الخدمة</small><strong>${Number(r.line.line_total).toFixed(2)}</strong></div>
+                <div><small>إجمالي الفاتورة (شامل الضريبة)</small><strong>${Number(r.invoice.total).toFixed(2)}</strong></div>
+                <div><small>المتبقي على العميل</small><strong>${Number(r.invoice.balance).toFixed(2)}</strong></div>
+            </div>
+            <div class="form-buttons">
+                <a class="btn btn-primary" href="${esc(link)}" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> فتح الفاتورة PDF</a>
+                <a class="btn btn-outline" href="${esc(wa)}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> إرسال للعميل</a>
+                <button class="btn btn-outline" type="button" onclick="woService(${woServiceOrder.id})">خدمة أخرى</button>
+            </div>`;
+        $id('woServiceDone').hidden = false;
+        woServiceOrder = { ...woServiceOrder, invoice_number: r.invoice.number };
+        loadWorkOrders().catch(() => {});
+    } catch (err) {
+        setStatus('wsStatus', err.message, 'err');
+        $id('wsSave').disabled = false;
+    }
 }
 
 async function woNote(id) {
