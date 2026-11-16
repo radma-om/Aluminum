@@ -1124,7 +1124,10 @@ function createApp(db, { agentClient } = {}) {
             .run(product.id, b.supplier || null, quantity, unitPrice, String(b.currency || 'OMR').toUpperCase().slice(0, 3),
                 rate, extra, unitCostOmr, purchasedAt, b.notes || null);
 
-        if (b.update_product !== false && product.pricing_mode === 'manual' && unitCostOmr !== product.purchase_price) {
+        // The product's price follows the newest purchase: an older invoice entered late is recorded, not applied
+        const newer = db.prepare('SELECT MAX(purchased_at) AS d FROM purchases WHERE product_id = ? AND id != ? AND purchased_at > ?')
+            .get(product.id, info.lastInsertRowid, purchasedAt).d;
+        if (b.update_product !== false && product.pricing_mode === 'manual' && unitCostOmr !== product.purchase_price && !newer) {
             db.prepare(`UPDATE products SET purchase_price = ?, updated_at = datetime('now') WHERE id = ?`).run(unitCostOmr, product.id);
             db.prepare(`INSERT INTO price_history (product_id, field, old_value, new_value, source)
                         VALUES (?, 'purchase_price', ?, ?, 'purchase')`).run(product.id, product.purchase_price, unitCostOmr);
@@ -1132,7 +1135,7 @@ function createApp(db, { agentClient } = {}) {
         const purchase = db.prepare('SELECT * FROM purchases WHERE id = ?').get(info.lastInsertRowid);
         const updated = withPrices(getProduct(product.id), getSettings(db));
         webhooks.emit(db, 'purchase.created', { purchase, product: updated });
-        res.status(201).json({ purchase, product: updated });
+        res.status(201).json({ purchase, product: updated, ...(newer ? { price_kept: true, newer_purchase_on: newer } : {}) });
     });
 
     admin.delete('/purchases/:id', (req, res) => {
@@ -1224,6 +1227,8 @@ function createApp(db, { agentClient } = {}) {
         const limit = staffquotes.limitFor(req.user, settings);
         res.json({
             ...priced, discount_limit: limit, over_limit: limit !== null && priced.pricing.discount_percent > limit + 0.005,
+            // May this user put free lines in a quote (the builder warns before saving)
+            free_lines_allowed: settings.staff_free_lines !== false || limit === null,
             // Cost and profit: only for whoever may see purchase prices
             ...(seesCost(req.user) ? { cost: costs.quoteCost(db, req.body || {}, priced, settings) } : {})
         });
@@ -1251,6 +1256,7 @@ function createApp(db, { agentClient } = {}) {
         if (!customer.name) throw httpError(400, 'اكتب اسم العميل');
         const priced = staffquotes.price(db, b, settings);
         staffquotes.checkLimit(req.user, settings, priced.pricing.discount_percent);
+        staffquotes.checkFreeLines(req.user, settings, b);
         const region = b.region_id ? doors.getRegion(db, b.region_id) : null;
         const quote = saveQuote(db, {
             customer_name: customer.name, customer_phone: customer.phone, customer_city: customer.city || (region ? region.name : null), notes: b.notes, source: 'staff',
@@ -1276,9 +1282,10 @@ function createApp(db, { agentClient } = {}) {
         const b = req.body || {};
         const settings = getSettings(db);
         const priced = staffquotes.price(db, b, settings);
+        staffquotes.checkFreeLines(req.user, settings, b);
         staffquotes.checkLimit(req.user, settings, priced.pricing.discount_percent);
         const region = b.region_id ? doors.getRegion(db, b.region_id) : null;
-        const { calc_groups, region_id, region: oldRegion, ...kept } = row.details;
+        const { calc_groups, region_id, region: oldRegion, free_lines: oldFree, ...kept } = row.details;
         const details = { ...kept, ...staffDetails(req, priced, region), created_by: row.details.created_by, quote_discount: priced.pricing.quote_discount, edited_by: staffName(req) };
         db.prepare(`UPDATE quotes SET items_json = ?, details_json = ?, subtotal = ?, vat_percent = ?, vat = ?, total = ?, notes = ? WHERE id = ?`)
             .run(JSON.stringify(priced.items), JSON.stringify(details), priced.subtotal, priced.vat_percent, priced.vat, priced.total,

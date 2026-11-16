@@ -420,7 +420,7 @@ async function savePurchase() {
     if (!$id('buyProduct').value) return setStatus('buyStatus', 'أضف منتجاً أولاً من تبويب المنتجات', 'err');
     if ($id('buyPrice').value === '') return setStatus('buyStatus', 'أدخل سعر الوحدة', 'err');
     try {
-        await api('POST', '/api/admin/purchases', {
+        const saved = await api('POST', '/api/admin/purchases', {
             product_id: Number($id('buyProduct').value),
             supplier: $id('buySupplier').value,
             purchased_at: $id('buyDate').value,
@@ -435,7 +435,9 @@ async function savePurchase() {
         $id('buyPrice').value = '';
         $id('buyNotes').value = '';
         setStatus('buyPreview', '');
-        setStatus('buyStatus', 'تم التسجيل ✓', 'ok');
+        setStatus('buyStatus', saved.price_kept
+            ? `تم التسجيل ✓ — سعر الشراء الحالي لم يتغير: توجد فاتورة أحدث بتاريخ ${saved.newer_purchase_on}`
+            : 'تم التسجيل ✓', 'ok');
         await Promise.all([loadPurchases(), loadProducts()]);
     } catch (err) {
         setStatus('buyStatus', err.message, 'err');
@@ -467,7 +469,8 @@ async function loadQuotes() {
                 ${q.notes ? '<br><small style="color:var(--text-light)">' + esc(q.notes) + '</small>' : ''}</td>
             <td><a href="https://wa.me/${esc(q.customer_phone)}" target="_blank" rel="noopener">${esc(q.customer_phone)}</a></td>
             <td class="quote-items">${q.items.map((i) => `${esc(i.name)}${i.type ? ' — ' + esc(i.type) : ''}: ${i.quantity} × ${i.unit_price.toFixed(2)}${i.unit_price_to != null ? ' – ' + i.unit_price_to.toFixed(2) : ''}${i.description ? `<span class="item-desc">${esc(i.description)}</span>` : ''}`).join('<br>')}</td>
-            <td><strong>${q.total.toFixed(2)}${q.details && q.details.range ? ' – ' + q.details.range.total_to.toFixed(2) : ''}</strong></td>
+            <td><strong>${q.total.toFixed(2)}${q.details && q.details.range ? ' – ' + q.details.range.total_to.toFixed(2) : ''}</strong>
+                ${q.details && q.details.free_lines && ME && ME.role === 'manager' ? `<br><span class="badge" style="background:#fdf2e1;color:#8a5a00" title="أسعار كتبها الموظف يدوياً — لا يراها حد الخصم">بند حر × ${esc(q.details.free_lines)}</span>` : ''}</td>
             <td>${esc(SOURCE_NAMES[q.source] || q.source)}</td>
             <td><small>${esc(q.notify_status || '—')}</small></td>
             <td>
@@ -486,7 +489,7 @@ async function loadQuotes() {
                 ${q.details && q.details.staff_quote && !q.invoice && ['new', 'contacted'].includes(q.status) ? `<br><button class="link-btn" style="margin:4px 0 0" onclick="openQuoteBuilder({ quote: quotesCache.find((x) => x.id === ${q.id}) })">تعديل البنود</button>` : ''}</td>
         </tr>`).join('');
     quotesCache = rows;
-    if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; }).catch(() => {});
+    if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; $id('staffFreeLines').checked = st.staff_free_lines !== false; }).catch(() => {});
     $id('quotesEmpty').style.display = rows.length ? 'none' : 'block';
 }
 
@@ -555,6 +558,7 @@ async function viewQuote(id) {
         ${d.fees_note ? `<p class="status-text">${esc(d.fees_note)}</p>` : ''}
         ${d.extra_fees_note ? `<p class="status-text">${esc(d.extra_fees_note)}</p>` : ''}
         ${q.notes ? `<div class="wo-desc no-i18n">${esc(q.notes)}</div>` : ''}
+        ${d.free_lines && ME && ME.role === 'manager' ? `<p class="status-text" style="color:#8a5a00">⚠️ في هذا العرض ${esc(d.free_lines)} بند حر بسعر كتبه الموظف يدوياً — راجع سعره، فحد الخصم لا يراه.</p>` : ''}
         <div class="form-buttons">
             <button class="btn btn-outline" onclick="openQuotePdf(${q.id})"><i class="fas fa-file-pdf"></i> تحميل PDF</button>
             ${canEdit ? `<button class="btn btn-outline" onclick="viewQuoteEdit(${q.id})"><i class="fas fa-pen"></i> تعديل البنود</button>` : ''}
@@ -607,7 +611,8 @@ function fillPromo(st) {
     $id('promoUntil').value = st.promo_until || '';
     const parts = st.promo_parts || {};
     $id('promoScope').innerHTML = Object.entries(PROMO_KINDS).map(([k, kind]) => {
-        const chosen = Array.isArray(parts[k]) && parts[k].length ? parts[k] : Object.keys(kind.parts); // none chosen = all
+        // None chosen yet = the goods; the installation and delivery are discounted only when ticked
+        const chosen = Array.isArray(parts[k]) && parts[k].length ? parts[k] : Object.keys(kind.parts).filter((p) => !['installation', 'delivery'].includes(p));
         return `<div class="promo-kind"><label><input type="checkbox" value="${k}" ${(st.promo_scope || []).includes(k) ? 'checked' : ''}> ${kind.name}</label>
             <div class="promo-parts" data-kind="${k}">${Object.entries(kind.parts).map(([p, label]) =>
                 `<label><input type="checkbox" value="${p}" ${chosen.includes(p) ? 'checked' : ''}> ${label}</label>`).join('')}</div></div>`;
@@ -677,7 +682,7 @@ async function saveGift() {
 
 async function saveQuoteValidity() {
     try {
-        await api('PUT', '/api/admin/settings', { quote_validity_days: Number($id('quoteValidityDays').value) });
+        await api('PUT', '/api/admin/settings', { quote_validity_days: Number($id('quoteValidityDays').value), staff_free_lines: $id('staffFreeLines').checked });
         alert('تم الحفظ ✓ — تُطبَّق على العروض الجديدة');
     } catch (err) { alert(err.message); }
 }
