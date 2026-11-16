@@ -42,6 +42,8 @@
         if (stack.includes(sheet)) return;
         enhance(sheet);
         stack.push(sheet);
+        // The panel opened last is on top, wherever it sits in the page (a quote opened from a customer's file)
+        sheet.style.zIndex = String(150 + stack.length);
         dirty.delete(sheet.id);
         const card = sheet.querySelector('.sheet-card');
         if (card) { card.scrollTop = 0; card.style.transform = ''; }
@@ -53,6 +55,7 @@
         const i = stack.indexOf(sheet);
         if (i === -1) return;
         stack.splice(i, 1);
+        sheet.style.zIndex = '';
         dirty.delete(sheet.id);
         if (!stack.length) document.documentElement.classList.remove('sheet-open');
         // Closed by its × / a save: take its step out of the back history too

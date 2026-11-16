@@ -620,3 +620,22 @@ html.lang-en .msg, html.lang-en .msg-text, html.lang-en .n-text, html.lang-en #p
 .quote-totals > div:last-child { border-bottom: 0; }
 .quote-totals .grand { background: var(--primary); color: #fff; font-weight: 700; font-size: 1rem; }
 #quoteDetail s { color: var(--text-light); font-weight: 400; margin-inline-end: 4px; }
+
+/* The quote on a phone: each item is a card — its name and description across the full width, then the figures */
+.qv-item > div { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+    #quoteDetail h3 { font-size: 1.05rem; line-height: 1.5; }
+    #quoteDetail .wo-line { font-size: 0.88rem; line-height: 1.7; overflow-wrap: anywhere; }
+    #quoteDetail .money-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    #quoteDetail .money-grid strong { font-size: 0.9rem; overflow-wrap: anywhere; }
+    .qv-table .qv-n { display: none; }
+    .qv-table td.qv-item { display: block; text-align: start; padding-bottom: 8px; border-bottom: 1px dashed var(--border); margin-bottom: 4px; }
+    .qv-table td.qv-item > div { width: 100%; }
+    .qv-table tr { display: grid; grid-template-columns: 1fr 1fr 1.3fr; padding: 8px 6px; }
+    .qv-table td.qv-item { grid-column: 1 / -1; }
+    .qv-table td { flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 8px; width: auto; }
+    .qv-table td::before { font-size: 0.75rem; font-weight: 400; }
+    .qv-table td > span, .qv-table td > strong { direction: ltr; white-space: nowrap; }
+    .quote-totals { max-width: none; }
+    #quoteDetail .form-buttons .btn { flex: 1 1 45%; }
+}
