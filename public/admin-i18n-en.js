@@ -2,6 +2,13 @@
    Used by admin-i18n.js only when the user chose English. To add a text, add
    its exact Arabic (spaces collapsed) and the English. */
 window.I18N_EN = {
+    "التسلسل": "No.",
+    "تاريخ التسجيل": "Registered",
+    "بحث: اسم العميل، رقم الجوال، رقم العرض": "Search: customer name, mobile, quote no.",
+    "بحث: الاسم، الجوال، التسلسل، المنطقة، البريد": "Search: name, mobile, no., area, email",
+    "صالح حتى": "valid until",
+    "أعدّ العرض": "Prepared by",
+    "خصم 100%": "100% off",
     "آخر نشاط الآن": "last activity now",
     "ر.ع/م²": "OMR/m²",
     "% (تلقائي)": "% (automatic)",
@@ -2439,6 +2446,8 @@ window.I18N_EN = {
 
 /* Texts with a number or name inside: [regular expression, replacement] */
 window.I18N_EN_PATTERNS = [
+    [/^ضريبة القيمة المضافة ([\d.]+)%$/, 'VAT $1%'],
+    [/^هدية: (.*) — خصم 100%$/, 'Gift: $1 — 100% off'],
     // Work-order log lines written by the system
     [/^أُنشئ أمر (\S+) وأُسند إلى (.+)$/, (m, k, who) => `${window.t ? window.t(k) : k} order created and assigned to ${who}`],
     [/^أُنشئ أمر (\S+)$/, (m, k) => `${window.t ? window.t(k) : k} order created`],

@@ -457,11 +457,13 @@ let quotesCache = [];
 async function loadQuotes() {
     if ($id('qbCostBtn')) $id('qbCostBtn').hidden = !canSee('purchases');
     if (!online) return;
-    const status = $id('quoteFilter').value;
-    const rows = await api('GET', '/api/admin/quotes' + (status ? '?status=' + status : ''));
+    const params = new URLSearchParams();
+    if ($id('quoteFilter').value) params.set('status', $id('quoteFilter').value);
+    if ($id('quoteSearch').value.trim()) params.set('q', $id('quoteSearch').value.trim());
+    const rows = await api('GET', '/api/admin/quotes?' + params);
     $id('quotesBody').innerHTML = rows.map((q) => `
         <tr>
-            <td><strong>${esc(q.ref)}</strong></td>
+            <td><button class="link-btn" style="margin:0; font-weight:700" onclick="viewQuote(${q.id})" title="عرض">${esc(q.ref)}</button></td>
             <td>${esc(q.created_at)}</td>
             <td>${esc(q.customer_name)}${q.customer_city ? '<br><small>' + esc(q.customer_city) + '</small>' : ''}
                 ${q.notes ? '<br><small style="color:var(--text-light)">' + esc(q.notes) + '</small>' : ''}</td>
@@ -481,13 +483,93 @@ async function loadQuotes() {
             <td style="white-space:nowrap">${q.invoice
                 ? `<button class="btn btn-outline btn-sm" onclick="openInvoice(${q.invoice.id})">${esc(q.invoice.number)}</button>`
                 : canSee('invoices') && !['rejected'].includes(q.status) ? `<button class="btn btn-primary btn-sm" onclick="newInvoice(${q.id})">إصدار فاتورة</button>` : '—'}</td>
-            <td style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="openQuotePdf(${q.id})">PDF</button>
+            <td style="white-space:nowrap"><button class="btn btn-primary btn-sm" onclick="viewQuote(${q.id})"><i class="fas fa-eye"></i> عرض</button>
+                <button class="btn btn-outline btn-sm" onclick="openQuotePdf(${q.id})">PDF</button>
                 ${q.details && q.details.staff_quote && !q.invoice && ['new', 'contacted'].includes(q.status) ? `<br><button class="link-btn" style="margin:4px 0 0" onclick="openQuoteBuilder({ quote: quotesCache.find((x) => x.id === ${q.id}) })">تعديل البنود</button>` : ''}</td>
         </tr>`).join('');
     quotesCache = rows;
     if (ME && ME.role === 'manager') api('GET', '/api/admin/settings').then((st) => { $id('quoteValidityDays').value = st.quote_validity_days; }).catch(() => {});
     $id('quotesEmpty').style.display = rows.length ? 'none' : 'block';
 }
+
+let quotesTimer = null;
+function debouncedQuotes() { clearTimeout(quotesTimer); quotesTimer = setTimeout(() => loadQuotes().catch(() => {}), 250); }
+
+/* The quote on screen, as the PDF shows it: customer, items, discounts and totals — nothing to download */
+async function viewQuote(id) {
+    let q;
+    try { q = await api('GET', `/api/admin/quotes/${id}`); } catch (err) { return alert(err.message); }
+    const d = q.details || {};
+    const range = d.range || {};
+    const m = (n) => Number(n || 0).toFixed(2);
+    const amount = (from, to) => (to != null && Math.abs(to - from) > 0.004 ? `${m(from)} – ${m(to)}` : m(from));
+    const phone = String(q.customer_phone || '').replace(/\D/g, '');
+    const unit = (i) => `${m(i.unit_price)}${i.unit_price_to != null ? ' – ' + m(i.unit_price_to) : ''}`;
+    const lineTotal = (i) => {
+        if (i.gift) return `<s>${m(i.gross)}</s> 0.00`;
+        const now = amount(i.line_total, i.line_total_to);
+        return i.gross != null && i.gross - i.line_total > 0.004 ? `<s>${m(i.gross)}</s> ${now}` : now;
+    };
+    // Discounts: the manager's promotion, the gift, and the employee's own discount
+    const promo = Number(d.promo_amount) || 0;
+    const gift = Number(d.gift_amount) || 0;
+    const all = Number(d.discount_total) || 0;
+    const own = Math.round((all - promo - gift) * 100) / 100;
+    const promoLabel = `${d.promo_label || 'الخصم'}${d.promo_percent ? ` — خصم ${d.promo_percent}%` : ''}${Array.isArray(d.promo_parts) && d.promo_parts.length ? ` (${d.promo_parts.join(' و')})` : ''}`;
+    const totals = [
+        ...(all > 0.004 ? [['المجموع قبل الخصم', amount(d.gross_subtotal, d.gross_subtotal_to)]] : []),
+        ...(all > 0.004 && d.staff_quote ? [
+            ...(promo > 0.004 ? [[promoLabel, '-' + m(promo)]] : []),
+            ...(gift > 0.004 ? [[`هدية: ${d.gift_name || ''} — خصم 100%`, '-' + m(gift)]] : []),
+            ...(own > 0.004 ? [['الخصم', '-' + m(own)]] : [])
+        ] : all > 0.004 ? [
+            ...(all - gift > 0.004 ? [[promoLabel, '-' + amount(all - gift, d.discount_total_to != null ? d.discount_total_to - gift : null)]] : []),
+            ...(gift > 0.004 ? [[`هدية: ${d.gift_name || ''} — خصم 100%`, '-' + m(gift)]] : [])
+        ] : []),
+        ['المجموع قبل الضريبة', amount(q.subtotal, range.subtotal_to)],
+        [`ضريبة القيمة المضافة ${q.vat_percent}%`, amount(q.vat, range.vat_to)]
+    ];
+    const canEdit = d.staff_quote && !q.invoice && ['new', 'contacted'].includes(q.status) && canSee('quotes');
+    $id('quoteDetail').innerHTML = `
+        <h3><i class="fas fa-file-invoice-dollar"></i> عرض سعر <span dir="ltr">${esc(q.ref)}</span>
+            <span class="badge">${esc(STATUS_NAMES[q.status] || q.status)}</span>
+            ${q.expired ? '<span class="badge" style="background:#fdecea;color:#a93226">منتهي</span>' : ''}</h3>
+        <div class="wo-line"><i class="fas fa-user"></i> <strong class="no-i18n">${esc(q.customer_name || '—')}</strong>
+            ${phone ? ` — <a href="tel:+${esc(phone)}" dir="ltr">+${esc(phone)}</a> — <a href="https://wa.me/${esc(phone)}" target="_blank" rel="noopener">واتساب</a>` : ''}
+            ${q.customer_city ? ` — <span class="no-i18n">${esc(q.customer_city)}</span>` : ''}</div>
+        <div class="wo-line"><i class="fas fa-calendar"></i> ${esc(String(q.created_at).slice(0, 16))}
+            ${q.valid_until ? ` — صالح حتى ${esc(q.valid_until)}` : ''} — ${esc(SOURCE_NAMES[q.source] || q.source)}
+            ${d.staff_quote && d.created_by ? ` — أعدّ العرض: <span class="no-i18n">${esc(d.created_by)}</span>` : ''}</div>
+        ${Array.isArray(d.spec) && d.spec.length ? `<div class="money-grid">${d.spec.map(([k, v]) => `<div><small>${esc(k)}</small><strong>${esc(v)}</strong></div>`).join('')}</div>` : ''}
+        <div class="table-wrapper"><table class="stack-table">
+            <thead><tr><th>#</th><th>البند</th><th>الكمية</th><th>سعر الوحدة</th><th>المجموع</th></tr></thead>
+            <tbody>${q.items.map((i, n) => `<tr>
+                <td data-label="#">${n + 1}</td>
+                <td data-label="البند"><strong>${esc(i.name)}</strong>${i.type ? ' — ' + esc(i.type) : ''}${i.description ? `<span class="item-desc no-i18n">${esc(i.description)}</span>` : ''}</td>
+                <td data-label="الكمية">${esc(i.quantity)}</td>
+                <td data-label="سعر الوحدة">${unit(i)}</td>
+                <td data-label="المجموع"><strong>${lineTotal(i)}</strong></td></tr>`).join('')}</tbody>
+        </table></div>
+        <div class="quote-totals">
+            ${totals.map(([k, v]) => `<div><span>${esc(k)}</span><span dir="ltr">${esc(v)}</span></div>`).join('')}
+            <div class="grand"><span>الإجمالي (ر.ع)</span><span dir="ltr">${amount(q.total, range.total_to)}</span></div>
+        </div>
+        ${d.fees_note ? `<p class="status-text">${esc(d.fees_note)}</p>` : ''}
+        ${d.extra_fees_note ? `<p class="status-text">${esc(d.extra_fees_note)}</p>` : ''}
+        ${q.notes ? `<div class="wo-desc no-i18n">${esc(q.notes)}</div>` : ''}
+        <div class="form-buttons">
+            <button class="btn btn-outline" onclick="openQuotePdf(${q.id})"><i class="fas fa-file-pdf"></i> تحميل PDF</button>
+            ${canEdit ? `<button class="btn btn-outline" onclick="viewQuoteEdit(${q.id})"><i class="fas fa-pen"></i> تعديل البنود</button>` : ''}
+            ${q.invoice ? (canSee('invoices') ? `<button class="btn btn-outline" onclick="closeSheet('quoteSheet'); openInvoice(${q.invoice.id})">${esc(q.invoice.number)}</button>` : '')
+                : canSee('invoices') && q.status !== 'rejected' ? `<button class="btn btn-primary" onclick="closeSheet('quoteSheet'); newInvoice(${q.id})">إصدار فاتورة</button>` : ''}
+        </div>`;
+    viewedQuote = q;
+    // Opened from a customer's file: the invoice window finds the quote in this list
+    if (!quotesCache.some((x) => x.id === q.id)) quotesCache.push(q);
+    $id('quoteSheet').hidden = false;
+}
+let viewedQuote = null;
+function viewQuoteEdit() { closeSheet('quoteSheet'); openQuoteBuilder({ quote: viewedQuote }); }
 
 /* The admin PDF needs the auth header, so fetch it as a blob and download it */
 async function openQuotePdf(id) {

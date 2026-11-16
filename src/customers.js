@@ -84,8 +84,10 @@ function list(db, { q = '', owes = false, limit = 300, mineOf = null } = {}) {
     if (q) {
         const like = `%${clip(q, 60)}%`;
         const digits = String(q).replace(/\D/g, '');
-        where.push(`(IFNULL(name, '') LIKE ? OR IFNULL(city, '') LIKE ? OR IFNULL(email, '') LIKE ?${digits ? ' OR phone LIKE ? OR IFNULL(phone2, \'\') LIKE ?' : ''})`);
-        args.push(like, like, like, ...(digits ? [`%${digits}%`, `%${digits}%`] : []));
+        // The customer's number («C-0012» or just «12») finds that customer too
+        const serial = String(q).trim().match(/^(?:c-?)?0*(\d{1,7})$/i);
+        where.push(`(IFNULL(name, '') LIKE ? OR IFNULL(city, '') LIKE ? OR IFNULL(email, '') LIKE ?${digits ? ' OR phone LIKE ? OR IFNULL(phone2, \'\') LIKE ?' : ''}${serial ? ' OR id = ?' : ''})`);
+        args.push(like, like, like, ...(digits ? [`%${digits}%`, `%${digits}%`] : []), ...(serial ? [Number(serial[1])] : []));
     }
     if (mineOf) {
         where.push(`NOT EXISTS (
@@ -140,7 +142,7 @@ function list(db, { q = '', owes = false, limit = 300, mineOf = null } = {}) {
             GROUP BY cp.customer_id
         ),
         lead_stats AS (
-            SELECT cp.customer_id, MAX(l.last_activity_at) AS last_at
+            SELECT cp.customer_id, MAX(l.last_activity_at) AS last_at, MAX(NULLIF(l.assigned_to, '')) AS assigned_to
             FROM customer_phones cp LEFT JOIN leads l ON l.phone = cp.phone
             GROUP BY cp.customer_id
         ),
@@ -151,6 +153,7 @@ function list(db, { q = '', owes = false, limit = 300, mineOf = null } = {}) {
                    ROUND(COALESCE(p.paid, 0), 2) AS paid,
                    ROUND(COALESCE(i.invoiced, 0) - COALESCE(p.paid, 0), 2) AS balance,
                    COALESCE(w.open_jobs, 0) AS open_jobs,
+                   l.assigned_to AS assigned_to,
                    MAX(COALESCE(q.last_at, ''), COALESCE(i.last_at, ''), COALESCE(w.last_at, ''),
                        COALESCE(l.last_at, ''), c.created_at) AS last_activity
             FROM selected_customers c
@@ -167,10 +170,14 @@ function list(db, { q = '', owes = false, limit = 300, mineOf = null } = {}) {
     `).all(...args, safeLimit);
     return rows.map((c) => ({
         ...c,
+        number: serialOf(c.id),
         quote_count: Number(c.quote_count), invoiced: round2(c.invoiced), paid: round2(c.paid),
         balance: round2(c.balance), open_jobs: Number(c.open_jobs)
     }));
 }
+
+/* The customer's number: fixed for life (it follows the record's id), shown as C-0012 */
+const serialOf = (id) => `C-${String(id).padStart(4, '0')}`;
 
 /* Everything about one customer */
 function profile(db, id, { invoicesLib, workordersLib }) {

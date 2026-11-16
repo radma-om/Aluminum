@@ -613,3 +613,10 @@ html.lang-en .msg, html.lang-en .msg-text, html.lang-en .n-text, html.lang-en #p
 @media (max-width: 900px) {
     html.lang-en body:not(.sb-open) .sidebar { transform: translateX(-100%); }
 }
+
+/* A quote shown on screen: the totals box */
+.quote-totals { margin: 12px 0; margin-inline-start: auto; max-width: 380px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #fff; }
+.quote-totals > div { display: flex; justify-content: space-between; gap: 16px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.quote-totals > div:last-child { border-bottom: 0; }
+.quote-totals .grand { background: var(--primary); color: #fff; font-weight: 700; font-size: 1rem; }
+#quoteDetail s { color: var(--text-light); font-weight: 400; margin-inline-end: 4px; }
