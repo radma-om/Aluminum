@@ -1977,18 +1977,20 @@
             <div class="card" id="walletMineCard" hidden>
                 <div class="card-title"><span class="icon"><i class="fas fa-wallet"></i></span> عهدتي</div>
                 <div class="wallet-hero" id="walletHero"></div>
-                <div class="wallet-actions">
+                <div class="wallet-actions four">
                     <button class="btn wallet-btn expense" onclick="walletNew('expense')"><i class="fas fa-cart-shopping"></i> صرف</button>
+                    <button class="btn wallet-btn receive" onclick="walletNew('receive')"><i class="fas fa-circle-plus"></i> استلمت مبلغ</button>
                     <button class="btn wallet-btn ask" onclick="walletAsk()"><i class="fas fa-hand-holding-dollar"></i> طلب مبلغ</button>
-                    <button class="btn wallet-btn return" onclick="walletNew('return')"><i class="fas fa-rotate-left"></i> تسليم للمكتب</button>
+                    <button class="btn wallet-btn return" onclick="walletNew('return')"><i class="fas fa-rotate-left"></i> إرجاع مبلغ للمكتب</button>
                 </div>
                 <div id="walletMineRequests"></div>
                 <div id="walletMineBook"></div>
             </div>
             <div class="card manager-only" id="walletAdminCard" hidden>
                 <div class="card-title"><span class="icon"><i class="fas fa-wallet"></i></span> عهد الموظفين والفنيين</div>
-                <p class="status-text" style="margin:0 0 10px">يستلم الموظف مبلغاً للعهدة ويصرف منه (بترول، أكل، أدوات، قطع…) مع صورة الإيصال، فيتناقص الرصيد. يصلك إشعار مع كل صرف، وإشعار وتنبيه أعلى اللوحة إذا قلّ رصيد أحدهم عن الحد. ويستطيع الموظف طلب مبلغ فتوافق عليه أو ترفضه.</p>
+                <p class="status-text" style="margin:0 0 10px">يستلم الموظف مبلغاً للعهدة ويصرف منه (بترول، أكل، أدوات، قطع…) مع صورة الإيصال، فيتناقص الرصيد. يصلك إشعار مع كل صرف، وإشعار وتنبيه أعلى اللوحة إذا قلّ رصيد أحدهم عن الحد. ويستطيع الموظف طلب مبلغ فتوافق عليه أو ترفضه، وإذا أرجع مبلغاً للمكتب فلا يُخصم من رصيده حتى تؤكد أنك استلمته.</p>
                 <div class="money-grid" id="walletTotals"></div>
+                <div id="walletReturns"></div>
                 <div id="walletRequests"></div>
                 <div class="table-wrapper"><table class="stack-table">
                     <thead><tr><th>الموظف</th><th>الرصيد</th><th>الحد الأدنى</th><th>آخر عملية</th><th></th></tr></thead>
@@ -2478,7 +2480,7 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
                 <p class="status-text" id="walletFor" style="margin:0 0 8px"></p>
                 <div class="form-group"><label>المبلغ <span class="unit">(ر.ع)</span></label><input type="number" id="wAmount" class="wallet-amount" min="0.001" step="0.001" inputmode="decimal" required></div>
                 <div class="form-group" id="wCatBox"><label>التصنيف</label><div class="wallet-cats" id="wCats"></div></div>
-                <div class="form-group"><label>التفاصيل</label><textarea id="wDetails" rows="2" maxlength="500" placeholder="مثلاً: بترول السيارة، غداء الفريق، مسامير وبراغي"></textarea></div>
+                <div class="form-group"><label id="wDetailsLabel">التفاصيل</label><textarea id="wDetails" rows="2" maxlength="500" placeholder="مثلاً: بترول السيارة، غداء الفريق، مسامير وبراغي"></textarea></div>
                 <div class="form-grid two">
                     <div class="form-group"><label>التاريخ</label><input type="datetime-local" id="wWhen"></div>
                     <div class="form-group" id="wPhotoBox"><label>صورة الإيصال <span class="unit">(اختياري)</span></label><input type="file" id="wPhoto" accept="image/*"></div>

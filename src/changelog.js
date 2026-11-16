@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.43.0', date: '2026-11-17',
+        ar: ['«تسليم للمكتب» أصبح «إرجاع مبلغ للمكتب»، ولا يُخصم من الرصيد حتى يؤكد المدير أنه استلم المبلغ («استلمته» أو «لم أستلمه» بسبب)', 'زر جديد «استلمت مبلغ»: يسجّل الموظف مبلغاً استلمه (ممن؟) فيُضاف إلى عهدته فوراً، ويصل إشعار للإدارة'],
+        en: ['«Return to office» is now «Return money to the office», and it is deducted only once the manager confirms receiving the money («Received» or «Not received» with a reason)', 'A new «I received money» button: the employee records money received (from whom?) and it is added to their petty cash at once; the office is notified']
+    },
+    {
         version: '3.42.1', date: '2026-11-17',
         ar: ['النسخة الاحتياطية (Excel) تشمل دفاتر العهدة وطلبات المبالغ وصور الإيصالات، وتُستعاد كاملة', 'إذا كبرت النسخة على البريد تُرسل بلا صور الإيصالات (تبقى في النسخ اليومية على الخادم)'],
         en: ['The backup (Excel) includes the petty cash books, money requests and receipt photos, and restores them in full', 'If the backup is too big for email it is sent without the receipt photos (they stay in the daily backups on the server)']

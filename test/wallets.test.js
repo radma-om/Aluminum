@@ -40,8 +40,8 @@ test('the book: received, spent, returned — the balance goes down; managers ar
     await call('POST', '/api/admin/me/push', { subscription: device('ahmed') }, tk);
     saveSettings(db, { wallet_min_default: 20 });
 
-    // Only the office records money handed over; the employee asks for it
-    assert.equal((await call('POST', `/api/admin/wallet/${tech.id}/entries`, { kind: 'receive', amount: 50 }, tk)).status, 403);
+    // The employee who records money received says where it came from
+    assert.equal((await call('POST', `/api/admin/wallet/${tech.id}/entries`, { kind: 'receive', amount: 50 }, tk)).status, 400);
     sent.length = 0;
     const got = await call('POST', `/api/admin/wallet/${tech.id}/entries`, { kind: 'receive', amount: 50, details: 'عهدة الأسبوع' });
     assert.equal(got.status, 201);
@@ -118,4 +118,57 @@ test('a request: the employee asks, the manager approves (another amount) or dec
     // The manager sets a lowest balance for this employee
     assert.equal((await call('PUT', `/api/admin/wallet/${tech.id}/min`, { min: 50 })).body.low, true);
     assert.equal((await call('PUT', `/api/admin/wallet/${tech.id}/min`, { min: 10 }, tk)).status, 403);
+});
+
+test('«استلمت مبلغ» counts at once; «إرجاع مبلغ للمكتب» waits for the manager to confirm (or decline) it', async (t) => {
+    const { db, call, login } = await start(t);
+    const tech = staff.create(db, { username: 'ahmed', display_name: 'أحمد الفني', password: 'pass-12345', role: 'technician' });
+    const tk = await login('ahmed');
+    await call('POST', '/api/admin/me/push', { subscription: device('owner') });
+    await call('POST', '/api/admin/me/push', { subscription: device('ahmed') }, tk);
+    saveSettings(db, { wallet_min_default: 20 });
+
+    sent.length = 0;
+    const got = await call('POST', `/api/admin/wallet/${tech.id}/entries`, { kind: 'receive', amount: 60, details: 'من المدير نقداً' }, tk);
+    assert.equal(got.status, 201);
+    assert.equal(got.body.balance, 60);
+    assert.ok(sent.some((s) => s.endpoint.endsWith('/owner') && /استلمت 60.00/.test(s.title)), 'the managers are told');
+
+    sent.length = 0;
+    const back = await call('POST', `/api/admin/wallet/${tech.id}/entries`, { kind: 'return', amount: 45, details: 'باقي الأسبوع' }, tk);
+    assert.equal(back.status, 201);
+    assert.equal(back.body.entry.pending, true);
+    assert.equal(back.body.entry.kind_label, 'إرجاع مبلغ للمكتب');
+    assert.equal(back.body.balance, 60, 'not counted before the manager confirms');
+    assert.ok(sent.some((s) => s.endpoint.endsWith('/owner') && /بانتظار تأكيدك/.test(s.body)));
+    let mine = (await call('GET', '/api/admin/wallet/me', undefined, tk)).body;
+    assert.equal(mine.pending_return, 45);
+    assert.equal(mine.entries[0].balance_after, 60);
+    const overview = (await call('GET', '/api/admin/wallet')).body;
+    assert.deepEqual(overview.returns.map((r) => [r.id, r.amount, r.name]), [[back.body.entry.id, 45, 'أحمد الفني']]);
+
+    // Only a manager confirms, once
+    assert.equal((await call('POST', `/api/admin/wallet/entries/${back.body.entry.id}/confirm`, {}, tk)).status, 403);
+    sent.length = 0;
+    const ok = await call('POST', `/api/admin/wallet/entries/${back.body.entry.id}/confirm`, {});
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.balance, 15);
+    assert.ok(sent.some((s) => s.endpoint.endsWith('/ahmed') && /أكدت الإدارة استلام 45.00/.test(s.title)));
+    assert.ok(sent.some((s) => /أقل من الحد/.test(s.title)), 'the balance now below the limit warns');
+    assert.equal((await call('POST', `/api/admin/wallet/entries/${back.body.entry.id}/confirm`, {})).status, 400);
+    mine = (await call('GET', '/api/admin/wallet/me', undefined, tk)).body;
+    assert.equal(mine.pending_return, 0);
+    assert.equal(mine.entries[0].confirmed_by, 'المدير العام');
+
+    // Declined: the manager cancels it with the reason; the balance does not change
+    const again = await call('POST', `/api/admin/wallet/${tech.id}/entries`, { kind: 'return', amount: 10 }, tk);
+    sent.length = 0;
+    await call('POST', `/api/admin/wallet/entries/${again.body.entry.id}/cancel`, { reason: 'لم يصلني المبلغ' });
+    assert.ok(sent.some((s) => s.endpoint.endsWith('/ahmed') && /لم تؤكد الإدارة/.test(s.title) && /لم يصلني/.test(s.body)));
+    assert.equal((await call('GET', '/api/admin/wallet/me', undefined, tk)).body.balance, 15);
+
+    // A return the manager records in the employee's book counts at once
+    const direct = await call('POST', `/api/admin/wallet/${tech.id}/entries`, { kind: 'return', amount: 5 });
+    assert.equal(direct.body.entry.pending, false);
+    assert.equal(direct.body.balance, 10);
 });
