@@ -29,13 +29,36 @@
         if (!key || !ARABIC.test(key)) return null;
         const d = dict();
         if (Object.prototype.hasOwnProperty.call(d, key)) return d[key];
+        const pat = byPattern(key);
+        if (pat !== null) return pat;
+        const whole = lookBare(d, key);
+        if (whole !== null) return whole;
+        // «العنوان: سبب، سبب آخر» — a server message made of whole sentences joined by a colon / comma / dash
+        const pieces = key.split(/(\s*[:،؛]\s+|\s+—\s+)/);
+        if (pieces.length > 1) {
+            const out = pieces.map((p, i) => (i % 2 ? p.replace('،', ',').replace('؛', ';') : !ARABIC.test(p) ? p : lookBare(d, p) ?? byPattern(p)));
+            if (!out.includes(null)) return out.join('');
+        }
+        return byParts(d, key);
+    }
+    /* …or the same with a mark around it («⚠️ …», «… ✓», «(…)», a final full stop) */
+    function lookBare(d, s) {
+        const direct = look(d, s);
+        if (direct !== null) return direct;
+        const m = s.match(/^([^\u0620-\u06D3A-Za-z0-9]*)(.*?)([^\u0620-\u06D3A-Za-z0-9)»]*)$/);
+        if (!m || (!m[1] && !m[3]) || !m[2]) return null;
+        for (const [pre, core, suf] of [[m[1], m[2] + m[3], ''], ['', m[1] + m[2], m[3]], [m[1], m[2], m[3]]]) {
+            const v = look(d, core.trim());
+            if (v !== null) return pre + v + suf;
+        }
+        return null;
+    }
+    function byPattern(key) {
         for (const [re, to] of patterns()) {
             const m = key.match(re);
             if (m) return typeof to === 'function' ? to(...m) : key.replace(re, to);
         }
-        const whole = look(d, key);
-        if (whole !== null) return whole;
-        return byParts(d, key);
+        return null;
     }
     const has = (d, k) => Object.prototype.hasOwnProperty.call(d, k);
     /* A text as it is, or a label followed by a colon / «*» / «…» */
@@ -52,28 +75,37 @@
     function byParts(d, key) {
         let hit = false;
         let unknown = 0;
-        let known = 0;
+        let mixed = false;
         const out = key.replace(/[^0-9A-Za-z\u0660-\u0669]+/g, (seg) => {
             if (!ARABIC.test(seg)) return seg;
             const lead = seg.match(/^\s*/)[0];
             const trail = seg.match(/\s*$/)[0];
             const found = look(d, seg.trim());
-            if (found !== null) { hit = true; known += seg.trim().split(/\s+/).length; return lead + found + trail; }
-            return seg.replace(RUN, (r) => {
-                const v = look(d, r);
-                if (v !== null) { hit = true; known += r.split(/\s+/).length; return v; }
-                unknown += r.split(/\s+/).length;
-                return r;
-            });
+            if (found !== null) { hit = true; return lead + found + trail; }
+            // Clause by clause («صيانة — سالم»): a clause is a label we know or a name we leave; a clause that is
+            // half known is data (a product name, a description someone typed) and must not be touched
+            return seg.split(/(\s+[—·]\s+|\s*[:،]\s+)/).map((clause, i) => {
+                if (i % 2 || !ARABIC.test(clause)) return clause;
+                let yes = 0;
+                let no = 0;
+                const done = clause.replace(RUN, (r) => {
+                    const v = look(d, r);
+                    if (v === null) { no++; unknown += r.split(/\s+/).length; return r; }
+                    yes++;
+                    return v;
+                });
+                if (yes && no) mixed = true;
+                if (yes) hit = true;
+                return done;
+            }).join('');
         });
-        // A name or two left in Arabic is fine; a half-translated sentence is not — then it stays as written
-        return hit && unknown <= 3 && unknown < known ? out : null;
+        return hit && !mixed && unknown <= 4 ? out : null;
     }
     window.t = (s) => (window.APP_LANG === 'en' ? en(s) ?? s : s);
 
     const ATTRS = ['placeholder', 'title', 'aria-label', 'alt', 'data-label'];
-    // What customers and staff wrote: chat messages, follow-up notes, technicians' reports
-    const KEEP = ['no-i18n', 'msg', 'msg-text', 'n-text', 'wo-ev', 'wo-feed-text'];
+    // What customers and staff wrote: chat messages and follow-up notes
+    const KEEP = ['no-i18n', 'msg', 'msg-text', 'n-text'];
     function translateNode(node) {
         if (node.nodeType === 3) {
             const v = node.nodeValue;
@@ -88,7 +120,7 @@
         }
         if (node.nodeType !== 1) return;
         const tag = node.tagName;
-        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA' || node.isContentEditable || node.hasAttribute('data-no-i18n')) return;
+        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA' || tag === 'PRE' || tag === 'CODE' || node.isContentEditable || node.hasAttribute('data-no-i18n')) return;
         for (const a of ATTRS) {
             const v = node.getAttribute(a);
             if (v && ARABIC.test(v)) { const out = en(v); if (out !== null) node.setAttribute(a, out); }
@@ -123,17 +155,32 @@
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
     }
 
-    /* The switch in the header: saved on the device and the account, then the page reloads in the other language */
+    /* The choice is kept on the device and on the staff account, so it follows the user to another phone.
+       A choice made before signing in (the link on the sign-in page) is sent to the account after sign-in. */
+    const store = (k, v) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); return true; } catch { return false; } };
+    const read = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+    async function saveToAccount(lang) {
+        const token = read('adminToken');
+        if (!token) return false;
+        try {
+            const res = await fetch('/api/admin/me/lang', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ lang }) });
+            return res.ok;
+        } catch { return false; }
+    }
     window.setLanguage = async (lang) => {
         lang = lang === 'en' ? 'en' : 'ar';
-        try { localStorage.setItem('adminLang', lang); } catch { /* private mode */ }
-        try { if (typeof api === 'function') await api('PUT', '/api/admin/me/lang', { lang }); } catch { /* signed out: the device keeps it */ }
+        store('adminLang', lang);
+        store('adminLangUnsaved', (await saveToAccount(lang)) ? null : '1');
         location.reload();
     };
-    /* After sign-in: the account's language wins (chosen on another phone) */
+    /* After sign-in: what was just chosen on this device goes to the account; otherwise the account's language wins */
     window.applyAccountLanguage = (user) => {
-        if (!user || user.owner || !user.lang || user.lang === window.APP_LANG) return;
-        try { localStorage.setItem('adminLang', user.lang); } catch { return; }
-        location.reload();
+        if (!user || user.owner) return;
+        if (read('adminLangUnsaved') || !user.lang) {
+            saveToAccount(window.APP_LANG).then((ok) => { if (ok) store('adminLangUnsaved', null); });
+            return;
+        }
+        if (user.lang === window.APP_LANG) return;
+        if (store('adminLang', user.lang)) location.reload();
     };
 })();
