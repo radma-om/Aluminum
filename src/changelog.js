@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.43.4', date: '2026-11-17',
+        ar: ['العهدة: الموظف الذي حددت له حداً أدنى خاصاً يظهر له التحذير حتى قبل أول عملية في دفتره', 'العمولات وأداء الموظفين: أمر العمل المكتمل على فاتورة أُلغيت لا يُحسب ضمن الأعمال المنجزة'],
+        en: ['Petty cash: an employee given a minimum of their own is warned even before the first entry in their book', 'Commissions and staff performance: a completed work order on a cancelled invoice no longer counts as a job done']
+    },
+    {
         version: '3.43.3', date: '2026-11-17',
         ar: ['تحذير الحد الأدنى للعهدة لا يظهر لموظف لم يستخدم العهدة أبداً', 'لكل موظف حده الخاص أو «بلا تنبيه» (0) من عمود «الحد الأدنى» في جدول العهد'],
         en: ['The petty cash minimum warning no longer shows for an employee who never used petty cash', 'Each employee can have a limit of their own, or «No alert» (0), from the «Minimum» column of the petty cash table']

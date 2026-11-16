@@ -82,6 +82,15 @@ test('a technician: the % of the installation fee of the installations completed
     assert.equal(me.base, 200);
     assert.equal(me.commission, 20, '10% of 200');
     assert.deepEqual(me.orders.map((o) => o.note), ['', 'تركيب هذه الفاتورة احتُسب في أمر سابق', 'بلا فاتورة أو عرض — لا مبلغ تركيب']);
+
+    // A job done on an invoice that is then cancelled (a trial): not a job done, no commission
+    const trial = sale(db, 'المكتب', 500, 100, 0, 0);
+    const o = workorders.create(db, { kind: 'installation', customer_name: 'تجربة', customer_phone: trial.customer_phone, description: 'تركيب', scheduled_date: today, technician_id: tech.id }, 'المكتب', { source: { invoice: trial } });
+    workorders.setStatus(db, o.id, 'done', 'تم', t);
+    assert.equal(bonuses.statement(db, month).people.find((p) => p.user_id === tech.id).count, 4);
+    invoices.cancel(db, trial.id, 'تجربة', 'المدير');
+    const after = bonuses.statement(db, month).people.find((p) => p.user_id === tech.id);
+    assert.deepEqual([after.count, after.base], [3, 200], 'the cancelled invoice\'s job is not counted');
 });
 
 test('the manager: the month, setting targets, approving (kept as it was); an employee sees only their own', async (t) => {
