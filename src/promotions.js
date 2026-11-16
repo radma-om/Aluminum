@@ -27,11 +27,14 @@ const MAX_GIFT_PRICE = 1000;
 const localToday = () => new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
 const ended = (until, today) => Boolean(until) && String(until) < today;
 
-/* The parts of a calculator a promotion covers (all of them when the manager chose none) */
+/* Services: a promotion covers them only when the manager ticks them */
+const SERVICES = ['installation', 'delivery'];
+/* The parts of a calculator a promotion covers: those the manager chose; none chosen (a promotion
+   saved before parts existed) = the goods only — never the installation or delivery by surprise */
 function partsOf(settings, kind) {
     const all = Object.keys(PARTS[kind] || {});
     const chosen = settings && settings.promo_parts && Array.isArray(settings.promo_parts[kind]) ? settings.promo_parts[kind].filter((p) => all.includes(p)) : [];
-    return chosen.length ? chosen : all;
+    return chosen.length ? chosen : all.filter((p) => !SERVICES.includes(p));
 }
 
 /* The running promotion for this calculator, or null */
@@ -148,4 +151,4 @@ function publicInfo(settings) {
     return promotion ? { ...promotion, gift } : { label: null, percent: 0, until: null, applies_to: [], gift };
 }
 
-module.exports = { active, activeGift, apply, promoCut, giftLine, partsOf, quoteDetails, publicInfo, KINDS, PARTS, MAX_PERCENT, MAX_GIFT_PRICE };
+module.exports = { SERVICES, active, activeGift, apply, promoCut, giftLine, partsOf, quoteDetails, publicInfo, KINDS, PARTS, MAX_PERCENT, MAX_GIFT_PRICE };

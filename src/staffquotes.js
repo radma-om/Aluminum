@@ -206,9 +206,23 @@ function price(db, input, settings) {
             discount_total: round2(grossSubtotal - subtotal),
             staff_discount: staffDiscount,
             // The employee's own discount, from the price after the promotion: this is what the limit checks
-            discount_percent: afterPromo > 0 ? Math.round((staffDiscount / afterPromo) * 10000) / 100 : 0
+            discount_percent: afterPromo > 0 ? Math.round((staffDiscount / afterPromo) * 10000) / 100 : 0,
+            // Lines whose price the employee typed (not from the catalog or a calculator): the limit cannot see
+            // a low price typed there, so managers see how many there are
+            ...(freeLines(input) ? { free_lines: freeLines(input) } : {})
         }
     };
+}
+
+/* Lines priced by hand: neither a calculator gate nor a catalog product */
+const freeLines = (input) => (Array.isArray(input && input.items) ? input.items : []).filter((l) => l && !l.calc && !l.product_id).length;
+
+/* Free lines are the manager's to allow: when switched off, only managers add them to a quote
+   (an invoice being edited keeps its own lines at the invoiced price) */
+function checkFreeLines(user, settings, input) {
+    const n = freeLines(input);
+    if (!n || settings.staff_free_lines !== false || limitFor(user, settings) === null) return;
+    throw err(400, 'البنود الحرة (بسعر يُكتب يدوياً) للمديرين فقط — اختر البند من المنتجات أو الحاسبات، أو اطلب من المدير');
 }
 
 /* The employee's limit in % (null = no limit: managers and the general manager) */
@@ -236,4 +250,4 @@ function checkLimit(user, settings, percent) {
     return limit;
 }
 
-module.exports = { price, discountOf, limitFor, checkLimit, limitBase, UNITS, CALCS };
+module.exports = { price, discountOf, limitFor, checkLimit, checkFreeLines, freeLines, limitBase, UNITS, CALCS };

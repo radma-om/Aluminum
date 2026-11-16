@@ -92,7 +92,8 @@ function quoteCost(db, input, priced, settings) {
             label = items[0].name;
         }
         const { cost, missing } = lineCost(db, line, items, settings);
-        return { label, cost, revenue: round2(revenue), profit: round2(revenue - cost), margin_percent: pct(revenue - cost, revenue), missing };
+        // A missing cost counts as zero: the profit shown is then the most it can be, not the real one
+        return { label, cost, revenue: round2(revenue), profit: round2(revenue - cost), margin_percent: pct(revenue - cost, revenue), missing, complete: !missing.length };
     });
     const extra = Math.max(0, round2(Number(input.extra_cost) || 0));
     const totalCost = round2(out.reduce((s, l) => s + l.cost, 0) + extra);
@@ -103,7 +104,8 @@ function quoteCost(db, input, priced, settings) {
         lines: out, extra_cost: extra, total_cost: totalCost, revenue, profit,
         margin_percent: pct(profit, revenue),    // profit / selling price
         markup_percent: pct(profit, totalCost),  // profit / cost
-        missing: out.flatMap((l) => l.missing)
+        missing: out.flatMap((l) => l.missing),
+        complete: out.every((l) => l.complete)
     };
 }
 

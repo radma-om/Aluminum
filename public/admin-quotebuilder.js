@@ -541,7 +541,10 @@ async function qbPreview() {
                 <div class="row" style="font-weight:700;color:${r.total + 0.005 < qbInvoice.paid ? '#a93226' : 'inherit'}"><span>المتبقي بعد التعديل</span><span>${qbMoney(r.total - qbInvoice.paid)}</span></div>
                 ${r.total + 0.005 < qbInvoice.paid ? '<div class="status-text" style="color:#a93226">⚠️ المدفوع أكبر من الإجمالي الجديد — لا يُحفظ التعديل (الدفعات لا تتغير).</div>' : ''}` : ''}
             ${limit !== null ? `<div class="status-text" style="color:${r.over_limit ? '#a93226' : 'inherit'}">${r.over_limit ? '⚠️ ' : ''}حد الخصم المسموح لك: ${esc(limit)}%${p.promo_amount || p.gift_amount ? ' (فوق العرض والهدية)' : ''}${r.over_limit ? ' — قلّل الخصم أو اطلب من المدير' : ''}</div>` : ''}`;
-        $id('qbSave').disabled = Boolean(r.over_limit) || Boolean(qbInvoice && r.total + 0.005 < qbInvoice.paid);
+        // Free lines switched off by the manager (an invoice being edited keeps its own lines)
+        const freeBlocked = !qbInvoice && !r.free_lines_allowed && Number(p.free_lines) > 0;
+        if (freeBlocked) $id('qbTotals').innerHTML += '<div class="status-text" style="color:#a93226">⚠️ البنود الحرة (بسعر يُكتب يدوياً) للمديرين فقط — اختر البند من المنتجات أو الحاسبات، أو اطلب من المدير.</div>';
+        $id('qbSave').disabled = Boolean(r.over_limit) || freeBlocked || Boolean(qbInvoice && r.total + 0.005 < qbInvoice.paid);
         renderQbCost(r.cost);
         setStatus('qbStatus', '');
     } catch (err) {
@@ -556,18 +559,20 @@ function renderQbCost(c) {
     if (!c) { $id('qbCost').innerHTML = ''; return; }
     const cls = (n) => (n < 0 ? 'neg' : 'pos');
     const pctTxt = (n) => (n === null || n === undefined ? '—' : `${n}%`);
+    // A missing cost counts as zero, so the profit shown is the most it can be: marked «≤», never shown as the real one
+    const upTo = (complete, text) => (complete === false ? `<span title="تكلفة ناقصة — الربح الفعلي أقل">≤ ${text}</span>` : text);
     const rows = c.lines.map((l) => `<tr><td>${esc(l.label)}${l.missing.length ? ' <span title="بدون تكلفة مسجلة" style="color:#a93226">⚠️</span>' : ''}</td>
-        <td>${qbMoney(l.cost)}</td><td>${qbMoney(l.revenue)}</td><td class="${cls(l.profit)}">${qbMoney(l.profit)}</td><td class="${cls(l.profit)}">${pctTxt(l.margin_percent)}</td></tr>`).join('');
+        <td>${qbMoney(l.cost)}</td><td>${qbMoney(l.revenue)}</td><td class="${cls(l.profit)}">${upTo(l.complete, qbMoney(l.profit))}</td><td class="${cls(l.profit)}">${upTo(l.complete, pctTxt(l.margin_percent))}</td></tr>`).join('');
     const quoteDisc = qbLastPreview && qbLastPreview.pricing.quote_discount ? qbLastPreview.pricing.quote_discount.amount : 0;
     $id('qbCost').innerHTML = `<div style="overflow-x:auto"><table>
         <thead><tr><th>البند</th><th>التكلفة</th><th>البيع</th><th>الربح</th><th>هامش الربح</th></tr></thead>
         <tbody>${rows}
             ${quoteDisc ? `<tr><td>خصم على الإجمالي</td><td>—</td><td class="neg">-${qbMoney(quoteDisc)}</td><td class="neg">-${qbMoney(quoteDisc)}</td><td></td></tr>` : ''}
             ${c.extra_cost ? `<tr><td>تكلفة التركيب والنقل</td><td>${qbMoney(c.extra_cost)}</td><td>—</td><td class="neg">-${qbMoney(c.extra_cost)}</td><td></td></tr>` : ''}
-            <tr class="sum"><td>الإجمالي (قبل الضريبة)</td><td>${qbMoney(c.total_cost)}</td><td>${qbMoney(c.revenue)}</td><td class="${cls(c.profit)}">${qbMoney(c.profit)}</td><td class="${cls(c.profit)}">${pctTxt(c.margin_percent)}</td></tr>
+            <tr class="sum"><td>الإجمالي (قبل الضريبة)</td><td>${qbMoney(c.total_cost)}</td><td>${qbMoney(c.revenue)}</td><td class="${cls(c.profit)}">${upTo(c.complete, qbMoney(c.profit))}</td><td class="${cls(c.profit)}">${upTo(c.complete, pctTxt(c.margin_percent))}</td></tr>
         </tbody></table></div>
-        <div class="status-text" style="margin-top:6px">هامش الربح = الربح ÷ سعر البيع. نسبة الربح على التكلفة: <b>${pctTxt(c.markup_percent)}</b>. البيع بعد العرض الترويجي وكل الخصومات، وقبل الضريبة.</div>
-        ${c.missing.length ? `<div class="status-text" style="color:#a93226;margin-top:4px">⚠️ بدون تكلفة مسجلة (حُسبت صفراً، فالربح الفعلي أقل): ${c.missing.map(esc).join('، ')}</div>` : ''}
+        <div class="status-text" style="margin-top:6px">هامش الربح = الربح ÷ سعر البيع. نسبة الربح على التكلفة: <b>${upTo(c.complete, pctTxt(c.markup_percent))}</b>. البيع بعد العرض الترويجي وكل الخصومات، وقبل الضريبة.</div>
+        ${c.missing.length ? `<div class="status-text" style="color:#a93226;margin-top:4px">⚠️ <b>الربح غير مكتمل:</b> بنود بدون تكلفة مسجلة حُسبت صفراً، فالربح والهامش المعروضان (≤) أعلى من الحقيقي. سجّل سعر الشراء لها في «المنتجات والأسعار» أو «أسعار الشراء»: ${c.missing.map(esc).join('، ')}</div>` : ''}
         <div class="status-text" style="margin-top:4px">التركيب والتوصيل ورسوم الألوان تُحسب في البيع بلا تكلفة — اكتب تكلفتها الفعلية في الحقل أعلاه.</div>`;
 }
 

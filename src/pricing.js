@@ -69,7 +69,8 @@ function priceQuote(lines, products, settings) {
             unit: product.unit,
             quantity: Math.round(quantity * 1000) / 1000,
             unit_price: unitPrice,
-            line_total: round2(unitPrice * quantity)
+            // the quantity shown × the unit price
+            line_total: round2(unitPrice * (Math.round(quantity * 1000) / 1000))
         };
         if (product.category === 'slat' && line.width && line.height) {
             item.dimensions = { width: Number(line.width), height: Number(line.height), pieces: Number(line.pieces) || 1 };

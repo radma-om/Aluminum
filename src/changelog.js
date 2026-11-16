@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.38.0', date: '2026-11-16',
+        ar: ['مبلغ كل بند = الكمية الظاهرة × سعر الوحدة (لا فرق بيسة عند المراجعة بالآلة الحاسبة)', 'فاتورة شراء بتاريخ أقدم من آخر فاتورة تُسجَّل ولا تغيّر سعر الشراء الحالي', 'العرض الترويجي بلا أجزاء محددة يشمل البضاعة فقط، والتركيب والتوصيل فقط إذا اختارهما المدير', 'المدير يقرر هل يكتب الموظفون «بنوداً حرة» بسعر يدوي، ويرى عددها على العرض', 'المساعد الذكي يقارن الخيارات بالأسعار بعد العرض الترويجي', 'حاسبة التكلفة والربح تبيّن أن الربح غير مكتمل (≤) عند غياب تكلفة بند'],
+        en: ['Each line amount = the quantity shown × the unit price (no baisa difference when checked by calculator)', 'A purchase invoice dated before the newest one is recorded without changing the current purchase price', 'A promotion with no parts chosen covers the goods only; installation and delivery only when the manager ticks them', 'The manager decides whether staff may add «free lines» priced by hand, and sees how many a quote has', 'The AI assistant compares options at the prices after the promotion', 'The cost & profit calculator shows the profit as incomplete (≤) when an item has no cost']
+    },
+    {
         version: '3.37.0', date: '2026-11-16',
         ar: ['إشعارات التحديث 🔔: يرسل المدير إشعاراً عاماً، أو «تحديث متاح»، أو تحديثاً إجبارياً، أو إيقافاً مؤقتاً للتطبيق — ويصل إشعاراً على الجوال', 'التطبيق يعرف وحده أن إصداراً جديداً متاح ويعرض زر «حدّث الآن»', 'صفحة «الإصدارات»: رقم الإصدار الحالي وما الجديد في كل إصدار', 'عرض السعر من ملف العميل متاح أيضاً لمن لديه قسم «متابعة العملاء» فقط'],
         en: ['Update notices 🔔: the manager sends a general notice, «update available», a forced update or a temporary stop of the app — also as a phone notification', 'The app detects a new version by itself and shows «Update now»', '«Versions» page: the current version and what is new in each one', 'Viewing a quote from a customer file also works for staff with only the «Customer Follow-up» section']

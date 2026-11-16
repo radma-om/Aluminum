@@ -58,10 +58,11 @@ test('a promotion on chosen parts only: the slats of a roller shutter, an overhe
     assert.equal(o.promo.amount_to, r2(g.line_total_to * 0.15), 'the upper end of the range: the gate only');
     assert.deepEqual(o.promo.parts, ['البوابة']);
 
-    // No parts chosen = every part (as before)
+    // No parts chosen = the goods (gate and motor), never the installation by surprise
     saveSettings(db, { promo_parts: {} });
-    assert.equal(overhead.overheadPrice(db, gate).promo.amount, r2(ohPlain.subtotal * 0.15));
-    assert.equal(overhead.overheadPrice(db, gate).promo.parts.length, 0);
+    const goods = ohPlain.items.filter((i) => i.part !== 'installation').reduce((a, i) => a + i.line_total, 0);
+    assert.equal(overhead.overheadPrice(db, gate).promo.amount, r2(goods * 0.15));
+    assert.deepEqual(overhead.overheadPrice(db, gate).promo.parts, ['البوابة', 'المحرك']);
 
     // Settings are checked; only managers change them
     assert.equal((await call('PUT', '/api/admin/settings', { promo_parts: { overhead: ['slats'] } })).status, 400);
