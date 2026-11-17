@@ -3,7 +3,8 @@
    - Sales staff: a monthly target and a %. Their sales = the invoices
      whose payments reached half of their total (50%) in the month —
      counted in the month that happened, whenever the invoice was issued
-     (never before its issue month: an earlier-dated deposit counts at issue);
+     (never before its issue month: an earlier-dated deposit counts at issue;
+     a payment dated back into a month already closed counts in the first open month);
      cancelled ones out — before VAT, without the installation and
      delivery share. An invoice paid less than half waits. The commission is the % of what
      goes over the target: target 7000, sales 8000, 2.5% → 25.
@@ -120,10 +121,38 @@ function installationsOf(db, month) {
                 }
             }
         }
+        // Services on an invoice of their own (beside the order's invoice): theirs too
+        for (const own of separateServiceInvoices(db, o)) {
+            service = round2(service + own.subtotal * share(parse(own.items_json, []), (i) => isService(i) && Number(i.work_order_id) === o.id));
+        }
         if (key && install) counted.add(key);
         return { id: o.id, number: o.number, customer_name: o.customer_name, date: o.date, technician_id: o.technician_id,
             fee: round2(fee + service), installation: fee, service, note };
     }).filter((o) => o.fee > 0 || o.note || rows.find((r) => r.id === o.id).kind === 'installation');
+}
+
+/* The service invoices issued on their own for an order (not its main invoice) */
+const separateServiceInvoices = (db, o) => db.prepare(`SELECT subtotal, items_json FROM invoices WHERE status = 'issued'
+    AND id != IFNULL(?, 0) AND json_extract(details_json, '$.service_order_id') = ?`).all(o.invoice_id, o.id);
+
+/* The months already closed, each with the invoices its statement counted. An invoice that reaches 50%
+   on a day of a closed month it was not counted in (a payment recorded late, dated back) moves to the
+   first month still open — its commission is never lost. */
+function closedMonths(db) {
+    const out = new Map();
+    for (const r of db.prepare('SELECT month, data_json FROM bonus_months').all()) {
+        const d = parse(r.data_json, {}) || {};
+        const ids = new Set();
+        for (const p of d.people || []) for (const i of p.invoices || []) ids.add(i.id);
+        for (const i of d.unassigned || []) ids.add(i.id);
+        out.set(r.month, ids);
+    }
+    return out;
+}
+function countedMonth(inv, closed) {
+    let m = inv.qualified_on.slice(0, 7);
+    while (closed.has(m) && !closed.get(m).has(inv.id)) m = addMonths(m, 1);
+    return m;
 }
 
 /* ------------------------------ Statement ------------------------------ */
@@ -135,7 +164,11 @@ function compute(db, month, nowMs = Date.now()) {
     const users = db.prepare("SELECT id, display_name, role, active, bonus_target, bonus_percent FROM staff_users ORDER BY role = 'technician', display_name").all();
     const all = invoicesWithPayments(db);
     // Counted in the month half of it was paid; still waiting: issued up to the month's end, under half paid now
-    const sales = all.filter((i) => i.qualified_on && i.qualified_on.slice(0, 7) === month);
+    const closed = closedMonths(db);
+    const sales = all.filter((i) => i.qualified_on).map((i) => {
+        const m = countedMonth(i, closed);
+        return m === i.qualified_on.slice(0, 7) ? { ...i, month: m } : { ...i, month: m, late_from: i.qualified_on.slice(0, 7) };
+    }).filter((i) => i.month === month);
     const waiting = per.ended ? [] : all.filter((i) => !i.qualified_on && i.date <= per.to);
     const installs = installationsOf(db, month);
     const named = new Set(users.map((u) => u.display_name));

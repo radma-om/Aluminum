@@ -219,8 +219,12 @@ let woServiceOrder = null;
 function woService(id) {
     woServiceOrder = woOrders.find((o) => o.id === id) || { id };
     const o = woServiceOrder;
-    $id('woServiceFor').textContent = `${o.number || ''} — ${o.customer_name || ''}` + (o.invoice_number
-        ? ` — تُضاف إلى الفاتورة ${o.invoice_number}` : ' — تُصدر لها فاتورة جديدة');
+    $id('woServiceFor').textContent = `${o.number || ''} — ${o.customer_name || ''}` + (o.invoice_number ? '' : ' — تُصدر لها فاتورة جديدة');
+    // With an invoice already: on it, or a service invoice of its own
+    $id('wsWhere').hidden = !o.invoice_number;
+    $id('wsInvNo').textContent = o.invoice_number || '';
+    document.querySelector('input[name="wsWhere"][value="same"]').checked = true;
+    woServiceWhere();
     $id('wsTitle').value = 'خدمة';
     $id('wsDesc').value = '';
     $id('wsQty').value = '1';
@@ -233,12 +237,17 @@ function woService(id) {
     $id('woServiceSheet').hidden = false;
     setTimeout(() => $id('wsDesc').focus(), 50);
 }
+const woServiceSeparate = () => !$id('wsWhere').hidden && document.querySelector('input[name="wsWhere"]:checked').value === 'separate';
+function woServiceWhere() {
+    $id('wsSave').innerHTML = woServiceSeparate() || $id('wsWhere').hidden
+        ? '<i class="fas fa-file-invoice"></i> إصدار فاتورة الخدمة' : '<i class="fas fa-file-invoice"></i> إضافة إلى الفاتورة';
+}
 function woServiceTotal() {
     const t = (Number($id('wsQty').value) || 0) * (Number($id('wsPrice').value) || 0);
     $id('wsTotal').textContent = t > 0 ? `المجموع ${t.toFixed(2)} ر.ع قبل الضريبة` : '';
 }
 async function submitWoService() {
-    const body = { title: $id('wsTitle').value.trim(), description: $id('wsDesc').value.trim(), quantity: Number($id('wsQty').value), unit_price: Number($id('wsPrice').value) };
+    const body = { title: $id('wsTitle').value.trim(), description: $id('wsDesc').value.trim(), quantity: Number($id('wsQty').value), unit_price: Number($id('wsPrice').value), separate: woServiceSeparate() };
     if (!body.description) return setStatus('wsStatus', 'اكتب وصف الخدمة', 'err');
     if (!(body.unit_price > 0)) return setStatus('wsStatus', 'اكتب سعر الخدمة', 'err');
     $id('wsSave').disabled = true;
@@ -246,9 +255,11 @@ async function submitWoService() {
     try {
         const r = await api('POST', `/api/admin/work-orders/${woServiceOrder.id}/services`, body);
         $id('woServiceForm').hidden = true;
-        $id('woServiceDone').innerHTML = serviceResult(r, `woService(${woServiceOrder.id})`);
+        $id('woServiceDone').innerHTML = r.separate
+            ? serviceResult(r, `woService(${woServiceOrder.id})`).replace('✓ أُضيفت الخدمة إلى الفاتورة', '✓ صدرت فاتورة خدمة منفصلة')
+            : serviceResult(r, `woService(${woServiceOrder.id})`);
         $id('woServiceDone').hidden = false;
-        woServiceOrder = { ...woServiceOrder, invoice_number: r.invoice.number };
+        if (!r.separate) woServiceOrder = { ...woServiceOrder, invoice_number: r.invoice.number };
         loadWorkOrders().catch(() => {});
     } catch (err) {
         setStatus('wsStatus', err.message, 'err');

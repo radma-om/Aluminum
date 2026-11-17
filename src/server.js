@@ -1484,8 +1484,9 @@ function createApp(db, { agentClient } = {}) {
         res.json({ ...order, notice });
     }));
     /* A service done on site (الخدمة): a name, a description shown to the customer, a quantity and a price.
-       It goes on the order's invoice (a new invoice when the order has none), and its commission is the
-       technician's (bonuses.js). No approval: the order's log, the activity log and a notification to the
+       It goes on the order's invoice (a new invoice when the order has none), or on an invoice of its own
+       when asked (separate: the customer gets a PDF of the service alone); its commission is the
+       technician's either way (bonuses.js). No approval: the order's log, the activity log and a notification to the
        managers record it. */
     const serviceLine = (b, order, who) => {
         const description = clip(b.description, 1000);
@@ -1500,12 +1501,14 @@ function createApp(db, { agentClient } = {}) {
             work_order_id: order.id, added_by: who
         };
     };
-    const addServices = (req, order, inputs) => {
+    const addServices = (req, order, inputs, { separate = false } = {}) => {
         const who = staffName(req);
         const lines = inputs.map((b) => serviceLine(b || {}, order, who));
         if (!lines.length) throw httpError(400, 'أضف خدمة واحدة على الأقل');
         let inv = order.invoice_id ? invoices.get(db, order.invoice_id) : null;
-        if (inv && inv.status === 'cancelled') throw httpError(400, 'فاتورة أمر العمل ملغاة — اطلب من المكتب إصدار فاتورة جديدة');
+        if (inv && inv.status === 'cancelled' && !separate) throw httpError(400, 'فاتورة أمر العمل ملغاة — اطلب من المكتب إصدار فاتورة جديدة');
+        const own = separate && Boolean(inv); // a service invoice of its own, beside the order's invoice
+        if (own) inv = null;
         const sum = Math.round(lines.reduce((s, l) => s + l.line_total, 0) * 100) / 100;
         const what = lines.length === 1
             ? `خدمة «${lines[0].name}» (${lines[0].quantity} × ${lines[0].unit_price.toFixed(2)} = ${lines[0].line_total.toFixed(2)} ر.ع)`
@@ -1513,7 +1516,8 @@ function createApp(db, { agentClient } = {}) {
         if (inv) {
             inv = invoices.addLines(db, inv.id, lines, `إضافة ${what} — أمر العمل ${order.number}`, who);
         } else {
-            // A visit with no invoice yet (maintenance, a service call): a quote and its invoice for the services
+            // A visit with no invoice yet (maintenance, a service call), or a service invoice of its own:
+            // a quote and its invoice for the services
             const phone = String(order.customer_phone || '').replace(/\D/g, '');
             if (phone.length < 8) throw httpError(400, 'لا يوجد رقم جوال للعميل في أمر العمل — اطلب من المكتب إضافته');
             const vatPercent = Number(getSettings(db).vat_percent) || 0;
@@ -1521,10 +1525,16 @@ function createApp(db, { agentClient } = {}) {
             const quote = saveQuote(db, {
                 customer_name: order.customer_name || 'عميل', customer_phone: phone, customer_city: order.location || null, source: 'staff',
                 priced: { items: lines, subtotal: sum, vat_percent: vatPercent, vat, total: Math.round((sum + vat) * 100) / 100 },
-                details: { staff_quote: true, created_by: who, service_for: order.number }, lead_key: leads.phoneKey(phone)
+                details: { staff_quote: true, created_by: who, service_for: order.number, service_order_id: order.id }, lead_key: leads.phoneKey(phone)
             });
             inv = invoices.createFromQuote(db, parseQuote(db.prepare('SELECT * FROM quotes WHERE id = ?').get(quote.id)), { customer_address: order.address || '' }, who);
-            db.prepare('UPDATE work_orders SET invoice_id = ?, quote_id = COALESCE(quote_id, ?) WHERE id = ?').run(inv.id, quote.id, order.id);
+            if (own) {
+                // The service is done now, on site: its invoice's date is today
+                db.prepare('UPDATE invoices SET invoice_date = issue_date WHERE id = ?').run(inv.id);
+                inv = invoices.get(db, inv.id);
+            } else {
+                db.prepare('UPDATE work_orders SET invoice_id = ?, quote_id = COALESCE(quote_id, ?) WHERE id = ?').run(inv.id, quote.id, order.id);
+            }
             webhooks.emit(db, 'invoice.created', invoicePublic(inv));
         }
         workorders.addNote(db, order.id, `🧾 ${what}: ${lines.map((l) => l.description).join(' / ')} — الفاتورة ${inv.number}`, req.user);
@@ -1540,8 +1550,10 @@ function createApp(db, { agentClient } = {}) {
         if (order.status === 'cancelled') throw httpError(400, 'أمر العمل ملغى');
         if (tech && order.status === 'done') throw httpError(400, 'أمر العمل مكتمل — اطلب من المكتب إضافة الخدمة');
         const b = req.body || {};
-        const { lines, invoice } = addServices(req, order, Array.isArray(b.services) ? b.services : [b]);
-        res.status(201).json({ line: lines[0], lines, invoice: invoicePublic(invoices.get(db, invoice.id)), order: workorders.get(db, order.id) });
+        const separate = b.separate === true;
+        const { lines, invoice } = addServices(req, order, Array.isArray(b.services) ? b.services : [b], { separate });
+        res.status(201).json({ line: lines[0], lines, separate: separate && invoice.id !== order.invoice_id,
+            invoice: invoicePublic(invoices.get(db, invoice.id)), order: workorders.get(db, order.id) });
     });
 
     /* A service call for a customer with no work order yet (new or already known): the technician (or the
