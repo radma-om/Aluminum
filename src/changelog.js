@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.45.0', date: '2026-11-17',
+        ar: ['واتساب للعميل من رقم الشركة: إرسال الفاتورة، وتأكيد كل دفعة، وتذكير بالمتبقي — مع الإجمالي والمدفوع والمتبقي ورابط PDF', 'بعد إصدار الفاتورة أو تسجيل دفعة يسألك النظام: إرسال للعميل الآن؟', 'الفني يرسل فاتورة أمر عمله أو فاتورة الخدمة من رقم الشركة', 'كل إرسال يُسجَّل في الفاتورة وفي سجل العميل، وزر «واتساب من جوالي» يبقى احتياطاً'],
+        en: ['WhatsApp to the customer from the company number: the invoice, a confirmation of each payment, and a reminder of the balance — with the total, paid, balance and the PDF link', 'After issuing an invoice or recording a payment you are asked: send to the customer now?', 'The technician sends their work order\'s invoice or the service invoice from the company number', 'Every send is logged on the invoice and in the customer\'s file; «WhatsApp from my phone» stays as a fallback']
+    },
+    {
         version: '3.44.0', date: '2026-11-17',
         ar: ['«فاتورة خدمة منفصلة»: عند إضافة خدمة على أمر عمل له فاتورة، يختار الفني إضافتها إلى الفاتورة أو إصدار فاتورة مستقلة بالخدمة وحدها وملف PDF يرسله للعميل — والعمولة له في الحالتين', 'العمولات: دفعة سُجّلت متأخرة بتاريخ شهر أُغلق كشفه تُحتسب في أول شهر مفتوح ولا تضيع'],
         en: ['«Separate service invoice»: when adding a service to a work order that has an invoice, the technician chooses to add it to that invoice or issue an invoice of its own with the service alone and a PDF for the customer — the commission is theirs either way', 'Commissions: a payment recorded late, dated in a month already closed, counts in the first open month instead of being lost']
