@@ -251,3 +251,34 @@ test('a month approved before it ended (older versions allowed it) is dropped at
     assert.equal(s.people[0].base, 0, 'the cancelled invoice is gone');
     assert.equal(s.people[0].pending, 0);
 });
+
+test('a payment recorded late, dated in a month already closed: counted in the first open month', () => {
+    const db = openDatabase(':memory:');
+    const ahmed = staff.create(db, { username: 'ahmedo', display_name: 'أحمد عثمان عمر', password: 'pass-12345', permissions: ['quotes'] });
+    bonuses.setPlan(db, ahmed.id, { target: 0, percent: 10 });
+    const last = bonuses.addMonths(month, -1);
+    // Last month: one invoice paid in time; the month is closed with it
+    const inTime = sale(db, 'أحمد عثمان عمر', 1000, 0, 0, 0);
+    db.prepare('UPDATE invoices SET issue_date = ? WHERE id = ?').run(last + '-05', inTime.id);
+    invoices.addPayment(db, inTime.id, { amount: inTime.total, method: 'cash', paid_on: last + '-06' }, 'المكتب');
+    // Another of last month, unpaid when the month closed
+    const late = sale(db, 'أحمد عثمان عمر', 2000, 0, 0, 0);
+    db.prepare('UPDATE invoices SET issue_date = ? WHERE id = ?').run(last + '-10', late.id);
+    bonuses.approve(db, last, 'إغلاق تلقائي');
+    const closed = bonuses.statement(db, last).people.find((p) => p.user_id === ahmed.id);
+    assert.equal(closed.base, 1000);
+
+    // Its payment is recorded now, dated last month (when the customer paid)
+    invoices.addPayment(db, late.id, { amount: late.total, method: 'bank', paid_on: last + '-28' }, 'المكتب');
+    assert.equal(bonuses.statement(db, last).people.find((p) => p.user_id === ahmed.id).base, 1000, 'the closed month does not change');
+    const now = bonuses.statement(db, month).people.find((p) => p.user_id === ahmed.id);
+    assert.equal(now.base, 2000, 'counted this month — not lost');
+    assert.equal(now.commission, 200);
+    assert.equal(now.invoices[0].late_from, last);
+    assert.equal(now.invoices.some((i) => i.id === inTime.id), false, 'the one already counted is not counted again');
+
+    // Reopened last month: it counts there again (its own month)
+    bonuses.unapprove(db, last);
+    assert.equal(bonuses.statement(db, last).people.find((p) => p.user_id === ahmed.id).base, 3000);
+    assert.equal(bonuses.statement(db, month).people.find((p) => p.user_id === ahmed.id).base, 0);
+});

@@ -752,3 +752,10 @@ body.sb-collapsed .sb-version { justify-content: center; padding: 8px 0; }
     .wallet-btn { padding: 12px 4px; font-size: 0.9rem; }
     .wh-balance strong { font-size: 1.8rem; }
 }
+
+/* «إضافة خدمة»: on the order's invoice or a service invoice of its own */
+.ws-where .ws-opt { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px; cursor: pointer; font-weight: 400; }
+.ws-where .ws-opt input[type="radio"] { width: 18px !important; height: 18px; min-height: 0; padding: 0; margin: 3px 0 0; flex: none; }
+.ws-where .ws-opt > span { flex: 1; min-width: 0; }
+.ws-where .ws-opt small { color: var(--text-light); }
+.ws-where .ws-opt:has(input:checked) { border-color: var(--primary); background: #f3f7fc; }
