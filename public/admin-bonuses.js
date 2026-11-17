@@ -37,7 +37,7 @@ function renderBonuses() {
         : `<div class="bonus-bar ${p.reached ? 'ok' : ''}"><span style="width:${Math.min(100, p.progress)}%"></span></div><small>${p.progress}%</small>`;
     const details = (p) => p.kind === 'sales'
         ? (p.invoices.length ? `<table class="bonus-sub"><thead><tr><th>الفاتورة</th><th>العميل</th><th>صدرت</th><th>دُفع 50% في</th><th>مدفوع</th><th>قبل الضريبة</th><th>تركيب وتوصيل</th><th>تُحتسب</th></tr></thead><tbody>
-            ${p.invoices.map((i) => `<tr><td>${esc(i.number)}</td><td>${esc(i.customer_name)}</td><td>${esc(i.date)}</td><td>${esc(i.qualified_on || '')}</td><td>${i.paid_percent ?? ''}%</td><td>${bMoney(i.subtotal)}</td><td>${i.excluded ? '−' + bMoney(i.excluded) : '—'}</td><td><b>${bMoney(i.base)}</b></td></tr>`).join('')}
+            ${p.invoices.map((i) => `<tr><td>${esc(i.number)}</td><td>${esc(i.customer_name)}</td><td>${esc(i.date)}</td><td>${esc(i.qualified_on || '')}${i.late_from ? `<br><small class="status-text" title="دفعة سُجّلت بتاريخ شهر مُغلق — تُحتسب في أول شهر مفتوح">متأخرة من ${esc(i.late_from)}</small>` : ''}</td><td>${i.paid_percent ?? ''}%</td><td>${bMoney(i.subtotal)}</td><td>${i.excluded ? '−' + bMoney(i.excluded) : '—'}</td><td><b>${bMoney(i.base)}</b></td></tr>`).join('')}
             </tbody></table>` : '<p class="status-text">لا فواتير مُحتسبة هذا الشهر.</p>')
           + ((p.pending_invoices || []).length ? `<p class="sub-heading" style="margin-top:10px">بانتظار دفع 50% (${p.pending_invoices.length}) — لا تُحتسب بعد</p>
             <table class="bonus-sub"><thead><tr><th>الفاتورة</th><th>العميل</th><th>صدرت</th><th>مدفوع</th><th>المتبقي لبلوغ 50%</th><th>ستُحتسب</th></tr></thead><tbody>

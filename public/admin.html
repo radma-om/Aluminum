@@ -2542,6 +2542,11 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
                     <div class="form-group"><label>سعر الوحدة <span class="unit">(ر.ع — قبل الضريبة)</span></label><input type="number" id="wsPrice" min="0.01" step="0.01" required oninput="woServiceTotal()"></div>
                 </div>
                 <p class="status-text" id="wsTotal"></p>
+                <div class="form-group ws-where" id="wsWhere" hidden>
+                    <label>أين تُكتب الخدمة؟</label>
+                    <label class="ws-opt"><input type="radio" name="wsWhere" value="same" checked onchange="woServiceWhere()"> <span>على فاتورة أمر العمل <b id="wsInvNo"></b></span></label>
+                    <label class="ws-opt"><input type="radio" name="wsWhere" value="separate" onchange="woServiceWhere()"> <span>فاتورة خدمة منفصلة <small>(ملف PDF بالخدمة وحدها للعميل)</small></span></label>
+                </div>
                 <div class="form-buttons" style="margin-top:0">
                     <button class="btn btn-primary" type="submit" id="wsSave"><i class="fas fa-file-invoice"></i> إضافة إلى الفاتورة</button>
                     <span id="wsStatus" class="status-text"></span>

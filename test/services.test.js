@@ -170,3 +170,33 @@ test('a technician opens a service invoice for a new customer, or a known one, w
     assert.equal(ahmed.base, 40);
     assert.equal(ahmed.commission, 4);
 });
+
+test('a service invoice of its own on an order that has an invoice: its PDF alone, the commission still the technician\'s', async (t) => {
+    const { db, call, login } = await start(t);
+    const tech = staff.create(db, { username: 'ahmed', display_name: 'أحمد الفني', password: 'pass-12345', role: 'technician' });
+    db.prepare("UPDATE staff_users SET bonus_percent = 10 WHERE username = 'ahmed'").run();
+    const inv = invoiceFor(db);
+    const order = workorders.create(db, { kind: 'installation', description: 'تركيب', scheduled_date: '2099-01-01', technician_id: tech.id }, 'المكتب', { source: { invoice: inv } });
+    const tk = await login('ahmed');
+
+    const r = await call('POST', `/api/admin/work-orders/${order.id}/services`, { title: 'ريموت', description: 'برمجة ريموت إضافي', unit_price: 30, separate: true }, tk);
+    assert.equal(r.status, 201);
+    assert.equal(r.body.separate, true);
+    assert.notEqual(r.body.invoice.id, inv.id, 'a new invoice');
+    assert.equal(r.body.invoice.items.length, 1, 'the service alone');
+    assert.equal(r.body.invoice.subtotal, 30);
+    assert.equal(r.body.invoice.customer_phone, inv.customer_phone);
+    assert.ok(r.body.invoice.pdf_url);
+    assert.ok(r.body.invoice.invoice_date, 'done on site: its invoice date is today');
+    assert.equal(invoices.get(db, inv.id).subtotal, 500, 'the order\'s invoice is unchanged');
+    assert.equal(workorders.get(db, order.id).invoice_id, inv.id, 'the order keeps its invoice');
+
+    // Its commission is the technician's: installation 100 + the separate service 30
+    workorders.setStatus(db, order.id, 'done', 'تم', { role: 'technician', id: tech.id, display_name: 'أحمد الفني' });
+    const row = bonuses.compute(db, bonuses.thisMonth()).people.find((p) => p.name === 'أحمد الفني').orders.find((o) => o.id === order.id);
+    assert.deepEqual([row.installation, row.service, row.fee], [100, 30, 130]);
+    // Cancelled: no longer counted
+    invoices.cancel(db, r.body.invoice.id, 'خطأ', 'المدير');
+    const after = bonuses.compute(db, bonuses.thisMonth()).people.find((p) => p.name === 'أحمد الفني').orders.find((o) => o.id === order.id);
+    assert.equal(after.service, 0);
+});

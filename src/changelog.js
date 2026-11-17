@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.44.0', date: '2026-11-17',
+        ar: ['«فاتورة خدمة منفصلة»: عند إضافة خدمة على أمر عمل له فاتورة، يختار الفني إضافتها إلى الفاتورة أو إصدار فاتورة مستقلة بالخدمة وحدها وملف PDF يرسله للعميل — والعمولة له في الحالتين', 'العمولات: دفعة سُجّلت متأخرة بتاريخ شهر أُغلق كشفه تُحتسب في أول شهر مفتوح ولا تضيع'],
+        en: ['«Separate service invoice»: when adding a service to a work order that has an invoice, the technician chooses to add it to that invoice or issue an invoice of its own with the service alone and a PDF for the customer — the commission is theirs either way', 'Commissions: a payment recorded late, dated in a month already closed, counts in the first open month instead of being lost']
+    },
+    {
         version: '3.43.4', date: '2026-11-17',
         ar: ['العهدة: الموظف الذي حددت له حداً أدنى خاصاً يظهر له التحذير حتى قبل أول عملية في دفتره', 'العمولات وأداء الموظفين: أمر العمل المكتمل على فاتورة أُلغيت لا يُحسب ضمن الأعمال المنجزة'],
         en: ['Petty cash: an employee given a minimum of their own is warned even before the first entry in their book', 'Commissions and staff performance: a completed work order on a cancelled invoice no longer counts as a job done']
