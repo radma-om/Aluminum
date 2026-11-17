@@ -31,6 +31,7 @@ const mailer = require('./mailer');
 const alerts = require('./alerts');
 const followup = require('./followup');
 const invoices = require('./invoices');
+const customerNotify = require('./customer-notify');
 const workorders = require('./workorders');
 const servicerequests = require('./servicerequests');
 const costs = require('./costs');
@@ -1331,7 +1332,20 @@ function createApp(db, { agentClient } = {}) {
         summary: invoices.summary(db, { mineOf: req.user.leads_scope === 'mine' ? req.user.display_name : null }),
         methods: invoices.METHODS, states: invoices.PAY_STATES, deposit_types: invoices.DEPOSIT_TYPES
     }));
-    admin.get('/invoices/:id', (req, res) => res.json(invoicePublic(invoiceFor(req, req.params.id))));
+    admin.get('/invoices/:id', (req, res) => {
+        const inv = invoiceFor(req, req.params.id);
+        res.json({ ...invoicePublic(inv), messages: customerNotify.history(db, inv.id), wa: customerNotify.status() });
+    });
+    /* WhatsApp to the customer from the company's number: the invoice, a payment's confirmation, a reminder */
+    admin.post('/invoices/:id/whatsapp', asyncRoute(async (req, res) => {
+        const inv = invoiceFor(req, req.params.id);
+        const b = req.body || {};
+        const origin = systemOrigin(req, db);
+        const r = await customerNotify.send(db, inv, {
+            kind: String(b.kind || ''), paymentId: b.payment_id || null, link: origin + invoicePublic(inv).pdf_url, by: staffName(req)
+        });
+        res.json({ ...r, messages: customerNotify.history(db, inv.id) });
+    }));
     admin.get('/invoices/:id/pdf', (req, res) => sendInvoicePdf(res, invoiceFor(req, req.params.id)));
     admin.patch('/invoices/:id', (req, res) => {
         invoiceFor(req, req.params.id);
@@ -1555,6 +1569,17 @@ function createApp(db, { agentClient } = {}) {
         res.status(201).json({ line: lines[0], lines, separate: separate && invoice.id !== order.invoice_id,
             invoice: invoicePublic(invoices.get(db, invoice.id)), order: workorders.get(db, order.id) });
     });
+
+    /* The technician sends the invoice of their order (its own, or a service invoice issued on it) to the
+       customer from the company's number — only an invoice of that order */
+    admin.post('/work-orders/:id/whatsapp', asyncRoute(async (req, res) => {
+        const order = orderFor(req, req.params.id);
+        const inv = invoices.get(db, Number((req.body || {}).invoice_id));
+        const ofOrder = inv && (inv.id === order.invoice_id || Number((inv.details || {}).service_order_id) === order.id);
+        if (!ofOrder) throw httpError(404, 'الفاتورة ليست لأمر العمل هذا');
+        const r = await customerNotify.send(db, inv, { kind: 'invoice', link: systemOrigin(req, db) + invoicePublic(inv).pdf_url, by: staffName(req) });
+        res.json(r);
+    }));
 
     /* A service call for a customer with no work order yet (new or already known): the technician (or the
        office) opens it on the spot — the customer record, a «خدمة» work order of their own, its invoice with

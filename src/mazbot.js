@@ -196,4 +196,7 @@ async function sendToAll(recipients, values, calculator = 'rolling_shutter') {
     return { sent, total: results.length, results };
 }
 
-module.exports = { isConfigured, hasLogin, checkLogin, resolveContact, templateFor, sendToAll, sendText, sendTextToPhone, verifySignature, parseRecipients, cleanValue, _reset: () => { tokenCache = { token: null, expiresAt: 0 }; } };
+/* One approved template to one mobile (the customer messages: invoice, payment, reminder) */
+const sendTemplateTo = (mobile, values, templateId) => sendTemplate(mobile, values, templateId);
+
+module.exports = { isConfigured, hasLogin, checkLogin, resolveContact, templateFor, sendToAll, sendTemplateTo, sendText, sendTextToPhone, verifySignature, parseRecipients, cleanValue, _reset: () => { tokenCache = { token: null, expiresAt: 0 }; } };

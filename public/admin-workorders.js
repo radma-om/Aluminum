@@ -131,9 +131,20 @@ function serviceResult(r, again) {
         </div>
         <div class="form-buttons stack-mobile">
             <a class="btn btn-primary" href="${esc(link)}" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> فتح الفاتورة PDF</a>
-            <a class="btn btn-outline" href="${esc(wa)}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> إرسال للعميل</a>
+            ${r.order ? `<button class="btn btn-outline" type="button" onclick="woSendInvoice(${r.order.id}, ${r.invoice.id}, this)"><i class="fab fa-whatsapp"></i> إرسال للعميل من رقم الشركة</button>` : ''}
+            <a class="btn btn-outline" href="${esc(wa)}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> واتساب من جوالي</a>
             <button class="btn btn-outline" type="button" onclick="${again}">خدمة أخرى</button>
         </div>`;
+}
+
+/* The invoice to the customer from the company's number (MazBot) */
+async function woSendInvoice(orderId, invoiceId, btn) {
+    btn.disabled = true;
+    try {
+        const r = await api('POST', `/api/admin/work-orders/${orderId}/whatsapp`, { invoice_id: invoiceId });
+        if (r.ok) btn.innerHTML = '<i class="fab fa-whatsapp"></i> أُرسلت للعميل ✓';
+        else { btn.disabled = false; await tell(`لم تُرسل: ${r.error}\n\nأرسلها من جوالك بزر «واتساب من جوالي».`); }
+    } catch (err) { btn.disabled = false; tell(err.message); }
 }
 
 /* ---- A service call for a new or known customer (no work order yet) ---- */

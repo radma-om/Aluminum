@@ -94,7 +94,10 @@ async function submitNewInvoice() {
         const inv = await api('POST', `/api/admin/quotes/${invQuote.id}/invoice`, body);
         closeSheet('invNewSheet');
         loadQuotes().catch(() => {});
-        showInvoice(inv);
+        const full = await api('GET', `/api/admin/invoices/${inv.id}`);
+        showInvoice(full);
+        // Right after it is issued: send it to the customer from the company's number?
+        if (full.wa && full.wa.login && await askYes(`إرسال الفاتورة ${full.number} للعميل على واتساب الآن؟ (من رقم الشركة، مع الإجمالي والمدفوع والمتبقي ورابط الفاتورة)`)) invWhatsapp('invoice');
     } catch (err) {
         setStatus('invNewStatus', err.message, 'err');
     }
@@ -191,12 +194,13 @@ function showInvoice(inv) {
                 <td data-label="المبلغ"><strong>${money2(p.amount)}</strong></td>
                 <td data-label="الطريقة">${esc(invMeta.methods[p.method] || p.method)}</td>
                 <td data-label="المرجع / ملاحظة"><small>${esc([p.reference, p.note].filter(Boolean).join(' — ') || '—')}${p.created_by ? `<br>سجّلها ${esc(p.created_by)}` : ''}</small></td>
-                <td data-label="">${manager ? `<button class="btn btn-outline btn-sm" onclick="deletePayment(${p.id})">حذف</button>` : ''}</td>
+                <td data-label="">${inv.state !== 'cancelled' && inv.wa && inv.wa.login ? `<button class="btn btn-outline btn-sm" onclick="invWhatsapp('payment', ${p.id})" title="تأكيد الدفعة للعميل على واتساب"><i class="fab fa-whatsapp"></i> تأكيد للعميل${sentFor(inv, 'payment', p.id)}</button> ` : ''}${manager ? `<button class="btn btn-outline btn-sm" onclick="deletePayment(${p.id})">حذف</button>` : ''}</td>
             </tr>`).join('')}</tbody></table></div>` : '<p class="status-text">لا توجد دفعات بعد.</p>'}
+        ${invWhatsappBox(inv)}
         <div class="form-buttons">
             <button class="btn btn-outline btn-sm" onclick="downloadInvoicePdf(${inv.id}, '${esc(inv.number)}')">PDF</button>
             <button class="btn btn-outline btn-sm" onclick="copyInvoiceLink()">نسخ رابط العميل</button>
-            <a class="btn btn-outline btn-sm" href="${esc(wa)}" target="_blank" rel="noopener">إرسال عبر واتساب</a>
+            <a class="btn btn-outline btn-sm" href="${esc(wa)}" target="_blank" rel="noopener" title="يفتح واتساب على جهازك برسالة جاهزة">واتساب من جوالي</a>
             ${inv.state !== 'cancelled' ? `<button class="btn btn-outline btn-sm" onclick="closeSheet('invSheet'); openQuoteBuilder({ invoice: invCurrent })"><i class="fas fa-pen-ruler"></i> تعديل البنود / المقاسات</button>` : ''}
             ${inv.state !== 'cancelled' ? `<button class="btn btn-outline btn-sm" onclick="editInvoice()">تعديل الاستحقاق / الملاحظات</button>` : ''}
             ${canSee('work_orders') && inv.state !== 'cancelled' ? `<button class="btn btn-primary btn-sm" onclick="closeSheet('invSheet'); newWorkOrder({ invoice: invCurrent })"><i class="fas fa-screwdriver-wrench"></i> إنشاء أمر عمل</button>` : ''}
@@ -214,15 +218,45 @@ function showInvoice(inv) {
 
 async function submitPayment() {
     try {
-        const inv = await api('POST', `/api/admin/invoices/${invCurrent.id}/payments`, {
+        const saved = await api('POST', `/api/admin/invoices/${invCurrent.id}/payments`, {
             amount: Number($id('payAmount').value), method: $id('payMethod').value, paid_on: $id('payDate').value, reference: $id('payRef').value.trim()
         });
+        const inv = await api('GET', `/api/admin/invoices/${saved.id}`);
         showInvoice(inv);
         setStatus('payStatus', 'سُجّلت الدفعة ✓', 'ok');
         loadInvoices().catch(() => {});
+        const last = inv.payments.reduce((a, p) => (!a || p.id > a.id ? p : a), null);
+        if (last && inv.wa && inv.wa.login && await askYes(`إرسال تأكيد الدفعة (${money2(last.amount)} ر.ع) للعميل على واتساب؟ (مع مجموع المدفوع والمتبقي ${money2(inv.balance)} ر.ع)`)) invWhatsapp('payment', last.id);
     } catch (err) {
         setStatus('payStatus', err.message, 'err');
     }
+}
+
+/* ---- WhatsApp to the customer from the company's number (MazBot) ---- */
+const WA_SENT = { invoice: 'أُرسلت الفاتورة', payment: 'أُرسل تأكيد الدفعة', balance: 'أُرسل التذكير بالمتبقي' };
+const sentFor = (inv, kind, paymentId = null) => ((inv.messages || []).some((m) => m.ok && m.kind === kind && (paymentId == null || m.payment_id === paymentId)) ? ' ✓' : '');
+function invWhatsappBox(inv) {
+    if (inv.state === 'cancelled') return '';
+    const wa = inv.wa || {};
+    if (!wa.login) return '<p class="status-text" style="margin:8px 0">واتساب الشركة (MazBot) غير مضبوط على الخادم — استخدم «واتساب من جوالي».</p>';
+    const noTpl = (k) => (wa[k] ? '' : ' <small class="wa-warn" title="لا يوجد قالب معتمد: تصل الرسالة فقط إذا راسلكم العميل خلال آخر 24 ساعة">(بلا قالب)</small>');
+    const log = (inv.messages || []).slice(0, 6).map((m) => `<li class="${m.ok ? 'ok' : 'err'}">${m.ok ? '✓' : '✗'} ${esc(m.kind_label)} — ${esc(String(m.created_at).slice(0, 16))}${m.sent_by ? ` — ${esc(m.sent_by)}` : ''}${m.ok ? '' : `<br><small>${esc(m.error || '')}</small>`}</li>`).join('');
+    return `<div class="inv-wa">
+        <p class="sub-heading" style="margin:0 0 6px"><i class="fab fa-whatsapp"></i> واتساب للعميل من رقم الشركة</p>
+        <div class="form-buttons" style="margin:0">
+            <button class="btn btn-primary btn-sm" onclick="invWhatsapp('invoice')">إرسال الفاتورة${sentFor(inv, 'invoice')}${noTpl('invoice')}</button>
+            ${inv.balance > 0.004 && inv.paid > 0.004 ? `<button class="btn btn-outline btn-sm" onclick="invWhatsapp('balance')">تذكير بالمتبقي ${money2(inv.balance)}${noTpl('balance')}</button>` : ''}
+        </div>
+        ${log ? `<ul class="inv-wa-log">${log}</ul>` : ''}
+    </div>`;
+}
+async function invWhatsapp(kind, paymentId = null) {
+    try {
+        const r = await api('POST', `/api/admin/invoices/${invCurrent.id}/whatsapp`, { kind, payment_id: paymentId });
+        invCurrent = { ...invCurrent, messages: r.messages };
+        showInvoice(invCurrent);
+        await tell(r.ok ? `${WA_SENT[kind]} للعميل على واتساب ✓` : `لم تُرسل: ${r.error}\n\nيمكنك الإرسال من جوالك بزر «واتساب من جوالي».`);
+    } catch (err) { tell(err.message); }
 }
 
 async function deletePayment(paymentId) {
