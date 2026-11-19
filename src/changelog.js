@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.47.1', date: '2026-11-19',
+        ar: ['تبويب «الربط»: قسم جديد لرسائل حساب القوالب — رابط الـWebhook، وكل رسالة وما حدث لها (أوقف الإشعارات، طلب التتبع، تجاهل، توقيع غير صحيح، أو لم يصل الرد وسببه)', 'سجل الرسائل الواردة يحفظ آخر 100 لكل حساب على حدة'],
+        en: ['«Integrations» tab: a new section for the templates account messages — its webhook link, and each message with what happened (notices muted, tracking requested, ignored, bad signature, or the reply did not arrive and why)', 'The incoming messages log keeps the latest 100 for each account separately']
+    },
+    {
         version: '3.47.0', date: '2026-11-19',
         ar: ['إشعارات أوامر العمل للعميل على واتساب مع رابط «تتبع طلبي»: موعد التركيب، الفني في الطريق، بدء العمل، اكتمال العمل والمتبقي', 'زر «في الطريق» للفني في بطاقة أمر العمل', 'العميل يوقف الإشعارات 48 ساعة بزر في الرسالة، ويكتب «تتبع» ليصله رابط طلباته', 'أمر العمل بلا فاتورة له صفحة تتبع خاصة به'],
         en: ['Work order notices to the customer on WhatsApp with the «Track my order» link: the appointment, technician on the way, work started, work done and the balance', 'An «On the way» button for the technician on the work order card', 'The customer mutes notices for 48 hours with a button in the message, and writes «تتبع» to get their order links', 'A work order without an invoice has its own tracking page']
