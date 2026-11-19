@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.46.0', date: '2026-11-19',
+        ar: ['«تتبع طلبي»: صفحة خاصة لكل عميل تعرض مراحل طلبه (عرض السعر، الفاتورة، الدفع، موعد التركيب والفني، التنفيذ، الاكتمال) والمبالغ والمتبقي والفاتورة PDF — بلا تسجيل دخول', 'رسائل واتساب للعميل ترسل رابط صفحة التتبع، وفي الفاتورة زر «صفحة التتبع» و«نسخ رابط التتبع»'],
+        en: ['«Track my order»: a private page for each customer showing the steps of their order (quote, invoice, payment, installation appointment and technician, work, done), the amounts, the balance and the invoice PDF — no sign-in', 'WhatsApp messages to the customer send the tracking page link; the invoice has «Tracking page» and «Copy the tracking link»']
+    },
+    {
         version: '3.45.1', date: '2026-11-19',
         ar: ['حساب MazBot مستقل للقوالب المعتمدة: قوالب الحاسبات لأرقام المبيعات وقوالب العملاء (الفاتورة والدفعة والتذكير) تُرسل منه، ويبقى الحساب الأساسي للرسائل الواردة والمساعد والردود', 'حالة الحسابين في تبويب «الربط»'],
         en: ['A MazBot account of its own for approved templates: the calculators\' templates to the sales numbers and the customer templates (invoice, payment, reminder) go from it, and the main account stays for incoming messages, the assistant and replies', 'Both accounts\' status in the «Integrations» tab']

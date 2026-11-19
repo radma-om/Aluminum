@@ -153,11 +153,12 @@ async function openInvoice(id) {
 function showInvoice(inv) {
     invCurrent = inv;
     const manager = ME && ME.role === 'manager';
-    const link = location.origin + inv.pdf_url;
+    // The customer's page «تتبع طلبي» (the steps, amounts, appointment and the PDF)
+    const link = location.origin + (inv.track_url || inv.pdf_url);
     const dep = inv.deposit;
     const waText = `فاتورة رقم ${inv.number} — الإجمالي ${money2(inv.total)} ر.ع`
         + (dep && dep.remaining > 0.004 ? `\n${dep.label}: ${money2(dep.amount)} ر.ع${inv.paid > 0.004 ? ` (المتبقي منه ${money2(dep.remaining)} ر.ع)` : ''}` : '')
-        + `\nالمتبقي على الفاتورة: ${money2(inv.balance)} ر.ع\n${link}`;
+        + `\nالمتبقي على الفاتورة: ${money2(inv.balance)} ر.ع\nتتبع طلبك والفاتورة: ${link}`;
     const wa = `https://wa.me/${encodeURIComponent(String(inv.customer_phone).replace(/\D/g, ''))}?text=${encodeURIComponent(waText)}`;
     $id('invDetail').innerHTML = `
         <h3><i class="fas fa-receipt"></i> ${esc(inv.number)} <span class="badge st-${esc(inv.state)}">${esc(inv.state_label)}</span></h3>
@@ -199,7 +200,8 @@ function showInvoice(inv) {
         ${invWhatsappBox(inv)}
         <div class="form-buttons">
             <button class="btn btn-outline btn-sm" onclick="downloadInvoicePdf(${inv.id}, '${esc(inv.number)}')">PDF</button>
-            <button class="btn btn-outline btn-sm" onclick="copyInvoiceLink()">نسخ رابط العميل</button>
+            <a class="btn btn-outline btn-sm" href="${esc(link)}" target="_blank" rel="noopener"><i class="fas fa-route"></i> صفحة التتبع</a>
+            <button class="btn btn-outline btn-sm" onclick="copyInvoiceLink()">نسخ رابط التتبع</button>
             <a class="btn btn-outline btn-sm" href="${esc(wa)}" target="_blank" rel="noopener" title="يفتح واتساب على جهازك برسالة جاهزة">واتساب من جوالي</a>
             ${inv.state !== 'cancelled' ? `<button class="btn btn-outline btn-sm" onclick="closeSheet('invSheet'); openQuoteBuilder({ invoice: invCurrent })"><i class="fas fa-pen-ruler"></i> تعديل البنود / المقاسات</button>` : ''}
             ${inv.state !== 'cancelled' ? `<button class="btn btn-outline btn-sm" onclick="editInvoice()">تعديل الاستحقاق / الملاحظات</button>` : ''}
@@ -302,8 +304,8 @@ async function editInvoice() {
 }
 
 async function copyInvoiceLink() {
-    const link = location.origin + invCurrent.pdf_url;
-    try { await navigator.clipboard.writeText(link); alert('نُسخ الرابط ✓ — يفتح به العميل فاتورته (PDF) دون دخول'); } catch { await askText('انسخ الرابط:', link); }
+    const link = location.origin + (invCurrent.track_url || invCurrent.pdf_url);
+    try { await navigator.clipboard.writeText(link); alert('نُسخ الرابط ✓ — يفتح به العميل صفحة «تتبع طلبي» (المراحل والمبالغ والفاتورة PDF) دون دخول'); } catch { await askText('انسخ الرابط:', link); }
 }
 
 async function downloadInvoicePdf(id, number) {
