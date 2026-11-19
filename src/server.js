@@ -33,6 +33,7 @@ const followup = require('./followup');
 const invoices = require('./invoices');
 const customerNotify = require('./customer-notify');
 const tracking = require('./tracking');
+const orderNotify = require('./order-notify');
 const workorders = require('./workorders');
 const servicerequests = require('./servicerequests');
 const costs = require('./costs');
@@ -451,6 +452,7 @@ function createApp(db, { agentClient } = {}) {
     app.use(compression({ threshold: 1024 }));
     pruneOldLogs(db);
     wallets.ensureTables(db);
+    orderNotify.ensureTables(db);
     try { workorders.cancelOrphans(db); } catch (err) { console.error('[work-orders] orphans', err.message); }
     // Statistics: quotes / customers of cancelled invoices no longer counted as sold; no frozen unfinished month
     try { invoices.repairCancelled(db); require('./bonuses').dropUnfinished(db); } catch (err) { console.error('[stats] repair', err.message); }
@@ -1473,7 +1475,7 @@ function createApp(db, { agentClient } = {}) {
         res.json(c ? { found: true, name: c.name || '', city: c.city || '', address: c.address || '' } : { found: false });
     });
     admin.get('/work-orders/:id', (req, res) => res.json(orderFor(req, req.params.id)));
-    admin.post('/work-orders', (req, res) => {
+    admin.post('/work-orders', asyncRoute(async (req, res) => {
         officeOnly(req);
         const b = req.body || {};
         let source = null;
@@ -1489,16 +1491,25 @@ function createApp(db, { agentClient } = {}) {
         }
         const order = workorders.create(db, b, staffName(req), { source });
         webhooks.emit(db, 'work_order.created', order);
-        res.status(201).json(order);
-    });
+        // «إبلاغ العميل»: the appointment, as soon as it is set
+        const notice = b.notify_customer && order.scheduled_date
+            ? await orderNotify.notify(db, order, 'scheduled', { origin: systemOrigin(req, db), by: staffName(req) }) : null;
+        res.status(201).json({ ...order, notice: notice && { ok: notice.sent, error: notice.error || null, skipped: notice.skipped || null } });
+    }));
     // «إبلاغ العميل»: a new appointment or a cancellation goes to the customer on WhatsApp too
     admin.patch('/work-orders/:id', asyncRoute(async (req, res) => {
         officeOnly(req);
         const before = orderFor(req, req.params.id);
         const order = workorders.update(db, req.params.id, req.body || {}, staffName(req));
         let notice = null;
-        const moved = order.scheduled_date !== before.scheduled_date || order.scheduled_time !== before.scheduled_time;
-        if ((req.body || {}).notify_customer && moved) notice = await servicerequests.notifyMoved(db, order);
+        const moved = order.scheduled_date !== before.scheduled_date || order.scheduled_time !== before.scheduled_time
+            || order.technician_id !== before.technician_id;
+        if ((req.body || {}).notify_customer && moved && order.scheduled_date) {
+            // The approved template (any time) when it is set; else the plain message as before (24-hour window)
+            const r = await orderNotify.notify(db, order, 'scheduled', { origin: systemOrigin(req, db), by: staffName(req) });
+            notice = r.sent ? { ok: true } : r.skipped && ['no_template', 'no_login', 'off'].includes(r.skipped)
+                ? await servicerequests.notifyMoved(db, order) : { ok: false, error: r.error || (r.skipped === 'muted' ? 'العميل أوقف الإشعارات مؤقتاً (48 ساعة)' : r.skipped) };
+        }
         res.json({ ...order, notice });
     }));
     /* A service done on site (الخدمة): a name, a description shown to the customer, a quantity and a price.
@@ -1741,8 +1752,22 @@ function createApp(db, { agentClient } = {}) {
         const b = req.body || {};
         const order = workorders.setStatus(db, req.params.id, String(b.status || ''), b.note, req.user);
         webhooks.emit(db, 'work_order.status_changed', order);
+        // The customer hears it (in the background: the technician does not wait for WhatsApp).
+        // A visit opened and finished on the spot already sent its invoice: no «done» notice too.
+        const quick = Date.now() - Date.parse(String(order.created_at).replace(' ', 'T') + 'Z') < 10 * 60_000;
+        const event = order.status === 'in_progress' ? 'started' : order.status === 'done' && !quick ? 'done' : null;
+        if (event) orderNotify.notify(db, order, event, { origin: systemOrigin(req, db), by: staffName(req) }).catch(() => {});
         res.json(order);
     });
+    /* «في الطريق»: the technician leaves for the customer — the customer is told, the office sees it in the log */
+    admin.post('/work-orders/:id/on-the-way', asyncRoute(async (req, res) => {
+        const order = orderFor(req, req.params.id);
+        if (!['new', 'scheduled', 'in_progress'].includes(order.status)) throw httpError(400, 'أمر العمل مغلق');
+        db.prepare('INSERT INTO work_order_events (order_id, author, text, by_technician) VALUES (?, ?, ?, ?)')
+            .run(order.id, staffName(req), '🚚 الفني في الطريق إلى العميل', req.user.role === 'technician' ? 1 : 0);
+        const notice = await orderNotify.notify(db, order, 'on_the_way', { origin: systemOrigin(req, db), by: staffName(req) });
+        res.json({ ...workorders.get(db, order.id), notice: { ok: notice.sent, error: notice.error || null, skipped: notice.skipped || null } });
+    }));
     admin.post('/work-orders/:id/notes', (req, res) => {
         orderFor(req, req.params.id);
         res.status(201).json(workorders.addNote(db, req.params.id, (req.body || {}).text, req.user));
@@ -2463,7 +2488,11 @@ function createApp(db, { agentClient } = {}) {
         dry_run: process.env.MAZBOT_DRY_RUN === '1',
         recipients: mazbot.parseRecipients(getSettings(db).mazbot_recipients),
         // The account of the approved templates to customers (invoice, payment, reminder)
-        customer: customerNotify.status()
+        customer: customerNotify.status(),
+        // The work order notices (appointment, on the way, started, done) and the templates account's webhook
+        work_orders: orderNotify.status(db),
+        templates_webhook_path: req.user.role === 'manager' && (process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET || '').length >= 16
+            ? `/webhooks/mazbot-templates/${process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET}` : null
     }));
     /* Sign in to each account now: the main one (incoming messages, replies) and the templates' one */
     admin.get('/mazbot/check-accounts', asyncRoute(async (req, res) => {
@@ -2679,6 +2708,44 @@ function createApp(db, { agentClient } = {}) {
         });
         return;
     });
+    /* The templates account's webhook (MazBot ← its number): «إيقاف الإشعارات 48 ساعة», «تتبع».
+       Its own path secret (MAZBOT_TEMPLATES_WEBHOOK_SECRET) and signing secret (MAZBOT_TEMPLATES_SIGNING_SECRET). */
+    app.all('/webhooks/mazbot-templates/:secret', express.raw({ type: () => true, limit: '1mb' }), (req, res) => {
+        const secret = process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET || '';
+        const given = String(req.params.secret);
+        if (!(secret.length >= 16 && given.length === secret.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(secret)))) {
+            return res.status(404).json({ error: 'غير موجود' });
+        }
+        const raw = req.rawBody || (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
+        const body = raw.length ? raw.toString('utf8') : (req.body && !Buffer.isBuffer(req.body) ? JSON.stringify(req.body) : '');
+        const info = db.prepare(`INSERT INTO inbound_events (source, method, content_type, headers_json, body) VALUES ('mazbot_templates', ?, ?, ?, ?)`)
+            .run(req.method, req.get('content-type') || null, JSON.stringify({ 'x-mazbot-signature': req.get('x-mazbot-signature') || null }), body.slice(0, 100_000));
+        const eventId = Number(info.lastInsertRowid);
+        const signing = process.env.MAZBOT_TEMPLATES_SIGNING_SECRET || '';
+        if (!signing && process.env.MAZBOT_ALLOW_UNSIGNED !== '1') {
+            db.prepare('UPDATE inbound_events SET signature = ?, status = ? WHERE id = ?').run('missing', 'bad_signature', eventId);
+            return res.status(401).json({ error: 'invalid signature' });
+        }
+        if (signing && !mazbot.verifySignature(raw, req.get('x-mazbot-signature'), signing)) {
+            db.prepare('UPDATE inbound_events SET signature = ?, status = ? WHERE id = ?').run('bad', 'bad_signature', eventId);
+            return res.status(401).json({ error: 'invalid signature' });
+        }
+        let event = null;
+        try { event = JSON.parse(body); } catch { /* not JSON */ }
+        // Each message once (MazBot may deliver it again)
+        const msgId = event && event.data && event.data.message && event.data.message.id;
+        const key = msgId ? `tpl:${msgId}` : null;
+        if (key && db.prepare('SELECT 1 FROM inbound_events WHERE event_key = ? AND id != ?').get(key, eventId)) {
+            db.prepare('UPDATE inbound_events SET status = ?, event_key = ? WHERE id = ?').run('duplicate', key, eventId);
+            return res.json({ ok: true });
+        }
+        db.prepare('UPDATE inbound_events SET signature = ?, event_key = ? WHERE id = ?').run(signing ? 'verified' : 'unchecked', key, eventId);
+        res.json({ ok: true });
+        orderNotify.handleTemplatesEvent(db, event, { origin: systemOrigin(req, db) })
+            .then((r) => db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?').run(r.action, eventId))
+            .catch((e) => db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?').run('error: ' + String(e.message).slice(0, 200), eventId));
+    });
+
     // Pages: the customer calculator is the site's home page (shareable link, no password);
     // the admin panel lives at /admin and asks for the admin password.
     const publicDir = path.join(__dirname, '..', 'public');

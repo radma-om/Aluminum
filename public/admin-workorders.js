@@ -60,6 +60,7 @@ function renderWorkOrders() {
         const late = o.scheduled_date && o.scheduled_date < today && ['scheduled', 'in_progress'].includes(o.status);
         const open = ['new', 'scheduled', 'in_progress'].includes(o.status);
         const techActions = isTech() && open ? [
+            o.status === 'scheduled' ? `<button class="btn btn-outline" onclick="woOnTheWay(${o.id}, this)"><i class="fas fa-truck"></i> في الطريق</button>` : '',
             o.status === 'scheduled' ? `<button class="btn btn-primary" onclick="woMove(${o.id}, 'in_progress')"><i class="fas fa-play"></i> بدأت العمل</button>` : '',
             `<button class="btn btn-outline" onclick="woService(${o.id})"><i class="fas fa-screwdriver-wrench"></i> إضافة خدمة</button>`,
             `<button class="btn btn-primary" style="background:var(--success);border-color:var(--success)" onclick="woMove(${o.id}, 'done')"><i class="fas fa-check"></i> اكتمل</button>`,
@@ -307,8 +308,19 @@ async function woCancel(id) {
     } catch (err) { alert(err.message); }
 }
 
+/* «في الطريق»: the customer is told on WhatsApp (when its template is set) */
+async function woOnTheWay(id, btn) {
+    btn.disabled = true;
+    try {
+        const r = await api('POST', `/api/admin/work-orders/${id}/on-the-way`, {});
+        btn.innerHTML = r.notice && r.notice.ok ? '<i class="fas fa-truck"></i> أُبلغ العميل ✓' : '<i class="fas fa-truck"></i> سُجّل ✓';
+        if (r.notice && !r.notice.ok && !r.notice.skipped) await tell(`سُجّل أنك في الطريق، لكن لم تصل رسالة للعميل: ${r.notice.error}`);
+    } catch (err) { btn.disabled = false; tell(err.message); }
+}
+
 /* What happened to the WhatsApp message to the customer (the change itself is saved either way) */
 function woNoticeAlert(notice) {
+    if (notice && notice.skipped && !notice.error) return; // nothing to send (no template, switched off)
     if (notice && !notice.ok) alert(`تم الحفظ ✓ لكن لم تصل رسالة واتساب للعميل:\n${notice.error}\n\nإذا مرّ أكثر من 24 ساعة على آخر رسالة منه فواتساب لا يسمح إلا بالقوالب — اتصل به أو راسله يدوياً.`);
 }
 
@@ -352,7 +364,8 @@ async function newWorkOrder(source = null) {
     }
     $id('woTechSel').value = '';
     $id('woSubmit').textContent = 'إنشاء أمر العمل';
-    $id('woNotifyRow').hidden = true;
+    $id('woNotifyRow').hidden = false;
+    $id('woNotify').checked = true;
     setStatus('woSheetStatus', '');
     $id('woSheet').hidden = false;
 }
@@ -394,9 +407,9 @@ async function submitWorkOrder() {
             const r = await api('PATCH', `/api/admin/work-orders/${woEditing.id}`, { ...body, notify_customer: $id('woNotify').checked });
             woNoticeAlert(r.notice);
         } else if (woSourceRef && woSourceRef.invoice) {
-            await api('POST', '/api/admin/work-orders', { ...body, invoice_id: woSourceRef.invoice.id });
+            woNoticeAlert((await api('POST', '/api/admin/work-orders', { ...body, invoice_id: woSourceRef.invoice.id, notify_customer: $id('woNotify').checked })).notice);
         } else {
-            await api('POST', '/api/admin/work-orders', { ...body, customer_name: $id('woName').value.trim(), customer_phone: $id('woPhone').value.trim() });
+            woNoticeAlert((await api('POST', '/api/admin/work-orders', { ...body, customer_name: $id('woName').value.trim(), customer_phone: $id('woPhone').value.trim(), notify_customer: $id('woNotify').checked })).notice);
         }
         closeSheet('woSheet');
         if (document.querySelector('#tab-work_orders.active')) await loadWorkOrders();
