@@ -123,6 +123,15 @@ test('«إيقاف الإشعارات 48 ساعة» from the templates account m
     assert.equal((await post(press)).status, 200);
     await wait();
     assert.ok(notify.isMuted(db, '91234567'), 'muted for 48 hours');
+    // The panel lists it under the templates account (not the main one), with what happened
+    const list = async (q) => (await (await fetch(`${base}/api/admin/mazbot/inbound${q}`, { headers: { Authorization: 'Bearer ' + OWNER } })).json());
+    const tpl = await list('?source=mazbot_templates');
+    assert.equal(tpl.events.length, 2, 'the unsigned one and the signed one');
+    assert.match(tpl.events[0].status, /^muted/);
+    assert.equal(tpl.events[1].status, 'bad_signature');
+    assert.equal(tpl.templates_webhook_path, `/webhooks/mazbot-templates/${TPL.MAZBOT_TEMPLATES_WEBHOOK_SECRET}`);
+    assert.equal(tpl.templates_signed, true);
+    assert.equal((await list('')).events.length, 0, 'the main account\'s list stays its own');
     const order = workorders.create(db, { kind: 'installation', description: 'تركيب', scheduled_date: '2026-11-22' }, 'المكتب', { source: { invoice: inv } });
     const r = await notify.notify(db, workorders.get(db, order.id), 'scheduled', { origin: base });
     assert.equal(r.skipped, 'muted');

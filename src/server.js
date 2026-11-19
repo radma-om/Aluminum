@@ -2506,10 +2506,16 @@ function createApp(db, { agentClient } = {}) {
     /* The webhook address to paste in MazBot, and the latest requests it received */
     admin.get('/mazbot/inbound', (req, res) => {
         const secret = process.env.MAZBOT_WEBHOOK_SECRET || '';
+        const tplSecret = process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET || '';
+        // source=mazbot_templates: the templates account (its number); otherwise the main account
+        const templates = req.query.source === 'mazbot_templates';
+        const manager = req.user.role === 'manager';
         res.json({
             // The path secret is a bearer credential. Only managers may copy it.
-            webhook_path: req.user.role === 'manager' && secret.length >= 16 ? `/webhooks/mazbot/${secret}` : null,
-            events: db.prepare('SELECT * FROM inbound_events ORDER BY id DESC LIMIT 20').all()
+            webhook_path: manager && secret.length >= 16 ? `/webhooks/mazbot/${secret}` : null,
+            templates_webhook_path: manager && tplSecret.length >= 16 ? `/webhooks/mazbot-templates/${tplSecret}` : null,
+            templates_signed: Boolean(process.env.MAZBOT_TEMPLATES_SIGNING_SECRET),
+            events: db.prepare(`SELECT * FROM inbound_events WHERE ${templates ? "source = 'mazbot_templates'" : "IFNULL(source, 'mazbot') != 'mazbot_templates'"} ORDER BY id DESC LIMIT 20`).all()
         });
     });
 
@@ -2667,6 +2673,9 @@ function createApp(db, { agentClient } = {}) {
     /* MazBot webhook: customer WhatsApp messages → AI agent → reply via MazBot.
        Every request is kept (last 100) with what happened to it, for checking in the admin panel.
        The secret in the path (MAZBOT_WEBHOOK_SECRET) and X-Mazbot-Signature are the access control. */
+    // The latest 100 requests of each source (one account's traffic never pushes out the other's)
+    const pruneInbound = (source) => db.prepare(`DELETE FROM inbound_events WHERE source = ? AND id NOT IN
+        (SELECT id FROM inbound_events WHERE source = ? ORDER BY id DESC LIMIT 100)`).run(source, source);
     const webhookSecretOk = (given) => {
         const secret = process.env.MAZBOT_WEBHOOK_SECRET || '';
         return secret.length >= 16 && given.length === secret.length &&
@@ -2681,7 +2690,7 @@ function createApp(db, { agentClient } = {}) {
         const info = db.prepare(`INSERT INTO inbound_events (source, method, content_type, headers_json, body) VALUES ('mazbot', ?, ?, ?, ?)`)
             .run(req.method, req.get('content-type') || null, JSON.stringify({ ...headers, query: req.query }), body.slice(0, 100_000));
         const eventId = Number(info.lastInsertRowid);
-        db.prepare(`DELETE FROM inbound_events WHERE id NOT IN (SELECT id FROM inbound_events ORDER BY id DESC LIMIT 100)`).run();
+        pruneInbound('mazbot');
 
         // X-Mazbot-Signature proves the request comes from MazBot (MAZBOT_SIGNING_SECRET from the MazBot webhook page).
         // Check the exact bytes received — never a re-encoded copy. Unsigned requests are rejected unless the
@@ -2721,6 +2730,7 @@ function createApp(db, { agentClient } = {}) {
         const info = db.prepare(`INSERT INTO inbound_events (source, method, content_type, headers_json, body) VALUES ('mazbot_templates', ?, ?, ?, ?)`)
             .run(req.method, req.get('content-type') || null, JSON.stringify({ 'x-mazbot-signature': req.get('x-mazbot-signature') || null }), body.slice(0, 100_000));
         const eventId = Number(info.lastInsertRowid);
+        pruneInbound('mazbot_templates');
         const signing = process.env.MAZBOT_TEMPLATES_SIGNING_SECRET || '';
         if (!signing && process.env.MAZBOT_ALLOW_UNSIGNED !== '1') {
             db.prepare('UPDATE inbound_events SET signature = ?, status = ? WHERE id = ?').run('missing', 'bad_signature', eventId);
@@ -2742,7 +2752,8 @@ function createApp(db, { agentClient } = {}) {
         db.prepare('UPDATE inbound_events SET signature = ?, event_key = ? WHERE id = ?').run(signing ? 'verified' : 'unchecked', key, eventId);
         res.json({ ok: true });
         orderNotify.handleTemplatesEvent(db, event, { origin: systemOrigin(req, db) })
-            .then((r) => db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?').run(r.action, eventId))
+            .then((r) => db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?')
+                .run(r.reply && !r.reply_ok ? `${r.action}_failed: ${String(r.reply_error || '').slice(0, 200)}` : r.action, eventId))
             .catch((e) => db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?').run('error: ' + String(e.message).slice(0, 200), eventId));
     });
 

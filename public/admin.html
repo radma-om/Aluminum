@@ -2185,6 +2185,15 @@
                 </div>
                 <p class="status-text">الصق هذا الرابط في «Whatsapp External Webhook Url» في MazBot، وضع «Webhook signing secret» في متغير البيئة MAZBOT_SIGNING_SECRET. آخر الطلبات الواردة وما حدث لكل منها تظهر هنا.</p>
                 <div id="inboundList" style="margin-top:8px"></div>
+                <p class="sub-heading">رسائل حساب القوالب (رقم القوالب المعتمدة)</p>
+                <p class="status-text" style="margin-top:0">ما يصل من هذا الرقم: زر «إيقاف الإشعارات 48 ساعة»، و«تتبع طلبي»، وأي رسالة يكتبها العميل له. النظام يرد على «تتبع» و«إيقاف الإشعارات» فقط ويتجاهل الباقي (الـFlow في MazBot يتولاه).</p>
+                <div class="filter-row">
+                    <input type="text" id="tplWebhookUrl" readonly dir="ltr" style="flex:1; min-width:260px; padding: 8px 12px; border: 2px solid var(--border); border-radius: 8px; font-family: monospace;">
+                    <button class="btn btn-outline btn-sm" onclick="copyTplWebhookUrl()">نسخ</button>
+                    <button class="btn btn-outline btn-sm" onclick="loadTemplatesInbound()">تحديث</button>
+                </div>
+                <p class="status-text" id="tplWebhookHint"></p>
+                <div id="tplInboundList" style="margin-top:8px"></div>
                 <div class="db-actions">
                     <button class="btn btn-accent" onclick="saveSettingsToServer()">حفظ</button>
                     <button class="btn btn-outline" onclick="testMazbot('rolling_shutter')">رسالة تجريبية — رولينج شتر</button>

@@ -767,3 +767,10 @@ body.sb-collapsed .sb-version { justify-content: center; padding: 8px 0; }
 .inv-wa-log li { padding: 3px 0; }
 .inv-wa-log li.ok { color: #1e8449; }
 .inv-wa-log li.err { color: #a93226; }
+
+/* «الربط»: the status badges in a card title wrap on a phone (they were wider than the screen) */
+.card-title:has(#mazbotStatus) { flex-wrap: wrap; row-gap: 6px; }
+.card-title .badge { white-space: normal; max-width: 100%; }
+#waWebhookUrl { word-break: break-all; }
+/* A field spanning 2 columns on a one-column phone grid made an extra column (wider than the screen) */
+@media (max-width: 700px) { .form-grid > [style*="span 2"] { grid-column: 1 / -1 !important; } }
