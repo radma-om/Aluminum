@@ -140,17 +140,32 @@ function log(db, order, text, by) {
 const MUTE_RE = /إيقاف الإشعارات|ايقاف الاشعارات|stop/i;
 const TRACK_RE = /تتبع|track/i;
 
-/* The customer's open orders and recent invoices, as tracking links */
+/* The customer's numbers: the one they wrote from, and the other on their record */
+function phonesOf(db, phone) {
+    const p = mobileOf(phone);
+    const c = db.prepare('SELECT phone, phone2 FROM customers WHERE phone = ? OR phone2 = ?').get(p, p);
+    return [...new Set([p, c && c.phone, c && c.phone2].filter(Boolean).map(mobileOf))];
+}
+
+/* The customer's recent invoices, open orders without invoice, and quotes not invoiced yet (last 90 days),
+   as links: the tracking page, or the quote's PDF */
 function trackingFor(db, phone, origin) {
     ensureTables(db);
-    const p = mobileOf(phone);
-    const invs = db.prepare(`SELECT id, number, access_key, total FROM invoices WHERE customer_phone = ? AND status = 'issued' ORDER BY id DESC LIMIT 3`).all(p);
-    const orders = db.prepare(`SELECT * FROM work_orders WHERE customer_phone = ? AND invoice_id IS NULL AND status IN ('new', 'scheduled', 'in_progress') ORDER BY id DESC LIMIT 3`).all(p);
-    const lines = [
+    const phones = phonesOf(db, phone);
+    const marks = phones.map(() => '?').join(', ');
+    const today = new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
+    const invs = db.prepare(`SELECT id, number, access_key, total FROM invoices WHERE customer_phone IN (${marks}) AND status = 'issued' ORDER BY id DESC LIMIT 3`).all(...phones);
+    const orders = db.prepare(`SELECT * FROM work_orders WHERE customer_phone IN (${marks}) AND invoice_id IS NULL AND status IN ('new', 'scheduled', 'in_progress') ORDER BY id DESC LIMIT 3`).all(...phones);
+    const quotes = db.prepare(`SELECT q.ref, q.access_key, q.total, q.valid_until FROM quotes q
+                               WHERE q.customer_phone IN (${marks}) AND q.status IN ('new', 'contacted', 'accepted') AND q.access_key IS NOT NULL
+                               AND q.created_at >= datetime('now', '-90 days')
+                               AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.quote_id = q.id AND i.status = 'issued')
+                               ORDER BY q.id DESC LIMIT 3`).all(...phones);
+    return [
         ...invs.map((i) => `🧾 فاتورة ${i.number}: ${origin}/t/${i.access_key}`),
-        ...orders.map((o) => `🔧 طلب ${WORK[o.kind] || 'عمل'} ${o.number}: ${origin}${trackPath(db, o)}`)
+        ...orders.map((o) => `🔧 طلب ${WORK[o.kind] || 'عمل'} ${o.number}: ${origin}${trackPath(db, o)}`),
+        ...quotes.map((q) => `📄 عرض سعر ${q.ref} (${money(q.total)} ر.ع)${q.valid_until && q.valid_until < today ? ' — انتهت صلاحيته، راسلونا لتحديث السعر' : q.valid_until ? ` — ساري حتى ${q.valid_until}` : ''}: ${origin}/quotes/${encodeURIComponent(q.ref)}.pdf?k=${q.access_key}`)
     ];
-    return lines;
 }
 
 /**
@@ -172,7 +187,7 @@ async function handleTemplatesEvent(db, event, { origin = '', client = null } = 
         reply = `تم إيقاف إشعارات الطلبات لمدة ${MUTE_HOURS} ساعة 🔕\nلمعرفة حالة طلبكم في أي وقت اكتبوا «تتبع».`;
     } else if (TRACK_RE.test(said)) {
         const lines = trackingFor(db, phone, origin);
-        action = 'track';
+        action = lines.length ? 'track' : 'track_none';
         reply = lines.length
             ? `طلباتكم لدى رادما 👇\n${lines.join('\n')}\n\nللاستفسار راسلونا على 90660001.`
             : 'لم نجد طلبات مسجلة بهذا الرقم. إذا كان الطلب برقم آخر راسلونا منه، أو تواصلوا مع خدمة العملاء على 90660001.';
@@ -188,4 +203,4 @@ async function handleTemplatesEvent(db, event, { origin = '', client = null } = 
     return { action, reply, reply_ok: replyOk, reply_error: replyError };
 }
 
-module.exports = { EVENTS, ensureTables, status, notify, mute, isMuted, trackPath, trackingFor, handleTemplatesEvent, setSenderForTests, MUTE_HOURS };
+module.exports = { EVENTS, ensureTables, status, notify, mute, isMuted, trackPath, trackingFor, phonesOf, handleTemplatesEvent, setSenderForTests, MUTE_HOURS };
