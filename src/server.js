@@ -32,6 +32,7 @@ const alerts = require('./alerts');
 const followup = require('./followup');
 const invoices = require('./invoices');
 const customerNotify = require('./customer-notify');
+const tracking = require('./tracking');
 const workorders = require('./workorders');
 const servicerequests = require('./servicerequests');
 const costs = require('./costs');
@@ -762,6 +763,8 @@ function createApp(db, { agentClient } = {}) {
         }
         sendInvoicePdf(res, inv);
     });
+    /* «تتبع طلبي»: the customer's page of an invoice — the steps, the amounts, the appointment (src/tracking.js) */
+    app.get('/t/:key', tracking.route(db, getSettings));
     const sendInvoicePdf = (res, inv) => {
         const quoteRef = inv.quote_id ? (db.prepare('SELECT ref FROM quotes WHERE id = ?').get(inv.quote_id) || {}).ref : null;
         res.setHeader('Content-Type', 'application/pdf');
@@ -770,7 +773,7 @@ function createApp(db, { agentClient } = {}) {
     };
     const invoicePublic = (inv) => {
         const { access_key, ...rest } = inv;
-        return { ...rest, pdf_url: `/invoices/${inv.number}.pdf?k=${access_key}` };
+        return { ...rest, pdf_url: `/invoices/${inv.number}.pdf?k=${access_key}`, track_url: tracking.path(inv) };
     };
 
     /* ------------------------- Admin API -------------------------- */
@@ -1343,7 +1346,7 @@ function createApp(db, { agentClient } = {}) {
         const b = req.body || {};
         const origin = systemOrigin(req, db);
         const r = await customerNotify.send(db, inv, {
-            kind: String(b.kind || ''), paymentId: b.payment_id || null, link: origin + invoicePublic(inv).pdf_url, by: staffName(req)
+            kind: String(b.kind || ''), paymentId: b.payment_id || null, link: origin + tracking.path(inv), by: staffName(req)
         });
         res.json({ ...r, messages: customerNotify.history(db, inv.id) });
     }));
@@ -1578,7 +1581,7 @@ function createApp(db, { agentClient } = {}) {
         const inv = invoices.get(db, Number((req.body || {}).invoice_id));
         const ofOrder = inv && (inv.id === order.invoice_id || Number((inv.details || {}).service_order_id) === order.id);
         if (!ofOrder) throw httpError(404, 'الفاتورة ليست لأمر العمل هذا');
-        const r = await customerNotify.send(db, inv, { kind: 'invoice', link: systemOrigin(req, db) + invoicePublic(inv).pdf_url, by: staffName(req) });
+        const r = await customerNotify.send(db, inv, { kind: 'invoice', link: systemOrigin(req, db) + tracking.path(inv), by: staffName(req) });
         res.json(r);
     }));
 

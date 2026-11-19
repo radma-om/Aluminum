@@ -2383,6 +2383,8 @@ window.I18N_EN = {
     "نسخ أسعار تركيب الأوفرهيد للفارغ": "Copy overhead installation prices to empty ones",
     "نسخ أسعار تركيب الشتر للفارغ": "Copy roller shutter installation prices to empty ones",
     "نسخ رابط العميل": "Copy the customer link",
+    "نسخ رابط التتبع": "Copy the tracking link",
+    "صفحة التتبع": "Tracking page",
     "نسخ رسوم تركيب المكائن": "Copy motor installation fees",
     "نسخة خارج الخادم (بالبريد)": "Off-server copy (by email)",
     "نسخة يومية تُرسل إلى": "A daily copy is sent to",

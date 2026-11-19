@@ -60,7 +60,7 @@ test('the invoice, a payment, a reminder: the template\'s values in order, the P
     assert.equal(m.mobile, '96891234567');
     assert.equal(m.templateId, '101');
     assert.deepEqual(m.values.slice(0, 5), ['خالد', inv.number, '420.00', '0.00', '420.00']);
-    assert.match(m.values[5], new RegExp(`^http://127\\.0\\.0\\.1:\\d+/invoices/${inv.number}\\.pdf\\?k=`), 'the customer\'s PDF link');
+    assert.match(m.values[5], /^http:\/\/127\.0\.0\.1:\d+\/t\/[0-9a-f]{32}$/, 'the customer\'s tracking page');
     assert.equal(r.body.messages[0].sent_by, 'المدير العام');
     const log = db.prepare('SELECT text FROM lead_messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1').get(lead.id).text;
     assert.match(log, /أُرسلت الفاتورة .* للعميل على واتساب/);

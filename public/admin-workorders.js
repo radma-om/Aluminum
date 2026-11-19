@@ -118,9 +118,10 @@ async function woMove(id, status) {
 
 /* After a service is saved: the invoice, its PDF and the WhatsApp message to the customer */
 function serviceResult(r, again) {
-    const link = location.origin + r.invoice.pdf_url;
+    const link = location.origin + (r.invoice.track_url || r.invoice.pdf_url);
+    const pdf = location.origin + r.invoice.pdf_url;
     const phone = String(r.invoice.customer_phone || '').replace(/\D/g, '');
-    const wa = `https://wa.me/${encodeURIComponent(phone)}?text=${encodeURIComponent(`فاتورة رقم ${r.invoice.number} — الإجمالي ${Number(r.invoice.total).toFixed(2)} ر.ع\n${link}`)}`;
+    const wa = `https://wa.me/${encodeURIComponent(phone)}?text=${encodeURIComponent(`فاتورة رقم ${r.invoice.number} — الإجمالي ${Number(r.invoice.total).toFixed(2)} ر.ع\nتتبع طلبك والفاتورة: ${link}`)}`;
     const added = (r.lines || [r.line]).reduce((s, l) => s + Number(l.line_total || 0), 0);
     return `
         <p class="status-text ok" style="font-weight:700">✓ أُضيفت الخدمة إلى الفاتورة ${esc(r.invoice.number)}</p>
@@ -130,7 +131,7 @@ function serviceResult(r, again) {
             <div><small>المتبقي على العميل</small><strong>${Number(r.invoice.balance).toFixed(2)}</strong></div>
         </div>
         <div class="form-buttons stack-mobile">
-            <a class="btn btn-primary" href="${esc(link)}" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> فتح الفاتورة PDF</a>
+            <a class="btn btn-primary" href="${esc(pdf)}" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> فتح الفاتورة PDF</a>
             ${r.order ? `<button class="btn btn-outline" type="button" onclick="woSendInvoice(${r.order.id}, ${r.invoice.id}, this)"><i class="fab fa-whatsapp"></i> إرسال للعميل من رقم الشركة</button>` : ''}
             <a class="btn btn-outline" href="${esc(wa)}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> واتساب من جوالي</a>
             <button class="btn btn-outline" type="button" onclick="${again}">خدمة أخرى</button>
