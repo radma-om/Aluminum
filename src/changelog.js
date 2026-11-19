@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.45.1', date: '2026-11-19',
+        ar: ['حساب MazBot مستقل للقوالب المعتمدة: قوالب الحاسبات لأرقام المبيعات وقوالب العملاء (الفاتورة والدفعة والتذكير) تُرسل منه، ويبقى الحساب الأساسي للرسائل الواردة والمساعد والردود', 'حالة الحسابين في تبويب «الربط»'],
+        en: ['A MazBot account of its own for approved templates: the calculators\' templates to the sales numbers and the customer templates (invoice, payment, reminder) go from it, and the main account stays for incoming messages, the assistant and replies', 'Both accounts\' status in the «Integrations» tab']
+    },
+    {
         version: '3.45.0', date: '2026-11-17',
         ar: ['واتساب للعميل من رقم الشركة: إرسال الفاتورة، وتأكيد كل دفعة، وتذكير بالمتبقي — مع الإجمالي والمدفوع والمتبقي ورابط PDF', 'بعد إصدار الفاتورة أو تسجيل دفعة يسألك النظام: إرسال للعميل الآن؟', 'الفني يرسل فاتورة أمر عمله أو فاتورة الخدمة من رقم الشركة', 'كل إرسال يُسجَّل في الفاتورة وفي سجل العميل، وزر «واتساب من جوالي» يبقى احتياطاً'],
         en: ['WhatsApp to the customer from the company number: the invoice, a confirmation of each payment, and a reminder of the balance — with the total, paid, balance and the PDF link', 'After issuing an invoice or recording a payment you are asked: send to the customer now?', 'The technician sends their work order\'s invoice or the service invoice from the company number', 'Every send is logged on the invoice and in the customer\'s file; «WhatsApp from my phone» stays as a fallback']

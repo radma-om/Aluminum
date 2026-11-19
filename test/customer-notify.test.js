@@ -50,7 +50,7 @@ test('the invoice, a payment, a reminder: the template\'s values in order, the P
     const lead = leads.customerMessage(db, { key: 'tel:96891234567', channel: 'whatsapp', name: 'خالد', phone: '96891234567', text: 'مرحبا' });
 
     const got = (await call('GET', `/api/admin/invoices/${inv.id}`)).body;
-    assert.deepEqual(got.wa, { login: false, invoice: true, payment: true, balance: false });
+    assert.deepEqual(got.wa, { login: false, separate_account: false, invoice: true, payment: true, balance: false });
     assert.deepEqual(got.messages, []);
 
     let r = await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'invoice' });
@@ -105,4 +105,26 @@ test('a technician sends their order\'s invoice only; staff without the invoices
     assert.equal((await call('POST', `/api/admin/work-orders/${order.id}/whatsapp`, { invoice_id: other.id }, tk)).status, 404, 'not this order\'s invoice');
     assert.equal((await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'invoice' }, tk)).status, 403);
     assert.equal((await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'invoice' }, await login('mona'))).status, 403);
+});
+
+test('two MazBot accounts: the templates to customers through their own account, the plain message through the main one', async (t) => {
+    const { db, call } = await start(t);
+    Object.assign(process.env, { MAZBOT_TEMPLATES_API_KEY: 'k', MAZBOT_TEMPLATES_STAFF_EMAIL: 'c@x', MAZBOT_TEMPLATES_STAFF_PASSWORD: 'p', MAZBOT_INVOICE_TEMPLATE_ID: '201' });
+    t.after(() => { for (const k of ['MAZBOT_TEMPLATES_API_KEY', 'MAZBOT_TEMPLATES_STAFF_EMAIL', 'MAZBOT_TEMPLATES_STAFF_PASSWORD', 'MAZBOT_INVOICE_TEMPLATE_ID']) delete process.env[k]; });
+    const inv = invoiceFor(db);
+    const got = (await call('GET', `/api/admin/invoices/${inv.id}`)).body;
+    assert.equal(got.wa.separate_account, true);
+    assert.equal(got.wa.login, true, 'the templates\' account can sign in');
+
+    let r = await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'invoice' });
+    assert.equal(r.body.ok, true);
+    assert.equal(sent.at(-1).account, 'templates', 'the template goes through the templates account');
+    assert.equal(r.body.messages[0].via, 'template:templates');
+    // No balance template: a plain message, through the main account (the customers chat with its number)
+    invoices.addPayment(db, inv.id, { amount: 100, method: 'cash' }, 'المكتب');
+    r = await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'balance' });
+    assert.equal(sent.at(-1).via, 'text');
+    assert.equal(sent.at(-1).account, 'main');
+    // The calculators keep the main account
+    assert.equal(require('../src/mazbot').hasLogin(), false, 'the main account is untouched by the customer one');
 });

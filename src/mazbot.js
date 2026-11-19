@@ -11,148 +11,169 @@
 
 const crypto = require('node:crypto');
 
+/* WhatsApp rejects template values with new lines, tabs or more than 4 spaces in a row */
+const cleanValue = (v) => String(v ?? '—').replace(/[\r\n\t]+/g, ' / ').replace(/ {4,}/g, '   ').trim().slice(0, 1000) || '—';
+
+/* One MazBot account: its own key, staff sign-in and token. prefix: 'MAZBOT_' (the main account — the
+   incoming messages, replies — and the templates when no templates account is set) or 'MAZBOT_TEMPLATES_'
+   (an account of its own for every approved template: the calculators' to the sales numbers and the
+   customers' — invoice, payment, reminder). */
+function makeClient(prefix) {
+    const env = () => ({
+        apiKey: process.env[prefix + 'API_KEY'] || '',
+        email: process.env[prefix + 'STAFF_EMAIL'] || '',
+        password: process.env[prefix + 'STAFF_PASSWORD'] || '',
+        baseUrl: (process.env[prefix + 'BASE_URL'] || process.env.MAZBOT_BASE_URL || 'https://mazbot.net/api').replace(/\/$/, ''),
+        dryRun: process.env.MAZBOT_DRY_RUN === '1'
+    });
+    const hasLogin = () => {
+        const e = env();
+        return Boolean(e.apiKey && e.email && e.password);
+    };
+    let tokenCache = { token: null, expiresAt: 0 };
+    const TOKEN_TTL_MS = 45 * 60_000;
+
+    async function post(path, fields, { jwt = null, multipart = false } = {}) {
+        const e = env();
+        const headers = { apikey: e.apiKey, Accept: 'application/json' };
+        if (jwt) headers.Authorization = 'Bearer ' + jwt;
+        let body;
+        if (multipart) {
+            body = new FormData();
+            for (const [key, value] of Object.entries(fields)) {
+                // Arrays go as real array fields: body_values[1], body_values[2] ...
+                if (value && typeof value === 'object') {
+                    for (const [k, v] of Object.entries(value)) body.append(`${key}[${k}]`, String(v));
+                } else {
+                    body.append(key, String(value));
+                }
+            }
+        } else {
+            headers['Content-Type'] = 'application/json';
+            body = JSON.stringify(fields);
+        }
+        try {
+            const res = await fetch(e.baseUrl + path, { method: 'POST', headers, body, signal: AbortSignal.timeout(20_000) });
+            const data = await res.json().catch(() => null);
+            return { status: res.status, body: data };
+        } catch (err) {
+            return { status: 0, body: null, error: err.message };
+        }
+    }
+
+    async function getToken(force = false) {
+        if (!force && tokenCache.token && Date.now() < tokenCache.expiresAt) return tokenCache.token;
+        const e = env();
+        const res = await post('/login', { email: e.email, password: e.password });
+        const token = res.body && res.body.data && res.body.data.token;
+        if (res.status !== 200 || !token) throw new Error(res.error || `login_failed_http_${res.status}`);
+        tokenCache = { token, expiresAt: Date.now() + TOKEN_TTL_MS };
+        return token;
+    }
+
+
+    async function sendTemplateOnce(jwt, mobile, values, templateId) {
+        const bodyValues = {};
+        const bodyMatchs = {};
+        values.forEach((v, i) => { bodyValues[i + 1] = cleanValue(v); bodyMatchs[i + 1] = 'input_value'; });
+        const res = await post('/whatsapp/send-template', {
+            template_id: templateId, mobile, body_matchs: bodyMatchs, body_values: bodyValues
+        }, { jwt, multipart: true });
+        const ok = res.status === 200 && Boolean(res.body && res.body.success);
+        return { ok, status: res.status, error: ok ? null : res.error || `template_failed_http_${res.status} ${JSON.stringify(res.body)}` };
+    }
+
+    /* Send to one mobile: one new login after a 401 (JWT expired), one retry on a network/5xx error */
+    async function sendTemplate(mobile, values, templateId) {
+        if (env().dryRun) return { ok: true, status: 200, error: 'dry_run' };
+        let jwt;
+        try { jwt = await getToken(); } catch (err) { return { ok: false, status: 0, error: err.message }; }
+        let result = await sendTemplateOnce(jwt, mobile, values, templateId);
+        if (!result.ok && result.status === 401) {
+            try { jwt = await getToken(true); result = await sendTemplateOnce(jwt, mobile, values, templateId); } catch (err) { result = { ok: false, status: 0, error: err.message }; }
+        }
+        if (!result.ok && (result.status === 0 || result.status >= 500)) result = await sendTemplateOnce(jwt, mobile, values, templateId);
+        return result;
+    }
+
+    /* ------------------ Free text (replies inside the customer's 24-hour window) ------------------ */
+
+    /* Retry once after a 401 (new login) and once after a network/5xx error */
+    async function withLogin(send) {
+        if (env().dryRun) return { ok: true, status: 200, error: 'dry_run' };
+        let jwt;
+        try { jwt = await getToken(); } catch (err) { return { ok: false, status: 0, error: err.message }; }
+        let result = await send(jwt);
+        if (!result.ok && result.status === 401) {
+            try { jwt = await getToken(true); result = await send(jwt); } catch (err) { result = { ok: false, status: 0, error: err.message }; }
+        }
+        if (!result.ok && (result.status === 0 || result.status >= 500)) result = await send(jwt);
+        return result;
+    }
+
+    const outcome = (res, what) => {
+        const ok = res.status === 200 && Boolean(res.body && res.body.success);
+        return { ok, status: res.status, body: res.body, error: ok ? null : res.error || `${what}_failed_http_${res.status} ${JSON.stringify(res.body)}` };
+    };
+
+    /* Text message to a MazBot contact (receiver_id = data.contact.id of the incoming webhook) */
+    function sendText(receiverId, text) {
+        return withLogin(async (jwt) => outcome(await post('/send-message', {
+            receiver_id: receiverId, message: String(text).slice(0, 4000)
+        }, { jwt, multipart: true }), 'send'));
+    }
+
+    /* Phone → receiver_id (creates the contact if needed) */
+    async function resolveContact(phone) {
+        let receiverId = null;
+        const r = await withLogin(async (jwt) => {
+            const res = await post('/contact/resolve-by-phone', { phone }, { jwt });
+            const b = res.body || {};
+            receiverId = (b.data && (b.data.receiver_id ?? b.data.id)) ?? b.receiver_id ?? null;
+            return { ok: res.status === 200 && receiverId != null, status: res.status, error: res.error || `resolve_failed_http_${res.status}` };
+        });
+        return r.ok ? receiverId : null;
+    }
+
+    /* Text to a phone number (e.g. alert the sales numbers; works inside their 24-hour window) */
+    async function sendTextToPhone(phone, text) {
+        if (env().dryRun) return { ok: true, status: 200, error: 'dry_run' };
+        const receiverId = await resolveContact(phone);
+        if (receiverId == null) return { ok: false, status: 0, error: 'resolve_failed' };
+        return sendText(receiverId, text);
+    }
+
+    /* A fresh login (diagnostics): are MAZBOT_API_KEY and the staff email / password accepted? */
+    async function checkLogin() {
+        if (!hasLogin()) return { ok: false, error: 'missing' };
+        if (env().dryRun) return { ok: true, dry_run: true };
+        try { await getToken(true); return { ok: true }; } catch (err) { return { ok: false, error: err.message }; }
+    }
+
+    return { env, hasLogin, getToken, sendTemplate, sendText, resolveContact, sendTextToPhone, checkLogin,
+        reset: () => { tokenCache = { token: null, expiresAt: 0 }; } };
+}
+
+const main = makeClient('MAZBOT_');
+const templatesOwn = makeClient('MAZBOT_TEMPLATES_');
+/* The account that sends the approved templates: its own when MAZBOT_TEMPLATES_API_KEY is set (e.g. the main
+   account cannot send templates — its Meta billing), else the main one. The main account keeps the incoming
+   messages and the plain replies (within 24 hours, no template). */
+const templatesAccount = () => (process.env.MAZBOT_TEMPLATES_API_KEY ? { client: templatesOwn, separate: true } : { client: main, separate: false });
+
 const env = () => ({
-    apiKey: process.env.MAZBOT_API_KEY || '',
-    email: process.env.MAZBOT_STAFF_EMAIL || '',
-    password: process.env.MAZBOT_STAFF_PASSWORD || '',
+    ...main.env(),
     templateId: process.env.MAZBOT_TEMPLATE_ID || '',                  // rolling-shutter template
     overheadTemplateId: process.env.MAZBOT_OVERHEAD_TEMPLATE_ID || '', // overhead-gate template
-    motorsTemplateId: process.env.MAZBOT_MOTORS_TEMPLATE_ID || '',     // gate-motors template
-    baseUrl: (process.env.MAZBOT_BASE_URL || 'https://mazbot.net/api').replace(/\/$/, ''),
-    dryRun: process.env.MAZBOT_DRY_RUN === '1'
+    motorsTemplateId: process.env.MAZBOT_MOTORS_TEMPLATE_ID || ''      // gate-motors template
 });
-
-const hasLogin = () => {
-    const e = env();
-    return Boolean(e.apiKey && e.email && e.password);
-};
+const hasLogin = main.hasLogin;
 
 /* Template of each calculator ('' = not set) */
 const templateFor = (calculator) => ({ overhead: env().overheadTemplateId, motors: env().motorsTemplateId }[calculator] ?? env().templateId);
 
-const isConfigured = (calculator = 'rolling_shutter') => hasLogin() && Boolean(templateFor(calculator));
-
-let tokenCache = { token: null, expiresAt: 0 };
-const TOKEN_TTL_MS = 45 * 60_000;
-
-async function post(path, fields, { jwt = null, multipart = false } = {}) {
-    const e = env();
-    const headers = { apikey: e.apiKey, Accept: 'application/json' };
-    if (jwt) headers.Authorization = 'Bearer ' + jwt;
-    let body;
-    if (multipart) {
-        body = new FormData();
-        for (const [key, value] of Object.entries(fields)) {
-            // Arrays go as real array fields: body_values[1], body_values[2] ...
-            if (value && typeof value === 'object') {
-                for (const [k, v] of Object.entries(value)) body.append(`${key}[${k}]`, String(v));
-            } else {
-                body.append(key, String(value));
-            }
-        }
-    } else {
-        headers['Content-Type'] = 'application/json';
-        body = JSON.stringify(fields);
-    }
-    try {
-        const res = await fetch(e.baseUrl + path, { method: 'POST', headers, body, signal: AbortSignal.timeout(20_000) });
-        const data = await res.json().catch(() => null);
-        return { status: res.status, body: data };
-    } catch (err) {
-        return { status: 0, body: null, error: err.message };
-    }
-}
-
-async function getToken(force = false) {
-    if (!force && tokenCache.token && Date.now() < tokenCache.expiresAt) return tokenCache.token;
-    const e = env();
-    const res = await post('/login', { email: e.email, password: e.password });
-    const token = res.body && res.body.data && res.body.data.token;
-    if (res.status !== 200 || !token) throw new Error(res.error || `login_failed_http_${res.status}`);
-    tokenCache = { token, expiresAt: Date.now() + TOKEN_TTL_MS };
-    return token;
-}
-
-/* WhatsApp rejects template values with new lines, tabs or more than 4 spaces in a row */
-const cleanValue = (v) => String(v ?? '—').replace(/[\r\n\t]+/g, ' / ').replace(/ {4,}/g, '   ').trim().slice(0, 1000) || '—';
-
-async function sendTemplateOnce(jwt, mobile, values, templateId) {
-    const bodyValues = {};
-    const bodyMatchs = {};
-    values.forEach((v, i) => { bodyValues[i + 1] = cleanValue(v); bodyMatchs[i + 1] = 'input_value'; });
-    const res = await post('/whatsapp/send-template', {
-        template_id: templateId, mobile, body_matchs: bodyMatchs, body_values: bodyValues
-    }, { jwt, multipart: true });
-    const ok = res.status === 200 && Boolean(res.body && res.body.success);
-    return { ok, status: res.status, error: ok ? null : res.error || `template_failed_http_${res.status} ${JSON.stringify(res.body)}` };
-}
-
-/* Send to one mobile: one new login after a 401 (JWT expired), one retry on a network/5xx error */
-async function sendTemplate(mobile, values, templateId) {
-    if (env().dryRun) return { ok: true, status: 200, error: 'dry_run' };
-    let jwt;
-    try { jwt = await getToken(); } catch (err) { return { ok: false, status: 0, error: err.message }; }
-    let result = await sendTemplateOnce(jwt, mobile, values, templateId);
-    if (!result.ok && result.status === 401) {
-        try { jwt = await getToken(true); result = await sendTemplateOnce(jwt, mobile, values, templateId); } catch (err) { result = { ok: false, status: 0, error: err.message }; }
-    }
-    if (!result.ok && (result.status === 0 || result.status >= 500)) result = await sendTemplateOnce(jwt, mobile, values, templateId);
-    return result;
-}
-
-/* ------------------ Free text (replies inside the customer's 24-hour window) ------------------ */
-
-/* Retry once after a 401 (new login) and once after a network/5xx error */
-async function withLogin(send) {
-    if (env().dryRun) return { ok: true, status: 200, error: 'dry_run' };
-    let jwt;
-    try { jwt = await getToken(); } catch (err) { return { ok: false, status: 0, error: err.message }; }
-    let result = await send(jwt);
-    if (!result.ok && result.status === 401) {
-        try { jwt = await getToken(true); result = await send(jwt); } catch (err) { result = { ok: false, status: 0, error: err.message }; }
-    }
-    if (!result.ok && (result.status === 0 || result.status >= 500)) result = await send(jwt);
-    return result;
-}
-
-const outcome = (res, what) => {
-    const ok = res.status === 200 && Boolean(res.body && res.body.success);
-    return { ok, status: res.status, body: res.body, error: ok ? null : res.error || `${what}_failed_http_${res.status} ${JSON.stringify(res.body)}` };
-};
-
-/* Text message to a MazBot contact (receiver_id = data.contact.id of the incoming webhook) */
-function sendText(receiverId, text) {
-    return withLogin(async (jwt) => outcome(await post('/send-message', {
-        receiver_id: receiverId, message: String(text).slice(0, 4000)
-    }, { jwt, multipart: true }), 'send'));
-}
-
-/* Phone → receiver_id (creates the contact if needed) */
-async function resolveContact(phone) {
-    let receiverId = null;
-    const r = await withLogin(async (jwt) => {
-        const res = await post('/contact/resolve-by-phone', { phone }, { jwt });
-        const b = res.body || {};
-        receiverId = (b.data && (b.data.receiver_id ?? b.data.id)) ?? b.receiver_id ?? null;
-        return { ok: res.status === 200 && receiverId != null, status: res.status, error: res.error || `resolve_failed_http_${res.status}` };
-    });
-    return r.ok ? receiverId : null;
-}
-
-/* Text to a phone number (e.g. alert the sales numbers; works inside their 24-hour window) */
-async function sendTextToPhone(phone, text) {
-    if (env().dryRun) return { ok: true, status: 200, error: 'dry_run' };
-    const receiverId = await resolveContact(phone);
-    if (receiverId == null) return { ok: false, status: 0, error: 'resolve_failed' };
-    return sendText(receiverId, text);
-}
-
-/* A fresh login (diagnostics): are MAZBOT_API_KEY and the staff email / password accepted? */
-async function checkLogin() {
-    if (!hasLogin()) return { ok: false, error: 'missing' };
-    if (env().dryRun) return { ok: true, dry_run: true };
-    try { await getToken(true); return { ok: true }; } catch (err) { return { ok: false, error: err.message }; }
-}
+const isConfigured = (calculator = 'rolling_shutter') => templatesAccount().client.hasLogin() && Boolean(templateFor(calculator));
+const { sendText, resolveContact, sendTextToPhone, checkLogin } = main;
 
 /* ------------------------- Incoming webhook signature ------------------------- */
 
@@ -186,9 +207,10 @@ function parseRecipients(text) {
 /* Each recipient is sent independently; returns a short status for the quote ("2/2 ✓") */
 async function sendToAll(recipients, values, calculator = 'rolling_shutter') {
     const templateId = templateFor(calculator);
+    const { client } = templatesAccount();
     const results = [];
     for (const mobile of recipients) {
-        const r = await sendTemplate(mobile, values, templateId);
+        const r = await client.sendTemplate(mobile, values, templateId);
         results.push({ mobile, ...r });
         if (!r.ok) console.error('[mazbot]', mobile, r.error);
     }
@@ -197,6 +219,6 @@ async function sendToAll(recipients, values, calculator = 'rolling_shutter') {
 }
 
 /* One approved template to one mobile (the customer messages: invoice, payment, reminder) */
-const sendTemplateTo = (mobile, values, templateId) => sendTemplate(mobile, values, templateId);
+const sendTemplateTo = (mobile, values, templateId) => templatesAccount().client.sendTemplate(mobile, values, templateId);
 
-module.exports = { isConfigured, hasLogin, checkLogin, resolveContact, templateFor, sendToAll, sendTemplateTo, sendText, sendTextToPhone, verifySignature, parseRecipients, cleanValue, _reset: () => { tokenCache = { token: null, expiresAt: 0 }; } };
+module.exports = { isConfigured, hasLogin, checkLogin, resolveContact, templateFor, sendToAll, sendTemplateTo, templatesAccount, sendText, sendTextToPhone, verifySignature, parseRecipients, cleanValue, _reset: () => { main.reset(); templatesOwn.reset(); } };
