@@ -1588,21 +1588,22 @@ async function loadMazbotStatus() {
         + (s.templates_webhook_path ? ` — Webhook حساب القوالب: ${location.origin}${s.templates_webhook_path}` : ' — Webhook حساب القوالب غير مضبوط (MAZBOT_TEMPLATES_WEBHOOK_SECRET)');
 }
 
-async function loadInbound() {
-    const r = await api('GET', '/api/admin/mazbot/inbound');
-    $id('mazbotWebhookUrl').value = r.webhook_path ? location.origin + r.webhook_path : 'غير مفعّل — أضف MAZBOT_WEBHOOK_SECRET (16 حرفاً أو أكثر) في متغيرات البيئة';
+/* The latest requests from a MazBot account, with what happened to each */
+function renderInbound(listId, events, STATUS, replied = {}) {
     const pretty = (text) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
-    const STATUS = {
-        replied: '✅ تم الرد', queued: '⏳ قيد الرد', agent_off: '⏸ المساعد متوقف', duplicate: 'مكرر (تم تجاهله)',
-        bad_signature: '⛔ توقيع غير صحيح'
+    const statusLabel = (st) => {
+        if (!st) return '—';
+        const failed = /^(\w+)_failed: ?(.*)$/.exec(st);
+        if (failed) return `${STATUS[failed[1]] || failed[1]} — ⚠️ لم يصل الرد: ${failed[2]}`;
+        return (STATUS[st] || st) + (replied[st] ? ` — ${replied[st]}` : '');
     };
-    const statusLabel = (st) => (st ? STATUS[st] || st : '—');
     const summaryOf = (e) => {
         try {
             const j = JSON.parse(e.body);
             const c = (j.data && j.data.contact) || {};
             const m = (j.data && j.data.message) || {};
-            return [j.type, c.name, c.phone, m.value && String(m.value).slice(0, 60)].filter(Boolean).join(' — ');
+            const choice = j.data && j.data.selection && (j.data.selection.title || j.data.selection.id);
+            return [j.type, c.name, c.phone, (m.value || choice) && String(m.value || choice).slice(0, 60)].filter(Boolean).join(' — ');
         } catch { return e.method + ' — ' + (e.content_type || ''); }
     };
     const signatureHeaders = (e) => {
@@ -1611,12 +1612,43 @@ async function loadInbound() {
             return Object.entries(h).filter(([k]) => k.startsWith('x-mazbot')).map(([k, v]) => `${k}: ${v}`).join('\n');
         } catch { return ''; }
     };
-    $id('inboundList').innerHTML = r.events.length ? r.events.map((e) => `
+    $id(listId).innerHTML = events.length ? events.map((e) => `
         <details style="margin-bottom:6px; border:1px solid var(--border); border-radius:8px; padding:8px 12px">
             <summary>${esc(e.received_at)} — <strong>${esc(statusLabel(e.status))}</strong> — ${esc(summaryOf(e))}</summary>
             <pre dir="ltr" style="white-space:pre-wrap; word-break:break-all; font-size:12px; color:var(--text-light)">${esc(signatureHeaders(e))}</pre>
             <pre dir="ltr" style="white-space:pre-wrap; word-break:break-all; font-size:12px; max-height:320px; overflow:auto">${esc(pretty(e.body || ''))}</pre>
         </details>`).join('') : '<p class="status-text">لم تصل أي رسالة بعد.</p>';
+}
+
+async function loadInbound() {
+    const r = await api('GET', '/api/admin/mazbot/inbound');
+    $id('mazbotWebhookUrl').value = r.webhook_path ? location.origin + r.webhook_path : 'غير مفعّل — أضف MAZBOT_WEBHOOK_SECRET (16 حرفاً أو أكثر) في متغيرات البيئة';
+    renderInbound('inboundList', r.events, {
+        replied: '✅ تم الرد', queued: '⏳ قيد الرد', agent_off: '⏸ المساعد متوقف', duplicate: 'مكرر (تم تجاهله)',
+        bad_signature: '⛔ توقيع غير صحيح'
+    });
+    loadTemplatesInbound().catch(() => {});
+}
+
+/* The templates account (its own webhook): «إيقاف الإشعارات» and «تتبع» */
+async function loadTemplatesInbound() {
+    const r = await api('GET', '/api/admin/mazbot/inbound?source=mazbot_templates');
+    $id('tplWebhookUrl').value = r.templates_webhook_path ? location.origin + r.templates_webhook_path
+        : 'غير مفعّل — أضف MAZBOT_TEMPLATES_WEBHOOK_SECRET (16 حرفاً أو أكثر) في متغيرات البيئة ثم أعد التشغيل';
+    $id('tplWebhookHint').textContent = r.templates_webhook_path
+        ? (r.templates_signed ? 'الصق الرابط في MazBot (حساب القوالب) ← Setting ← Webhook، بالحدثين message.received و interactive.selected. التوقيع مضبوط ✓'
+            : 'الصق الرابط في MazBot (حساب القوالب) ← Setting ← Webhook، ثم ضع سرّ التوقيع في MAZBOT_TEMPLATES_SIGNING_SECRET — بدونه تُرفض الرسائل.')
+        : '';
+    renderInbound('tplInboundList', r.events, {
+        muted: '🔕 أوقف الإشعارات 48 ساعة', track: '📦 طلب التتبع',
+        ignored: 'تم تجاهلها (ليست «تتبع» أو «إيقاف الإشعارات»)', duplicate: 'مكرر (تم تجاهله)', bad_signature: '⛔ توقيع غير صحيح'
+    }, { muted: '✓ أُرسل له التأكيد', track: '✓ أُرسلت له روابط طلباته' });
+}
+
+function copyTplWebhookUrl() {
+    const input = $id('tplWebhookUrl');
+    input.select();
+    navigator.clipboard.writeText(input.value).catch(() => document.execCommand('copy'));
 }
 
 function copyChatSnippet() {

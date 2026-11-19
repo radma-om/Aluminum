@@ -177,12 +177,15 @@ async function handleTemplatesEvent(db, event, { origin = '', client = null } = 
             ? `طلباتكم لدى رادما 👇\n${lines.join('\n')}\n\nللاستفسار راسلونا على 90660001.`
             : 'لم نجد طلبات مسجلة بهذا الرقم. إذا كان الطلب برقم آخر راسلونا منه، أو تواصلوا مع خدمة العملاء على 90660001.';
     }
+    let replyOk = null;
+    let replyError = null;
     if (reply) {
         const c = client || mazbot.templatesAccount().client;
         const r = await c.sendTextToPhone(phone, reply).catch((e) => ({ ok: false, error: e.message }));
-        if (!r.ok) console.error('[order-notify] reply', r.error);
+        replyOk = Boolean(r && r.ok);
+        if (!replyOk) { replyError = (r && r.error) || 'failed'; console.error('[order-notify] reply', replyError); }
     }
-    return { action, reply };
+    return { action, reply, reply_ok: replyOk, reply_error: replyError };
 }
 
 module.exports = { EVENTS, ensureTables, status, notify, mute, isMuted, trackPath, trackingFor, handleTemplatesEvent, setSenderForTests, MUTE_HOURS };
