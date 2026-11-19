@@ -1572,6 +1572,11 @@ async function loadMazbotStatus() {
     $id('mazbotOverheadStatus').className = 'badge' + (s.overhead_configured ? ' on' : '');
     $id('mazbotMotorsStatus').textContent = 'المكائن: ' + label(s.motors_configured);
     $id('mazbotMotorsStatus').className = 'badge' + (s.motors_configured ? ' on' : '');
+    // Templates to customers (invoice, payment, reminder): their own account, or the main one
+    const c = s.customer || {};
+    const ready = c.login && (c.invoice || c.payment || c.balance);
+    $id('mazbotCustomerStatus').textContent = 'قوالب العملاء: ' + (ready ? `${label(true)} — ${c.separate_account ? 'حساب مستقل' : 'نفس الحساب'} (${['invoice', 'payment', 'balance'].filter((k) => c[k]).length}/3)` : 'غير مفعّل');
+    $id('mazbotCustomerStatus').className = 'badge' + (ready ? ' on' : '');
 }
 
 async function loadInbound() {

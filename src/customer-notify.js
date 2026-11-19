@@ -9,6 +9,13 @@
        MAZBOT_INVOICE_TEMPLATE_ID  {{1}} name {{2}} number {{3}} total {{4}} paid {{5}} left {{6}} link
        MAZBOT_PAYMENT_TEMPLATE_ID  {{1}} name {{2}} amount {{3}} number {{4}} paid {{5}} left {{6}} link
        MAZBOT_BALANCE_TEMPLATE_ID  {{1}} name {{2}} number {{3}} left {{4}} link
+   - The templates go through an account of their own when it is set
+     (MAZBOT_CUSTOMER_API_KEY, _STAFF_EMAIL, _STAFF_PASSWORD — e.g. the
+     number kept for approved templates), else the main account; the main
+     account stays the calculators', the incoming messages' and the
+     replies'. The plain message (no template) always goes through the main
+     account: the customers chat with its number, so its 24-hour window is
+     the one that may be open.
    - Every attempt is kept (invoice_messages) and written in the
      customer's follow-up log, with who sent it.
    ============================================================= */
@@ -44,8 +51,10 @@ const templateId = (kind) => String(process.env[KINDS[kind].env] || '').trim();
 
 /* What is ready: the MazBot sign-in and each template (for the buttons' labels) */
 function status() {
-    const login = mazbot.hasLogin();
-    return { login, invoice: Boolean(templateId('invoice')), payment: Boolean(templateId('payment')), balance: Boolean(templateId('balance')) };
+    const acct = mazbot.customerAccount();
+    // Ready when the templates' account can sign in (or, without templates, the main one for plain messages)
+    const login = acct.client.hasLogin() || mazbot.hasLogin();
+    return { login, separate_account: acct.separate, invoice: Boolean(templateId('invoice')), payment: Boolean(templateId('payment')), balance: Boolean(templateId('balance')) };
 }
 
 /* Oman numbers: 8 digits → 968…; anything else as typed (digits only) */
@@ -95,22 +104,26 @@ async function send(db, inv, { kind, paymentId = null, link, by = null }) {
     if (kind === 'balance' && !(inv.balance > 0.004)) throw err(400, 'لا يوجد متبقٍ على هذه الفاتورة');
     const mobile = mobileOf(inv.customer_phone);
     if (mobile.length < 11) throw err(400, 'رقم جوال العميل غير صالح في الفاتورة');
-    if (!sender && !mazbot.hasLogin()) throw err(400, 'MazBot غير مضبوط على الخادم (MAZBOT_API_KEY وبيانات الدخول) — أرسلها من جوالك بزر «واتساب من جوالي»');
-
     const { values, text } = content(kind, inv, payment, link);
     const id = templateId(kind);
     const via = id ? 'template' : 'text';
+    const acct = mazbot.customerAccount();
+    if (!sender && !(via === 'template' ? acct.client.hasLogin() : mazbot.hasLogin())) {
+        throw err(400, via === 'template' && acct.separate
+            ? 'حساب MazBot لقوالب العملاء غير مكتمل (MAZBOT_CUSTOMER_API_KEY / MAZBOT_CUSTOMER_STAFF_EMAIL / MAZBOT_CUSTOMER_STAFF_PASSWORD) — أرسلها من جوالك بزر «واتساب من جوالي»'
+            : 'MazBot غير مضبوط على الخادم (MAZBOT_API_KEY وبيانات الدخول) — أرسلها من جوالك بزر «واتساب من جوالي»');
+    }
     let r;
     try {
-        r = sender ? await sender({ via, mobile, templateId: id, values, text })
-            : id ? await mazbot.sendTemplateTo(mobile, values, id) : await mazbot.sendTextToPhone(mobile, text);
+        r = sender ? await sender({ via, mobile, templateId: id, values, text, account: via === 'template' && acct.separate ? 'customer' : 'main' })
+            : id ? await acct.client.sendTemplate(mobile, values, id) : await mazbot.sendTextToPhone(mobile, text);
     } catch (e) { r = { ok: false, error: e.message }; }
     const ok = Boolean(r && r.ok);
     let error = ok ? null : String((r && r.error) || 'failed').slice(0, 300);
     // Without a template, a plain message reaches the customer only within 24 hours of their last message
     if (!ok && via === 'text') error = `لم تصل (لا يوجد قالب معتمد، والرسالة النصية تصل فقط خلال 24 ساعة من آخر رسالة من العميل) — ${error}`;
     db.prepare('INSERT INTO invoice_messages (invoice_id, payment_id, kind, phone, via, ok, error, sent_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(inv.id, payment ? payment.id : null, kind, mobile, via, ok ? 1 : 0, error, by);
+        .run(inv.id, payment ? payment.id : null, kind, mobile, via === 'template' && acct.separate ? 'template:customer' : via, ok ? 1 : 0, error, by);
     if (ok) {
         const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(mobile);
         if (lead) {

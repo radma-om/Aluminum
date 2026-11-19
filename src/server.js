@@ -2457,7 +2457,17 @@ function createApp(db, { agentClient } = {}) {
         overhead_configured: mazbot.isConfigured('overhead'),
         motors_configured: mazbot.isConfigured('motors'),
         dry_run: process.env.MAZBOT_DRY_RUN === '1',
-        recipients: mazbot.parseRecipients(getSettings(db).mazbot_recipients)
+        recipients: mazbot.parseRecipients(getSettings(db).mazbot_recipients),
+        // The account of the approved templates to customers (invoice, payment, reminder)
+        customer: customerNotify.status()
+    }));
+    /* Sign in to each account now: the main one (calculators, messages) and the customer templates' one */
+    admin.get('/mazbot/check-accounts', asyncRoute(async (req, res) => {
+        const acct = mazbot.customerAccount();
+        res.json({
+            main: await mazbot.checkLogin(),
+            customer: acct.separate ? await acct.client.checkLogin() : { ok: null, same_as_main: true }
+        });
     }));
 
     /* The webhook address to paste in MazBot, and the latest requests it received */
