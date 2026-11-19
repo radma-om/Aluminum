@@ -213,13 +213,10 @@
         setStatus('pending', 'جاري احتساب السعر وإرسال الطلب...');
         $('calcBtn').disabled = true;
         try {
-            const res = await fetch('/api/public/motor-quotes', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    section_id: Number($('section').value), kit_id: k ? k.id : null, kit_count: Number($('kitCount').value) || 1,
-                    installation: $('installation').checked, parts, region_id: region.id,
-                    customer_name: name, customer_phone: phone, notes: $('notes').value
-                })
+            const res = await calcSendQuote('/api/public/motor-quotes', {
+                section_id: Number($('section').value), kit_id: k ? k.id : null, kit_count: Number($('kitCount').value) || 1,
+                installation: $('installation').checked, parts, region_id: region.id,
+                customer_name: name, customer_phone: phone, notes: $('notes').value
             });
             const data = await res.json();
             if (!res.ok) throw new Error(res.status === 429 ? 'تم تجاوز عدد المحاولات، يرجى المحاولة بعد قليل.' : data.error || 'تعذر احتساب السعر');

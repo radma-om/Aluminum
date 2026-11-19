@@ -209,10 +209,7 @@
         const btn = $('calcBtn');
         btn.disabled = true;
         try {
-            const res = await fetch('/api/public/overhead-quotes', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...payload(), customer_name: name, customer_phone: phone, notes: $('notes').value })
-            });
+            const res = await calcSendQuote('/api/public/overhead-quotes', { ...payload(), customer_name: name, customer_phone: phone, notes: $('notes').value });
             const data = await res.json();
             if (!res.ok) throw new Error(res.status === 429 ? 'تم تجاوز عدد المحاولات، يرجى المحاولة بعد قليل.' : data.error || 'تعذر احتساب السعر');
             lastPrice = data;
