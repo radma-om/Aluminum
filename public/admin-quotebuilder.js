@@ -619,7 +619,12 @@ async function saveBuiltQuote() {
         closeSheet('qbSheet');
         if (document.querySelector('#tab-quotes.active')) loadQuotes().catch(() => {});
         else switchTab('quotes');
-        if (await askYes(`تم حفظ العرض ${q.ref} ✓ — الإجمالي ${qbMoney(q.total)} ر.ع\nفتح ملف PDF الآن؟`)) openQuotePdf(q.id);
+        // A new quote: send its page to the customer from the company's number now?
+        let wa = null;
+        if (!qbEditing) { try { wa = (await api('GET', `/api/admin/quotes/${q.id}`)).wa; } catch { /* optional */ } }
+        if (wa && wa.login && await askYes(`تم حفظ العرض ${q.ref} ✓ — الإجمالي ${qbMoney(q.total)} ر.ع\nإرسال العرض للعميل على واتساب الآن؟ (من رقم الشركة، مع رابط مراجعة العرض والموافقة عليه)`)) {
+            await sendQuoteWhatsapp(q.id);
+        } else if (await askYes(`تم حفظ العرض ${q.ref} ✓ — الإجمالي ${qbMoney(q.total)} ر.ع\nفتح ملف PDF الآن؟`)) openQuotePdf(q.id);
     } catch (err) {
         setStatus('qbStatus', err.message, 'err');
     }

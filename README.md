@@ -760,6 +760,7 @@ npm start
 | `MAZBOT_INVOICE_TEMPLATE_ID` | قالب «الفاتورة صدرت» للعميل (6 متغيرات — `docs/whatsapp-templates.md`) |
 | `MAZBOT_PAYMENT_TEMPLATE_ID` | قالب «تأكيد دفعة» للعميل (6 متغيرات) |
 | `MAZBOT_BALANCE_TEMPLATE_ID` | قالب «تذكير بالمتبقي» للعميل (4 متغيرات) |
+| `MAZBOT_QUOTE_TEMPLATE_ID` | قالب «عرض السعر جاهز» للعميل (5 متغيرات، مع رابط صفحة العرض) |
 | `MAZBOT_TEMPLATES_API_KEY`، `MAZBOT_TEMPLATES_STAFF_EMAIL`، `MAZBOT_TEMPLATES_STAFF_PASSWORD` | اختياري: **حساب MazBot مستقل للقوالب المعتمدة** (رقم آخر، مثلاً حين لا يستطيع الحساب الأساسي إرسال القوالب بسبب الدفع). إن وُضعت تُرسل **كل القوالب** منه: قوالب الحاسبات لأرقام المبيعات وقوالب العملاء. ويبقى الحساب الأساسي للرسائل الواردة والمساعد والردود النصية. أرقام القوالب (`MAZBOT_TEMPLATE_ID`… و`MAZBOT_INVOICE_TEMPLATE_ID`…) تكون عندها من حساب القوالب |
 | `MAZBOT_DRY_RUN=1` | اختياري، للتجربة بدون إرسال فعلي |
 

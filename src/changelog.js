@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.49.0', date: '2026-11-19',
+        ar: ['«عرض السعر جاهز»: إرسال العرض للعميل من رقم الشركة مع رابط صفحة المراجعة والموافقة — من نافذة العرض، أو مباشرة بعد حفظ عرض جديد', 'بعد الإرسال تصبح حالة العرض «تم التواصل»، ويظهر سجل الإرسال في نافذة العرض'],
+        en: ['«Quote ready»: send the quote to the customer from the company number with the link to its review and acceptance page — from the quote window, or right after saving a new quote', 'After sending, the quote becomes «contacted», and the send log shows in the quote window']
+    },
+    {
         version: '3.48.0', date: '2026-11-19',
         ar: ['«عرض السعر»: صفحة خاصة للعميل يراجع فيها البنود والمبالغ والشروط ويضغط «أوافق على العرض» — فيصبح العرض مقبولاً ويصلك إشعار لإصدار الفاتورة', 'في نافذة العرض: «صفحة العرض للعميل» و«نسخ رابط العرض» و«إرسال الرابط من جوالي»', 'رد «تتبع» يرسل رابط صفحة العرض بدل ملف PDF'],
         en: ['«Quote page»: a private page where the customer reviews the lines, amounts and terms and presses «I accept the quote» — the quote becomes accepted and you are notified to issue the invoice', 'In the quote window: «Customer quote page», «Copy the quote link» and «Send the link from my phone»', 'The «Track» reply sends the quote page link instead of the PDF']

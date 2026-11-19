@@ -524,6 +524,7 @@ window.I18N_EN = {
     "إشعارات أوامر العمل للعميل على واتساب (الموعد، الفني في الطريق، بدء العمل، الاكتمال) مع رابط «تتبع طلبي»": "Work order notices to the customer on WhatsApp (appointment, technician on the way, work started, done) with the «Track my order» link",
     "في الطريق": "On the way",
     "صفحة العرض للعميل": "Customer quote page",
+    "إرسال العرض للعميل من رقم الشركة": "Send the quote from the company number",
     "نسخ رابط العرض": "Copy the quote link",
     "إرسال الرابط من جوالي": "Send the link from my phone",
     "رسائل حساب القوالب (رقم القوالب المعتمدة)": "Templates account messages (the approved templates number)",
