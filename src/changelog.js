@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.47.3', date: '2026-11-19',
+        ar: ['«تتبع» يعرض أيضاً عروض الأسعار التي لم تتحول لفاتورة (آخر 90 يوماً) مع رابط PDF العرض وصلاحيته', '«تتبع» يبحث برقم العميل الثاني المسجل في ملفه', 'سجل رسائل حساب القوالب يكتب النتيجة الفعلية (وُجدت طلبات / لا طلبات) ونص الرد المرسل'],
+        en: ['«Track» also lists quotes not invoiced yet (last 90 days) with the quote PDF link and its validity', '«Track» also searches the customer\'s second number on their record', 'The templates account log records the actual result (orders found / none) and the reply text sent']
+    },
+    {
         version: '3.47.2', date: '2026-11-19',
         ar: ['Webhook حساب القوالب: السرّ في متغيرات البيئة يُقبل ولو لُصق بمسافات أو علامات تنصيص', '«توقيع غير صحيح» يوضح السبب: لا ترويسة توقيع من MazBot، أو السرّ لا يطابق سرّ هذا الرابط — مع ترويسات الطلب للتشخيص'],
         en: ['Templates account webhook: the secret in the environment is accepted even when pasted with spaces or quotes', '«Bad signature» now says why: no signature header from MazBot, or the secret does not match this webhook — with the request headers to diagnose']
