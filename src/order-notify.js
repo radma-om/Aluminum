@@ -164,7 +164,7 @@ function trackingFor(db, phone, origin) {
     return [
         ...invs.map((i) => `🧾 فاتورة ${i.number}: ${origin}/t/${i.access_key}`),
         ...orders.map((o) => `🔧 طلب ${WORK[o.kind] || 'عمل'} ${o.number}: ${origin}${trackPath(db, o)}`),
-        ...quotes.map((q) => `📄 عرض سعر ${q.ref} (${money(q.total)} ر.ع)${q.valid_until && q.valid_until < today ? ' — انتهت صلاحيته، راسلونا لتحديث السعر' : q.valid_until ? ` — ساري حتى ${q.valid_until}` : ''}: ${origin}/quotes/${encodeURIComponent(q.ref)}.pdf?k=${q.access_key}`)
+        ...quotes.map((q) => `📄 عرض سعر ${q.ref} (${money(q.total)} ر.ع)${q.valid_until && q.valid_until < today ? ' — انتهت صلاحيته، راسلونا لتحديث السعر' : q.valid_until ? ` — ساري حتى ${q.valid_until}` : ''}: ${origin}/q/${q.access_key}`)
     ];
 }
 
