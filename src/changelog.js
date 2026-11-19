@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.47.2', date: '2026-11-19',
+        ar: ['Webhook حساب القوالب: السرّ في متغيرات البيئة يُقبل ولو لُصق بمسافات أو علامات تنصيص', '«توقيع غير صحيح» يوضح السبب: لا ترويسة توقيع من MazBot، أو السرّ لا يطابق سرّ هذا الرابط — مع ترويسات الطلب للتشخيص'],
+        en: ['Templates account webhook: the secret in the environment is accepted even when pasted with spaces or quotes', '«Bad signature» now says why: no signature header from MazBot, or the secret does not match this webhook — with the request headers to diagnose']
+    },
+    {
         version: '3.47.1', date: '2026-11-19',
         ar: ['تبويب «الربط»: قسم جديد لرسائل حساب القوالب — رابط الـWebhook، وكل رسالة وما حدث لها (أوقف الإشعارات، طلب التتبع، تجاهل، توقيع غير صحيح، أو لم يصل الرد وسببه)', 'سجل الرسائل الواردة يحفظ آخر 100 لكل حساب على حدة'],
         en: ['«Integrations» tab: a new section for the templates account messages — its webhook link, and each message with what happened (notices muted, tracking requested, ignored, bad signature, or the reply did not arrive and why)', 'The incoming messages log keeps the latest 100 for each account separately']

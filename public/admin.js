@@ -1589,10 +1589,15 @@ async function loadMazbotStatus() {
 }
 
 /* The latest requests from a MazBot account, with what happened to each */
+const SIGNATURE_WHY = {
+    missing: 'لا يوجد سرّ توقيع في متغيرات البيئة', no_header: 'MazBot لم يرسل ترويسة التوقيع (X-Mazbot-Signature)',
+    mismatch: 'السرّ في متغيرات البيئة لا يطابق سرّ هذا الرابط في MazBot', bad: 'السرّ لا يطابق'
+};
 function renderInbound(listId, events, STATUS, replied = {}) {
     const pretty = (text) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
-    const statusLabel = (st) => {
+    const statusLabel = (st, e) => {
         if (!st) return '—';
+        if (st === 'bad_signature' && SIGNATURE_WHY[e.signature]) return `${STATUS[st] || st} — ${SIGNATURE_WHY[e.signature]}`;
         const failed = /^(\w+)_failed: ?(.*)$/.exec(st);
         if (failed) return `${STATUS[failed[1]] || failed[1]} — ⚠️ لم يصل الرد: ${failed[2]}`;
         return (STATUS[st] || st) + (replied[st] ? ` — ${replied[st]}` : '');
@@ -1609,12 +1614,13 @@ function renderInbound(listId, events, STATUS, replied = {}) {
     const signatureHeaders = (e) => {
         try {
             const h = JSON.parse(e.headers_json || '{}');
-            return Object.entries(h).filter(([k]) => k.startsWith('x-mazbot')).map(([k, v]) => `${k}: ${v}`).join('\n');
+            // The signature header(s) MazBot sent (an HMAC, not the secret), and who sent the request
+            return Object.entries(h).filter(([k]) => /signature|^x-mazbot|^x-webhook|^user-agent$/i.test(k)).map(([k, v]) => `${k}: ${v}`).join('\n') || 'لا توجد ترويسة توقيع في الطلب';
         } catch { return ''; }
     };
     $id(listId).innerHTML = events.length ? events.map((e) => `
         <details style="margin-bottom:6px; border:1px solid var(--border); border-radius:8px; padding:8px 12px">
-            <summary>${esc(e.received_at)} — <strong>${esc(statusLabel(e.status))}</strong> — ${esc(summaryOf(e))}</summary>
+            <summary>${esc(e.received_at)} — <strong>${esc(statusLabel(e.status, e))}</strong> — ${esc(summaryOf(e))}</summary>
             <pre dir="ltr" style="white-space:pre-wrap; word-break:break-all; font-size:12px; color:var(--text-light)">${esc(signatureHeaders(e))}</pre>
             <pre dir="ltr" style="white-space:pre-wrap; word-break:break-all; font-size:12px; max-height:320px; overflow:auto">${esc(pretty(e.body || ''))}</pre>
         </details>`).join('') : '<p class="status-text">لم تصل أي رسالة بعد.</p>';

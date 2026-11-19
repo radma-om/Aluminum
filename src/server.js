@@ -2506,7 +2506,7 @@ function createApp(db, { agentClient } = {}) {
     /* The webhook address to paste in MazBot, and the latest requests it received */
     admin.get('/mazbot/inbound', (req, res) => {
         const secret = process.env.MAZBOT_WEBHOOK_SECRET || '';
-        const tplSecret = process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET || '';
+        const tplSecret = cleanSecret(process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET);
         // source=mazbot_templates: the templates account (its number); otherwise the main account
         const templates = req.query.source === 'mazbot_templates';
         const manager = req.user.role === 'manager';
@@ -2514,7 +2514,7 @@ function createApp(db, { agentClient } = {}) {
             // The path secret is a bearer credential. Only managers may copy it.
             webhook_path: manager && secret.length >= 16 ? `/webhooks/mazbot/${secret}` : null,
             templates_webhook_path: manager && tplSecret.length >= 16 ? `/webhooks/mazbot-templates/${tplSecret}` : null,
-            templates_signed: Boolean(process.env.MAZBOT_TEMPLATES_SIGNING_SECRET),
+            templates_signed: Boolean(cleanSecret(process.env.MAZBOT_TEMPLATES_SIGNING_SECRET)),
             events: db.prepare(`SELECT * FROM inbound_events WHERE ${templates ? "source = 'mazbot_templates'" : "IFNULL(source, 'mazbot') != 'mazbot_templates'"} ORDER BY id DESC LIMIT 20`).all()
         });
     });
@@ -2673,6 +2673,8 @@ function createApp(db, { agentClient } = {}) {
     /* MazBot webhook: customer WhatsApp messages → AI agent → reply via MazBot.
        Every request is kept (last 100) with what happened to it, for checking in the admin panel.
        The secret in the path (MAZBOT_WEBHOOK_SECRET) and X-Mazbot-Signature are the access control. */
+    // A secret pasted in the hosting panel: no surrounding spaces, new lines or quotes
+    const cleanSecret = (v) => String(v || '').trim().replace(/^(["'])(.*)\1$/, '$2').trim();
     // The latest 100 requests of each source (one account's traffic never pushes out the other's)
     const pruneInbound = (source) => db.prepare(`DELETE FROM inbound_events WHERE source = ? AND id NOT IN
         (SELECT id FROM inbound_events WHERE source = ? ORDER BY id DESC LIMIT 100)`).run(source, source);
@@ -2695,7 +2697,7 @@ function createApp(db, { agentClient } = {}) {
         // X-Mazbot-Signature proves the request comes from MazBot (MAZBOT_SIGNING_SECRET from the MazBot webhook page).
         // Check the exact bytes received — never a re-encoded copy. Unsigned requests are rejected unless the
         // explicit local-development escape hatch MAZBOT_ALLOW_UNSIGNED=1 is enabled.
-        const signingSecret = process.env.MAZBOT_SIGNING_SECRET || '';
+        const signingSecret = cleanSecret(process.env.MAZBOT_SIGNING_SECRET);
         const allowUnsigned = process.env.MAZBOT_ALLOW_UNSIGNED === '1';
         if (!signingSecret && !allowUnsigned) {
             db.prepare('UPDATE inbound_events SET signature = ?, status = ? WHERE id = ?').run('missing', 'bad_signature', eventId);
@@ -2720,24 +2722,28 @@ function createApp(db, { agentClient } = {}) {
     /* The templates account's webhook (MazBot ← its number): «إيقاف الإشعارات 48 ساعة», «تتبع».
        Its own path secret (MAZBOT_TEMPLATES_WEBHOOK_SECRET) and signing secret (MAZBOT_TEMPLATES_SIGNING_SECRET). */
     app.all('/webhooks/mazbot-templates/:secret', express.raw({ type: () => true, limit: '1mb' }), (req, res) => {
-        const secret = process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET || '';
+        const secret = cleanSecret(process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET);
         const given = String(req.params.secret);
         if (!(secret.length >= 16 && given.length === secret.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(secret)))) {
             return res.status(404).json({ error: 'غير موجود' });
         }
         const raw = req.rawBody || (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
         const body = raw.length ? raw.toString('utf8') : (req.body && !Buffer.isBuffer(req.body) ? JSON.stringify(req.body) : '');
+        // Every header but credentials: which signature header MazBot sends shows in «الربط»
+        const headers = Object.fromEntries(Object.entries(req.headers).filter(([k]) => !['cookie', 'authorization'].includes(k)));
         const info = db.prepare(`INSERT INTO inbound_events (source, method, content_type, headers_json, body) VALUES ('mazbot_templates', ?, ?, ?, ?)`)
-            .run(req.method, req.get('content-type') || null, JSON.stringify({ 'x-mazbot-signature': req.get('x-mazbot-signature') || null }), body.slice(0, 100_000));
+            .run(req.method, req.get('content-type') || null, JSON.stringify(headers), body.slice(0, 100_000));
         const eventId = Number(info.lastInsertRowid);
         pruneInbound('mazbot_templates');
-        const signing = process.env.MAZBOT_TEMPLATES_SIGNING_SECRET || '';
+        const signing = cleanSecret(process.env.MAZBOT_TEMPLATES_SIGNING_SECRET);
+        const sigHeader = req.get('x-mazbot-signature');
         if (!signing && process.env.MAZBOT_ALLOW_UNSIGNED !== '1') {
             db.prepare('UPDATE inbound_events SET signature = ?, status = ? WHERE id = ?').run('missing', 'bad_signature', eventId);
             return res.status(401).json({ error: 'invalid signature' });
         }
-        if (signing && !mazbot.verifySignature(raw, req.get('x-mazbot-signature'), signing)) {
-            db.prepare('UPDATE inbound_events SET signature = ?, status = ? WHERE id = ?').run('bad', 'bad_signature', eventId);
+        if (signing && !mazbot.verifySignature(raw, sigHeader, signing)) {
+            // Why: MazBot sent no signature, or the secret here is not this webhook's
+            db.prepare('UPDATE inbound_events SET signature = ?, status = ? WHERE id = ?').run(sigHeader ? 'mismatch' : 'no_header', 'bad_signature', eventId);
             return res.status(401).json({ error: 'invalid signature' });
         }
         let event = null;
