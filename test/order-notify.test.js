@@ -159,3 +159,50 @@ test('«إيقاف الإشعارات 48 ساعة» from the templates account m
     const none = await notify.handleTemplatesEvent(db, { type: 'message.received', data: { contact: { phone: '96899999999' }, message: { value: 'تتبع' } } }, { origin: base, client });
     assert.match(none.reply, /لم نجد طلبات/);
 });
+
+test('«تتبع» finds the quotes not invoiced yet and the customer\'s second number; the log says what was found', async (t) => {
+    const { db, base } = await start(t);
+    const replies = [];
+    const client = { sendTextToPhone: async (to, text) => { replies.push({ to, text }); return { ok: true }; } };
+    const ask = (phone) => notify.handleTemplatesEvent(db, { type: 'message.received', data: { contact: { phone }, message: { value: 'تتبع' } } }, { origin: base, client });
+    const priced = (total) => ({ items: [{ name: 'بوابة', quantity: 1, unit_price: total, line_total: total }], subtotal: total, vat_percent: 5, vat: 0, total });
+    // Two quotes for this number: one still valid, one expired; and an invoiced one (it shows as its invoice)
+    const valid = saveQuote(db, { customer_name: 'محمد', customer_phone: '99887897', source: 'whatsapp', priced: priced(363.96) });
+    const old = saveQuote(db, { customer_name: 'محمد', customer_phone: '99887897', source: 'whatsapp', priced: priced(454.95) });
+    db.prepare("UPDATE quotes SET valid_until = '2026-01-01' WHERE id = ?").run(old.id);
+    const inv = invoiceFor(db); // another customer (91234567)
+
+    let out = await ask('96899887897');
+    assert.equal(out.action, 'track');
+    const text = replies.at(-1).text;
+    const v = db.prepare('SELECT ref, access_key FROM quotes WHERE id = ?').get(valid.id);
+    assert.ok(text.includes(`📄 عرض سعر ${v.ref} (363.960 ر.ع) — ساري حتى`), 'the valid quote');
+    assert.ok(text.includes(`${base}/quotes/${encodeURIComponent(v.ref)}.pdf?k=${v.access_key}`), 'with its PDF');
+    assert.match(text, /454\.950 ر\.ع\) — انتهت صلاحيته، راسلونا لتحديث السعر/);
+    assert.ok(!text.includes(inv.number), 'nothing of another customer');
+    // The quote's own link opens
+    assert.equal((await fetch(`${base}/quotes/${encodeURIComponent(v.ref)}.pdf?k=${v.access_key}`)).status, 200);
+
+    // Once invoiced, the quote is no longer listed — its invoice is
+    const row = db.prepare('SELECT * FROM quotes WHERE id = ?').get(valid.id);
+    const inv2 = invoices.createFromQuote(db, { ...row, items: JSON.parse(row.items_json), details: JSON.parse(row.details_json) }, {}, 'سارة');
+    out = await ask('96899887897');
+    assert.ok(replies.at(-1).text.includes(`🧾 فاتورة ${inv2.number}`));
+    assert.ok(!replies.at(-1).text.includes(`عرض سعر ${v.ref}`));
+
+    // Written from the second number on their record
+    db.prepare("UPDATE customers SET phone2 = '96871112222' WHERE phone = '96899887897'").run();
+    out = await ask('96871112222');
+    assert.equal(out.action, 'track');
+    assert.ok(replies.at(-1).text.includes(inv2.number));
+
+    // Nothing: «track_none», and the webhook keeps the reply sent
+    assert.equal((await ask('96890000000')).action, 'track_none');
+    const raw = JSON.stringify({ type: 'message.received', data: { contact: { id: 5, phone: '96890000000' }, message: { id: 'z9', value: 'تتبع' } } });
+    const sig = 'sha256=' + crypto.createHmac('sha256', TPL.MAZBOT_TEMPLATES_SIGNING_SECRET).update(raw).digest('hex');
+    await fetch(`${base}/webhooks/mazbot-templates/${TPL.MAZBOT_TEMPLATES_WEBHOOK_SECRET}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Mazbot-Signature': sig }, body: raw });
+    await wait();
+    const ev = db.prepare("SELECT status, reply_json FROM inbound_events WHERE source = 'mazbot_templates' ORDER BY id DESC LIMIT 1").get();
+    assert.match(ev.status, /^track_none/);
+    assert.match(JSON.parse(ev.reply_json).text, /لم نجد طلبات/);
+});

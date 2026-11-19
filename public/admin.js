@@ -1611,6 +1611,15 @@ function renderInbound(listId, events, STATUS, replied = {}) {
             return [j.type, c.name, c.phone, (m.value || choice) && String(m.value || choice).slice(0, 60)].filter(Boolean).join(' — ');
         } catch { return e.method + ' — ' + (e.content_type || ''); }
     };
+    // The text sent back (templates account: {text}; main account: the replies it sent)
+    const replyText = (e) => {
+        try {
+            const r = JSON.parse(e.reply_json || 'null');
+            if (!r) return '';
+            if (typeof r.text === 'string') return r.text;
+            return Array.isArray(r) ? r.map((x) => x.text || x.message || '').filter(Boolean).join('\n—\n') : '';
+        } catch { return ''; }
+    };
     const signatureHeaders = (e) => {
         try {
             const h = JSON.parse(e.headers_json || '{}');
@@ -1622,6 +1631,7 @@ function renderInbound(listId, events, STATUS, replied = {}) {
         <details style="margin-bottom:6px; border:1px solid var(--border); border-radius:8px; padding:8px 12px">
             <summary>${esc(e.received_at)} — <strong>${esc(statusLabel(e.status, e))}</strong> — ${esc(summaryOf(e))}</summary>
             <pre dir="ltr" style="white-space:pre-wrap; word-break:break-all; font-size:12px; color:var(--text-light)">${esc(signatureHeaders(e))}</pre>
+            ${replyText(e) ? `<p class="status-text" style="margin:4px 0">الرد المرسل:</p><pre style="white-space:pre-wrap; word-break:break-word; font-size:12px; background:#f4fbf6; padding:6px 8px; border-radius:6px">${esc(replyText(e))}</pre>` : ''}
             <pre dir="ltr" style="white-space:pre-wrap; word-break:break-all; font-size:12px; max-height:320px; overflow:auto">${esc(pretty(e.body || ''))}</pre>
         </details>`).join('') : '<p class="status-text">لم تصل أي رسالة بعد.</p>';
 }
@@ -1646,9 +1656,9 @@ async function loadTemplatesInbound() {
             : 'الصق الرابط في MazBot (حساب القوالب) ← Setting ← Webhook، ثم ضع سرّ التوقيع في MAZBOT_TEMPLATES_SIGNING_SECRET — بدونه تُرفض الرسائل.')
         : '';
     renderInbound('tplInboundList', r.events, {
-        muted: '🔕 أوقف الإشعارات 48 ساعة', track: '📦 طلب التتبع',
+        muted: '🔕 أوقف الإشعارات 48 ساعة', track: '📦 طلب التتبع', track_none: '📦 طلب التتبع — لا طلبات بهذا الرقم',
         ignored: 'تم تجاهلها (ليست «تتبع» أو «إيقاف الإشعارات»)', duplicate: 'مكرر (تم تجاهله)', bad_signature: '⛔ توقيع غير صحيح'
-    }, { muted: '✓ أُرسل له التأكيد', track: '✓ أُرسلت له روابط طلباته' });
+    }, { muted: '✓ أُرسل له التأكيد', track: '✓ أُرسلت له روابط طلباته', track_none: '✓ أُرسل له «لم نجد طلبات»' });
 }
 
 function copyTplWebhookUrl() {

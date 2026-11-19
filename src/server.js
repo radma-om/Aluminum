@@ -2758,8 +2758,9 @@ function createApp(db, { agentClient } = {}) {
         db.prepare('UPDATE inbound_events SET signature = ?, event_key = ? WHERE id = ?').run(signing ? 'verified' : 'unchecked', key, eventId);
         res.json({ ok: true });
         orderNotify.handleTemplatesEvent(db, event, { origin: systemOrigin(req, db) })
-            .then((r) => db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?')
-                .run(r.reply && !r.reply_ok ? `${r.action}_failed: ${String(r.reply_error || '').slice(0, 200)}` : r.action, eventId))
+            .then((r) => db.prepare('UPDATE inbound_events SET status = ?, reply_json = ? WHERE id = ?')
+                .run(r.reply && !r.reply_ok ? `${r.action}_failed: ${String(r.reply_error || '').slice(0, 200)}` : r.action,
+                    r.reply ? JSON.stringify({ text: r.reply }) : null, eventId))
             .catch((e) => db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?').run('error: ' + String(e.message).slice(0, 200), eventId));
     });
 
