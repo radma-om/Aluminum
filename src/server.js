@@ -35,6 +35,7 @@ const customerNotify = require('./customer-notify');
 const tracking = require('./tracking');
 const orderNotify = require('./order-notify');
 const quotePage = require('./quote-page');
+const phoneVerify = require('./phone-verify');
 const workorders = require('./workorders');
 const servicerequests = require('./servicerequests');
 const costs = require('./costs');
@@ -455,6 +456,7 @@ function createApp(db, { agentClient } = {}) {
     wallets.ensureTables(db);
     orderNotify.ensureTables(db);
     quotePage.ensureColumns(db);
+    phoneVerify.ensureTable(db);
     try { workorders.cancelOrphans(db); } catch (err) { console.error('[work-orders] orphans', err.message); }
     // Statistics: quotes / customers of cancelled invoices no longer counted as sold; no frozen unfinished month
     try { invoices.repairCancelled(db); require('./bonuses').dropUnfinished(db); } catch (err) { console.error('[stats] repair', err.message); }
@@ -565,6 +567,25 @@ function createApp(db, { agentClient } = {}) {
 
     const quoteLimit = rateLimit({ windowMs: 10 * 60_000, max: 10 });
 
+    /* ---- Confirming the customer's mobile with a code sent on WhatsApp (a MazBot template; src/phone-verify.js) ---- */
+    const verifyLimit = rateLimit({ windowMs: 10 * 60_000, max: 8 });
+    app.get('/api/public/verify/config', publicReadLimit, (req, res) => {
+        res.json({ required: phoneVerify.config(db).required, valid_days: phoneVerify.VALID_DAYS });
+    });
+    app.post('/api/public/verify/start', verifyLimit, asyncRoute(async (req, res) => {
+        if (!phoneVerify.config(db).required) throw httpError(400, 'تأكيد الرقم غير مطلوب');
+        res.status(201).json(await phoneVerify.start(db, (req.body || {}).phone));
+    }));
+    const confirmLimit = rateLimit({ windowMs: 10 * 60_000, max: 20 });
+    app.post('/api/public/verify/confirm', confirmLimit, (req, res) => {
+        try {
+            res.json(phoneVerify.confirm(db, (req.body || {}).token, (req.body || {}).code));
+        } catch (e) {
+            if (!e.verify) throw e;
+            res.status(400).json({ error: e.message, verify: e.verify });
+        }
+    });
+
     /* Materials order (slats / accessories by quantity) */
     app.post('/api/public/quotes', quoteLimit, (req, res) => {
         const body = req.body || {};
@@ -629,6 +650,7 @@ function createApp(db, { agentClient } = {}) {
     app.post('/api/public/door-quotes', quoteLimit, (req, res) => {
         const body = req.body || {};
         const customer = readCustomer(body);
+        phoneVerify.require(db, body, customer.customer_phone);
         const priced = doors.finalPrice(db, { ...readDoor(body), regionId: customer.region.id });
         saveOrRepeat(res, customer, priced, { ...priced.door, spec: priced.spec, fees_note: priced.delivery_installation });
     });
@@ -652,6 +674,7 @@ function createApp(db, { agentClient } = {}) {
     app.post('/api/public/overhead-quotes', quoteLimit, (req, res) => {
         const body = req.body || {};
         const customer = readCustomer(body);
+        phoneVerify.require(db, body, customer.customer_phone);
         const priced = overhead.overheadPrice(db, { ...readOverhead(body), regionId: customer.region.id });
         saveOrRepeat(res, customer, priced, {
             calculator: 'overhead', ...priced.gate, governorate: priced.region.governorate,
@@ -674,6 +697,7 @@ function createApp(db, { agentClient } = {}) {
     app.post('/api/public/motor-quotes', quoteLimit, (req, res) => {
         const body = req.body || {};
         const customer = readCustomer(body);
+        phoneVerify.require(db, body, customer.customer_phone);
         const priced = motors.motorPrice(db, { ...readMotors(body), regionId: customer.region.id });
         saveOrRepeat(res, customer, priced, {
             ...priced.order, spec: priced.spec, fees_note: priced.delivery_installation, extra_fees_note: priced.extra_fees_note || null
@@ -2504,6 +2528,7 @@ function createApp(db, { agentClient } = {}) {
         customer: customerNotify.status(),
         // The work order notices (appointment, on the way, started, done) and the templates account's webhook
         work_orders: orderNotify.status(db),
+        phone_verify: phoneVerify.config(db),
         templates_webhook_path: req.user.role === 'manager' && (process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET || '').length >= 16
             ? `/webhooks/mazbot-templates/${process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET}` : null
     }));
@@ -2805,7 +2830,7 @@ function createApp(db, { agentClient } = {}) {
     app.use((err, req, res, next) => {
         const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
         if (status >= 500) console.error(err);
-        res.status(status).json({ error: status >= 500 && !err.expose ? 'خطأ في الخادم' : err.message });
+        res.status(status).json({ error: status >= 500 && !err.expose ? 'خطأ في الخادم' : err.message, ...(err.need_verification ? { need_verification: true } : {}) });
     });
 
     return app;

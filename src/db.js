@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS = {
     company_whatsapp: '',
     // Sales numbers that get the MazBot WhatsApp template for every calculator request
     mazbot_recipients: '76979066, 90660001',
+    calculator_verify_phone: false, // the calculators send the customer a code on WhatsApp (MAZBOT_VERIFY_TEMPLATE_ID) before the request
     wo_customer_notices: true, // the customer hears of their work order on WhatsApp (appointment, on the way, started, done)
     // The AI agent answers customer messages received from MazBot (switch in the admin panel)
     mazbot_agent_enabled: false,

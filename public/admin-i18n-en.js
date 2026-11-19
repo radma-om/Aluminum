@@ -524,6 +524,7 @@ window.I18N_EN = {
     "إشعارات أوامر العمل للعميل على واتساب (الموعد، الفني في الطريق، بدء العمل، الاكتمال) مع رابط «تتبع طلبي»": "Work order notices to the customer on WhatsApp (appointment, technician on the way, work started, done) with the «Track my order» link",
     "في الطريق": "On the way",
     "صفحة العرض للعميل": "Customer quote page",
+    "حاسبات العملاء: رمز تحقق على واتساب قبل إرسال الطلب (مرة كل 30 يوماً لكل رقم)": "Customer calculators: a WhatsApp verification code before sending the request (once every 30 days per number)",
     "إرسال العرض للعميل من رقم الشركة": "Send the quote from the company number",
     "نسخ رابط العرض": "Copy the quote link",
     "إرسال الرابط من جوالي": "Send the link from my phone",
