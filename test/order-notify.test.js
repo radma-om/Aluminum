@@ -132,6 +132,18 @@ test('«إيقاف الإشعارات 48 ساعة» from the templates account m
     assert.equal(tpl.templates_webhook_path, `/webhooks/mazbot-templates/${TPL.MAZBOT_TEMPLATES_WEBHOOK_SECRET}`);
     assert.equal(tpl.templates_signed, true);
     assert.equal((await list('')).events.length, 0, 'the main account\'s list stays its own');
+
+    // Why a request was refused: no signature header / a secret that is not this webhook's
+    const bad = { ...press, data: { ...press.data, message: { ...press.data.message, id: 'm2' } } };
+    await fetch(hook, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Mazbot-Signature': 'sha256=' + 'ab'.repeat(32) }, body: JSON.stringify(bad) });
+    const why = (await list('?source=mazbot_templates')).events;
+    assert.deepEqual([why[0].status, why[0].signature], ['bad_signature', 'mismatch']);
+    assert.equal(why.find((e) => e.status === 'bad_signature' && e.signature === 'no_header').status, 'bad_signature');
+    assert.ok(JSON.parse(why[0].headers_json)['content-type'], 'the headers are kept (to see which signature header MazBot sends)');
+    // A secret pasted with spaces / quotes still matches
+    process.env.MAZBOT_TEMPLATES_SIGNING_SECRET = `  "${TPL.MAZBOT_TEMPLATES_SIGNING_SECRET}"\n`;
+    const again = { ...press, data: { ...press.data, message: { ...press.data.message, id: 'm3' } } };
+    assert.equal((await post(again)).status, 200);
     const order = workorders.create(db, { kind: 'installation', description: 'تركيب', scheduled_date: '2026-11-22' }, 'المكتب', { source: { invoice: inv } });
     const r = await notify.notify(db, workorders.get(db, order.id), 'scheduled', { origin: base });
     assert.equal(r.skipped, 'muted');
