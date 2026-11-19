@@ -567,18 +567,24 @@ function createApp(db, { agentClient } = {}) {
 
     const quoteLimit = rateLimit({ windowMs: 10 * 60_000, max: 10 });
 
-    /* ---- Confirming the customer's mobile on WhatsApp before a calculator request (src/phone-verify.js) ---- */
+    /* ---- Confirming the customer's mobile with a code sent on WhatsApp (a MazBot template; src/phone-verify.js) ---- */
     const verifyLimit = rateLimit({ windowMs: 10 * 60_000, max: 8 });
     app.get('/api/public/verify/config', publicReadLimit, (req, res) => {
-        const c = phoneVerify.config(db);
-        res.json({ required: c.required, number: c.required ? c.number : null, valid_days: phoneVerify.VALID_DAYS });
+        res.json({ required: phoneVerify.config(db).required, valid_days: phoneVerify.VALID_DAYS });
     });
-    app.post('/api/public/verify/start', verifyLimit, (req, res) => {
+    app.post('/api/public/verify/start', verifyLimit, asyncRoute(async (req, res) => {
         if (!phoneVerify.config(db).required) throw httpError(400, 'تأكيد الرقم غير مطلوب');
-        const r = phoneVerify.start(db, (req.body || {}).phone);
-        res.status(201).json({ token: r.token, code: r.code, wa_url: r.wa_url, text: r.text, expires_in: r.expires_in });
+        res.status(201).json(await phoneVerify.start(db, (req.body || {}).phone));
+    }));
+    const confirmLimit = rateLimit({ windowMs: 10 * 60_000, max: 20 });
+    app.post('/api/public/verify/confirm', confirmLimit, (req, res) => {
+        try {
+            res.json(phoneVerify.confirm(db, (req.body || {}).token, (req.body || {}).code));
+        } catch (e) {
+            if (!e.verify) throw e;
+            res.status(400).json({ error: e.message, verify: e.verify });
+        }
     });
-    app.get('/api/public/verify/status', publicReadLimit, (req, res) => res.json(phoneVerify.status(db, req.query.token)));
 
     /* Materials order (slats / accessories by quantity) */
     app.post('/api/public/quotes', quoteLimit, (req, res) => {

@@ -1,26 +1,31 @@
 /* =============================================================
-   Confirming the customer's mobile in the calculators, on WhatsApp
-   (no code to type, no template, nothing paid):
-   1. The page asks for a 4-digit code (start) and opens WhatsApp with a
-      ready message «رمز تأكيد الرقم: 4827» to the templates number.
-   2. The customer sends it: the templates account's webhook finds the
-      code, checks it came from the number typed, and marks it confirmed
-      (a short reply tells them to go back to the page).
-   3. The page asks every few seconds (status) and sends the request with
-      the token; the server accepts it for 30 days for that number.
+   Confirming the customer's mobile in the calculators with a code sent
+   by WhatsApp from the company (an approved MazBot template):
+   1. The page asks for a code (start): the server sends «رمز التحقق»
+      to the number typed — the template MAZBOT_VERIFY_TEMPLATE_ID
+      ({{1}} the code) through the templates account.
+   2. The customer types the 4 digits in the page (confirm).
+   3. The request goes through with the token; accepted 30 days for that number.
    - Off until the manager switches it on (settings: calculator_verify_phone),
-     and never on without the templates account's webhook (it would stop
-     every request).
-   - A code lives 15 minutes; a number gets at most 5 codes an hour.
+     and never on without the template and the account's sign-in (it would
+     stop every request).
+   - A code lives 15 minutes, 5 wrong tries end it; a number gets at most
+     5 codes an hour.
    ============================================================= */
 const crypto = require('node:crypto');
 const { getSettings } = require('./db');
+const mazbot = require('./mazbot');
 
 const CODE_MINUTES = 15;
 const VALID_DAYS = 30;
+const MAX_TRIES = 5;
 const mobileOf = (phone) => { const d = String(phone || '').replace(/\D/g, '').replace(/^00/, ''); return d.length === 8 ? '968' + d : d; };
 const err = (status, message, extra = {}) => Object.assign(new Error(message), { status, ...extra });
 const sqlTime = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+const digits = (s) => String(s || '').replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/\D/g, '');
+
+let sender = null; // tests
+const setSenderForTests = (fn) => { sender = fn; };
 
 function ensureTable(db) {
     db.exec(`CREATE TABLE IF NOT EXISTS phone_verifications (
@@ -33,59 +38,57 @@ function ensureTable(db) {
         verified_at    TEXT,
         verified_until TEXT,
         created_at     TEXT NOT NULL DEFAULT (datetime('now'))
-    ); CREATE INDEX IF NOT EXISTS phone_verifications_code ON phone_verifications (code, status);`);
+    );`);
+    const cols = db.prepare('PRAGMA table_info(phone_verifications)').all().map((c) => c.name);
+    if (!cols.includes('tries')) db.exec('ALTER TABLE phone_verifications ADD COLUMN tries INTEGER NOT NULL DEFAULT 0');
+    if (!cols.includes('send_error')) db.exec('ALTER TABLE phone_verifications ADD COLUMN send_error TEXT');
 }
 
-/* The number customers write to, and whether the confirmation is asked for */
+const templateId = () => String(process.env.MAZBOT_VERIFY_TEMPLATE_ID || '').trim();
+
+/* Whether the confirmation is asked for: switched on, with the template and the account to send it */
 function config(db) {
     const s = getSettings(db);
-    const hook = String(process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET || '').trim().length >= 16;
-    const number = String(s.verify_whatsapp_number || '').replace(/\D/g, '');
-    return { required: Boolean(s.calculator_verify_phone) && hook && number.length >= 8, number: number ? mobileOf(number) : null, webhook: hook };
+    const template = Boolean(templateId());
+    const login = mazbot.templatesAccount().client.hasLogin();
+    return { required: Boolean(s.calculator_verify_phone) && template && login, enabled: Boolean(s.calculator_verify_phone), template, login };
 }
 
-/* A new code for this number: the page shows it and opens WhatsApp with it */
-function start(db, phone) {
+/* A new code, sent to the number on WhatsApp. Returns { token, phone, expires_in } — never the code. */
+async function start(db, phone) {
     ensureTable(db);
     const p = mobileOf(phone);
     if (!/^968[79]\d{7}$/.test(p)) throw err(400, 'يرجى إدخال رقم جوال عماني صالح (مثال: 9XXXXXXX).');
     const recent = db.prepare("SELECT COUNT(*) AS n FROM phone_verifications WHERE phone = ? AND created_at > datetime('now', '-1 hour')").get(p).n;
     if (recent >= 5) throw err(429, 'تم طلب رموز كثيرة لهذا الرقم — حاول بعد ساعة.');
-    // A code not in use by another number right now (4 digits)
-    let code;
-    for (let i = 0; i < 20; i++) {
-        code = String(crypto.randomInt(1000, 10000));
-        if (!db.prepare("SELECT 1 FROM phone_verifications WHERE code = ? AND status = 'pending' AND expires_at > datetime('now')").get(code)) break;
-    }
+    const code = String(crypto.randomInt(1000, 10000));
     const token = crypto.randomBytes(16).toString('hex');
-    db.prepare('INSERT INTO phone_verifications (phone, code, token, expires_at) VALUES (?, ?, ?, ?)').run(p, code, token, sqlTime(Date.now() + CODE_MINUTES * 60_000));
-    const c = config(db);
-    const text = `رمز تأكيد الرقم: ${code}`;
-    return { token, code, phone: p, expires_in: CODE_MINUTES * 60, wa_url: c.number ? `https://wa.me/${c.number}?text=${encodeURIComponent(text)}` : null, text };
+    const info = db.prepare('INSERT INTO phone_verifications (phone, code, token, expires_at) VALUES (?, ?, ?, ?)')
+        .run(p, code, token, sqlTime(Date.now() + CODE_MINUTES * 60_000));
+    const r = sender ? await sender(p, [code]) : await mazbot.templatesAccount().client.sendTemplate(p, [code], templateId());
+    if (!r || !r.ok) {
+        db.prepare("UPDATE phone_verifications SET status = 'failed', send_error = ? WHERE id = ?").run(String((r && r.error) || 'send_failed').slice(0, 300), info.lastInsertRowid);
+        throw err(502, 'تعذر إرسال رمز التحقق على واتساب — تأكد من الرقم أو حاول بعد قليل.', { expose: true });
+    }
+    return { token, phone: p, expires_in: CODE_MINUTES * 60 };
 }
 
-/* The page asks: is it confirmed yet? */
-function status(db, token) {
+/* The customer types the code. Returns { status: 'verified', until } or throws 400 with how it went. */
+function confirm(db, token, code) {
     ensureTable(db);
-    const r = db.prepare('SELECT phone, status, expires_at, verified_until FROM phone_verifications WHERE token = ?').get(String(token || ''));
-    if (!r) return { status: 'unknown' };
-    if (r.status === 'verified') return { status: 'verified', phone: r.phone, until: r.verified_until };
-    if (r.expires_at <= sqlTime(Date.now())) return { status: 'expired' };
-    return { status: 'pending' };
-}
-
-/* A WhatsApp message to the templates number: a code it is waiting for? Returns null when it holds no code. */
-function confirmFromWhatsApp(db, senderPhone, text) {
-    ensureTable(db);
-    const m = /(^|\D)(\d{4})(\D|$)/.exec(String(text || '').replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))));
-    if (!m || !/رمز|تأكيد|code/i.test(text) && String(text).trim().length > 8) return null;
-    const code = m[2];
-    const row = db.prepare("SELECT * FROM phone_verifications WHERE code = ? AND status = 'pending' AND expires_at > datetime('now') ORDER BY id DESC LIMIT 1").get(code);
-    if (!row) return { result: 'unknown_code' };
-    if (row.phone !== mobileOf(senderPhone)) return { result: 'other_number', phone: row.phone };
-    db.prepare("UPDATE phone_verifications SET status = 'verified', verified_at = datetime('now'), verified_until = ? WHERE id = ?")
-        .run(sqlTime(Date.now() + VALID_DAYS * 86400_000), row.id);
-    return { result: 'verified', phone: row.phone };
+    const row = db.prepare('SELECT * FROM phone_verifications WHERE token = ?').get(String(token || ''));
+    if (!row || row.status === 'failed') throw err(400, 'اطلب رمزاً جديداً.', { verify: 'unknown' });
+    if (row.status === 'verified') return { status: 'verified', phone: row.phone, until: row.verified_until };
+    if (row.status !== 'pending' || row.expires_at <= sqlTime(Date.now())) throw err(400, 'انتهت صلاحية الرمز — اطلب رمزاً جديداً.', { verify: 'expired' });
+    if (digits(code) !== row.code) {
+        const tries = row.tries + 1;
+        db.prepare(`UPDATE phone_verifications SET tries = ?${tries >= MAX_TRIES ? ", status = 'expired'" : ''} WHERE id = ?`).run(tries, row.id);
+        if (tries >= MAX_TRIES) throw err(400, 'محاولات خاطئة كثيرة — اطلب رمزاً جديداً.', { verify: 'expired' });
+        throw err(400, `الرمز غير صحيح — بقيت ${MAX_TRIES - tries} محاولات.`, { verify: 'wrong' });
+    }
+    const until = sqlTime(Date.now() + VALID_DAYS * 86400_000);
+    db.prepare("UPDATE phone_verifications SET status = 'verified', verified_at = datetime('now'), verified_until = ? WHERE id = ?").run(until, row.id);
+    return { status: 'verified', phone: row.phone, until };
 }
 
 /* A calculator request: its token must be a confirmed one, for this number, still within the 30 days */
@@ -99,8 +102,8 @@ function check(db, token, phone) {
 function require_(db, body, phone) {
     if (!config(db).required) return;
     if (!check(db, body.verify_token, phone)) {
-        throw err(403, 'يرجى تأكيد رقم الجوال عبر واتساب أولاً', { need_verification: true });
+        throw err(403, 'يرجى تأكيد رقم الجوال أولاً', { need_verification: true });
     }
 }
 
-module.exports = { ensureTable, config, start, status, confirmFromWhatsApp, check, require: require_, mobileOf, CODE_MINUTES, VALID_DAYS };
+module.exports = { ensureTable, config, start, confirm, check, require: require_, mobileOf, setSenderForTests, CODE_MINUTES, VALID_DAYS, MAX_TRIES };

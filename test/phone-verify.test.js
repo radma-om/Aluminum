@@ -1,21 +1,22 @@
-/* Confirming the customer's mobile on WhatsApp before a calculator request: the page gets a code, the customer
-   sends it from their number to the templates number, the webhook confirms it, the request goes through with the
-   token — 30 days for that number. Off by default. */
+/* Confirming the customer's mobile before a calculator request: the company sends a 4-digit code on WhatsApp
+   (an approved MazBot template through the templates account), the customer types it in the page, the request
+   goes through with the token — 30 days for that number. Off by default, and never on without the template. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
-const crypto = require('node:crypto');
 const { openDatabase, saveSettings } = require('../src/db');
 const { createApp } = require('../src/server');
-const notify = require('../src/order-notify');
+const phoneVerify = require('../src/phone-verify');
 
 const OWNER = 'test-token-long-enough-1234';
 process.env.ADMIN_TOKEN = OWNER;
-const ENV = { MAZBOT_TEMPLATES_WEBHOOK_SECRET: 'tpl-hook-secret-0123456789', MAZBOT_TEMPLATES_SIGNING_SECRET: 'tpl-signing-secret' };
+const ENV = { MAZBOT_VERIFY_TEMPLATE_ID: '4001', MAZBOT_TEMPLATES_API_KEY: 'k', MAZBOT_TEMPLATES_STAFF_EMAIL: 'e@x', MAZBOT_TEMPLATES_STAFF_PASSWORD: 'p' };
 
-async function start(t) {
+async function start(t, { fail = false } = {}) {
     Object.assign(process.env, ENV);
-    t.after(() => { for (const k of Object.keys(ENV)) delete process.env[k]; });
+    const sent = [];
+    phoneVerify.setSenderForTests(async (mobile, values) => { sent.push({ mobile, values }); return fail ? { ok: false, error: 'x' } : { ok: true }; });
+    t.after(() => { for (const k of Object.keys(ENV)) delete process.env[k]; phoneVerify.setSenderForTests(null); });
     const db = openDatabase(':memory:');
     const server = http.createServer(createApp(db));
     await new Promise((r) => server.listen(0, r));
@@ -29,14 +30,7 @@ async function start(t) {
     const type = conf.shutter_types.find((x) => x.variants.length === 1) || conf.shutter_types[0];
     const door = { width_cm: 300, height_cm: 250, count: 1, shutter_type_id: type.id, color_id: type.variants[0].colors[0].id,
         option_ids: conf.accessory_groups.map((g) => g.options[0].id), region_id: conf.locations[0].wilayat[0].id };
-    // A WhatsApp message to the templates number (signed like MazBot)
-    const whatsapp = async (phone, text, id = crypto.randomUUID()) => {
-        const raw = JSON.stringify({ type: 'message.received', data: { contact: { id: 1, phone }, message: { id, message_type: 'text', value: text } } });
-        const sig = 'sha256=' + crypto.createHmac('sha256', ENV.MAZBOT_TEMPLATES_SIGNING_SECRET).update(raw).digest('hex');
-        await fetch(`${base}/webhooks/mazbot-templates/${ENV.MAZBOT_TEMPLATES_WEBHOOK_SECRET}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Mazbot-Signature': sig }, body: raw });
-        await new Promise((r) => setTimeout(r, 60));
-    };
-    return { db, call, door, whatsapp };
+    return { db, call, door, sent };
 }
 
 test('off by default: a calculator request goes through without confirmation', async (t) => {
@@ -46,62 +40,73 @@ test('off by default: a calculator request goes through without confirmation', a
     assert.equal((await call('POST', '/api/public/verify/start', { phone: '99123456' })).status, 400);
 });
 
-test('on: code → WhatsApp from the same number → confirmed → the request goes through for 30 days', async (t) => {
-    const { db, call, door, whatsapp } = await start(t);
+test('on: the code goes by template to the number → typed in the page → the request goes through for 30 days', async (t) => {
+    const { db, call, door, sent } = await start(t);
     saveSettings(db, { calculator_verify_phone: true });
-    const cfg = (await call('GET', '/api/public/verify/config')).body;
-    assert.deepEqual([cfg.required, cfg.number], [true, '96890660005']);
+    assert.equal((await call('GET', '/api/public/verify/config')).body.required, true);
 
-    // Without a confirmation: refused, and the page knows why
     let r = await call('POST', '/api/public/door-quotes', { ...door, customer_name: 'أحمد', customer_phone: '99123456' });
     assert.equal(r.status, 403);
     assert.equal(r.body.need_verification, true);
 
     const s = (await call('POST', '/api/public/verify/start', { phone: '99123456' })).body;
-    assert.match(s.code, /^\d{4}$/);
-    assert.equal(s.wa_url, `https://wa.me/96890660005?text=${encodeURIComponent(`رمز تأكيد الرقم: ${s.code}`)}`);
-    assert.equal((await call('GET', `/api/public/verify/status?token=${s.token}`)).body.status, 'pending');
+    assert.equal(s.code, undefined, 'the page never gets the code');
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].mobile, '96899123456');
+    const code = sent[0].values[0];
+    assert.match(code, /^\d{4}$/);
 
-    // Sent from another number: not confirmed
-    await whatsapp('96891111111', `رمز تأكيد الرقم: ${s.code}`);
-    assert.equal((await call('GET', `/api/public/verify/status?token=${s.token}`)).body.status, 'pending');
-    assert.equal(db.prepare("SELECT status FROM inbound_events WHERE source = 'mazbot_templates' ORDER BY id DESC").get().status.split(':')[0].replace(/_failed$/, ''), 'verify_failed');
+    // A wrong code: refused, tries counted
+    const wrong = code === '1234' ? '4321' : '1234';
+    r = await call('POST', '/api/public/verify/confirm', { token: s.token, code: wrong });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.verify, 'wrong');
+    assert.equal((await call('POST', '/api/public/door-quotes', { ...door, customer_name: 'أحمد', customer_phone: '99123456', verify_token: s.token })).status, 403);
 
-    // From the number typed: confirmed (Arabic digits work too)
-    const arabic = s.code.replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]);
-    await whatsapp('96899123456', `رمز تأكيد الرقم: ${arabic}`);
-    const st = (await call('GET', `/api/public/verify/status?token=${s.token}`)).body;
-    assert.equal(st.status, 'verified');
-    assert.ok(st.until > new Date(Date.now() + 29 * 86400_000).toISOString().slice(0, 10));
+    // The right one (Arabic digits work too)
+    r = await call('POST', '/api/public/verify/confirm', { token: s.token, code: code.replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]) });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.status, 'verified');
+    assert.ok(r.body.until > new Date(Date.now() + 29 * 86400_000).toISOString().slice(0, 10));
 
     r = await call('POST', '/api/public/door-quotes', { ...door, customer_name: 'أحمد', customer_phone: '99123456', verify_token: s.token });
     assert.equal(r.status, 201, JSON.stringify(r.body));
     // The same token for another number: refused
-    r = await call('POST', '/api/public/door-quotes', { ...door, customer_name: 'أحمد', customer_phone: '99887766', verify_token: s.token });
-    assert.equal(r.status, 403);
+    assert.equal((await call('POST', '/api/public/door-quotes', { ...door, customer_name: 'أحمد', customer_phone: '99887766', verify_token: s.token })).status, 403);
     // 30 days later: asked again
     db.prepare("UPDATE phone_verifications SET verified_until = datetime('now', '-1 minute')").run();
     assert.equal((await call('POST', '/api/public/door-quotes', { ...door, customer_name: 'أحمد', customer_phone: '99123456', verify_token: s.token })).status, 403);
 });
 
-test('a wrong or expired code, a non-Omani number, too many codes; never on without the webhook', async (t) => {
-    const { db, call } = await start(t);
+test('5 wrong tries end the code; an expired code; a non-Omani number; 5 codes an hour; never on without the template', async (t) => {
+    const { db, call, sent } = await start(t);
     saveSettings(db, { calculator_verify_phone: true });
-    const replies = [];
-    const client = { sendTextToPhone: async (to, text) => { replies.push(text); return { ok: true }; } };
-    const s = (await call('POST', '/api/public/verify/start', { phone: '99123456' })).body;
+    let s = (await call('POST', '/api/public/verify/start', { phone: '99123456' })).body;
+    const wrong = sent[0].values[0] === '1111' ? '2222' : '1111';
+    let last;
+    for (let i = 0; i < 5; i++) last = await call('POST', '/api/public/verify/confirm', { token: s.token, code: wrong });
+    assert.equal(last.body.verify, 'expired');
+    assert.equal((await call('POST', '/api/public/verify/confirm', { token: s.token, code: sent[0].values[0] })).body.verify, 'expired', 'not even the right one after');
+
+    s = (await call('POST', '/api/public/verify/start', { phone: '99123456' })).body;
     db.prepare("UPDATE phone_verifications SET expires_at = datetime('now', '-1 minute')").run();
-    const out = await notify.handleTemplatesEvent(db, { type: 'message.received', data: { contact: { phone: '96899123456' }, message: { value: `رمز تأكيد الرقم: ${s.code}` } } }, { client });
-    assert.equal(out.action, 'verify_failed');
-    assert.match(replies.at(-1), /انتهت صلاحيته/);
-    assert.equal((await call('GET', `/api/public/verify/status?token=${s.token}`)).body.status, 'expired');
-    // An ordinary message with no code is not taken for one
-    assert.equal((await notify.handleTemplatesEvent(db, { type: 'message.received', data: { contact: { phone: '96899123456' }, message: { value: 'مرحبا أريد سعر بوابة 2025' } } }, { client })).action, 'ignored');
+    assert.equal((await call('POST', '/api/public/verify/confirm', { token: s.token, code: sent[1].values[0] })).body.verify, 'expired');
 
     assert.equal((await call('POST', '/api/public/verify/start', { phone: '12345' })).status, 400);
-    for (let i = 0; i < 4; i++) await call('POST', '/api/public/verify/start', { phone: '99123456' });
+    for (let i = 0; i < 3; i++) await call('POST', '/api/public/verify/start', { phone: '99123456' });
     assert.equal((await call('POST', '/api/public/verify/start', { phone: '99123456' })).status, 429, '5 codes an hour');
 
-    delete process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET;
-    assert.equal((await call('GET', '/api/public/verify/config')).body.required, false, 'no webhook: never asked (it would stop every request)');
+    delete process.env.MAZBOT_VERIFY_TEMPLATE_ID;
+    assert.equal((await call('GET', '/api/public/verify/config')).body.required, false, 'no template: never asked (it would stop every request)');
+});
+
+test('the template could not be sent: the page is told, and that code never confirms', async (t) => {
+    const { db, call, sent } = await start(t, { fail: true });
+    saveSettings(db, { calculator_verify_phone: true });
+    const r = await call('POST', '/api/public/verify/start', { phone: '99123456' });
+    assert.equal(r.status, 502);
+    assert.match(r.body.error, /تعذر إرسال رمز التحقق/);
+    const row = db.prepare('SELECT token, status FROM phone_verifications').get();
+    assert.equal(row.status, 'failed');
+    assert.equal((await call('POST', '/api/public/verify/confirm', { token: row.token, code: sent[0].values[0] })).body.verify, 'unknown');
 });

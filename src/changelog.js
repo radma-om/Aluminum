@@ -7,8 +7,8 @@
 module.exports = [
     {
         version: '3.50.0', date: '2026-11-19',
-        ar: ['حاسبات العملاء: تأكيد رقم الجوال عبر واتساب قبل إرسال الطلب — يرسل العميل رمزاً من 4 أرقام برسالة جاهزة، فيُرسل الطلب تلقائياً', 'مرة كل 30 يوماً لكل رقم، بلا قالب ولا تكلفة، ويُفعَّل من «الربط» (متوقف افتراضياً)'],
-        en: ['Customer calculators: confirm the mobile number on WhatsApp before the request is sent — the customer sends a 4-digit code in a ready message, then the request is sent by itself', 'Once every 30 days per number, no template and no cost; switched on from «Integrations» (off by default)']
+        ar: ['حاسبات العملاء: رمز تحقق من 4 أرقام يصل العميل على واتساب (قالب MazBot المعتمد) ويكتبه في الحاسبة قبل إرسال الطلب', 'مرة كل 30 يوماً لكل رقم؛ يُفعَّل من «الربط» بعد اعتماد القالب (متوقف افتراضياً)'],
+        en: ['Customer calculators: a 4-digit verification code reaches the customer on WhatsApp (the approved MazBot template) and is typed in the calculator before the request is sent', 'Once every 30 days per number; switched on from «Integrations» once the template is approved (off by default)']
     },
     {
         version: '3.49.0', date: '2026-11-19',

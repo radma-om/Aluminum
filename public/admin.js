@@ -147,7 +147,6 @@ function applySettings(s) {
     $id('mazbotRecipients').value = s.mazbot_recipients || '';
     $id('woCustomerNotices').checked = s.wo_customer_notices !== false;
     $id('calculatorVerifyPhone').checked = Boolean(s.calculator_verify_phone);
-    $id('verifyWhatsappNumber').value = s.verify_whatsapp_number || '';
     $id('mazbotAgentEnabled').checked = Boolean(s.mazbot_agent_enabled);
     $id('websiteChatEnabled').checked = Boolean(s.website_chat_enabled);
     $id('websiteChatGreeting').value = s.website_chat_greeting || '';
@@ -191,7 +190,6 @@ async function saveSettingsToServer() {
             mazbot_recipients: $id('mazbotRecipients').value,
             wo_customer_notices: $id('woCustomerNotices').checked,
             calculator_verify_phone: $id('calculatorVerifyPhone').checked,
-            verify_whatsapp_number: $id('verifyWhatsappNumber').value.trim(),
             mazbot_agent_enabled: $id('mazbotAgentEnabled').checked,
             website_chat_enabled: $id('websiteChatEnabled').checked,
             website_chat_greeting: $id('websiteChatGreeting').value,
@@ -1616,9 +1614,10 @@ async function loadMazbotStatus() {
     $id('mazbotCustomerStatus').className = 'badge' + (ready ? ' on' : '');
     // Phone confirmation in the calculators: really asked only with the templates account's webhook
     const pv = s.phone_verify || {};
-    $id('verifyStatus').textContent = pv.required ? '✅ مفعّل — العميل يؤكد رقمه برسالة واتساب قبل إرسال الطلب.'
-        : !pv.webhook ? 'غير مفعّل: يحتاج Webhook حساب القوالب (MAZBOT_TEMPLATES_WEBHOOK_SECRET) — بدونه لا يُطلب التأكيد حتى لا تتوقف الطلبات.'
-            : 'غير مفعّل — ضع العلامة واضغط «حفظ».';
+    $id('verifyStatus').textContent = pv.required ? '✅ مفعّل — يصل العميل رمز تحقق على واتساب (قالب MazBot) ويكتبه في الحاسبة قبل إرسال الطلب.'
+        : !pv.template ? 'غير مفعّل: يحتاج قالب رمز التحقق MAZBOT_VERIFY_TEMPLATE_ID (بعد اعتماده من Meta) — بدونه لا يُطلب التأكيد حتى لا تتوقف الطلبات.'
+            : !pv.login ? 'غير مفعّل: تعذر الدخول لحساب القوالب في MazBot.'
+                : 'القالب جاهز — ضع العلامة واضغط «حفظ» للتفعيل.';
     // Work order notices: which templates are set, and the templates account's webhook (for «إيقاف الإشعارات» / «تتبع»)
     const w = s.work_orders || {};
     const names = { scheduled: 'الموعد', on_the_way: 'في الطريق', started: 'بدء العمل', done: 'الاكتمال' };
