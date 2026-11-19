@@ -1964,12 +1964,20 @@ function createApp(db, { agentClient } = {}) {
     }));
 
     /* One quote, to show it on screen (the same data the PDF is drawn from) */
+    /* «عرض السعر جاهز»: the quote's page link to the customer from the company's number */
+    admin.post('/quotes/:id/whatsapp', asyncRoute(async (req, res) => {
+        const row = quoteFor(req, req.params.id);
+        if (!row.access_key) throw httpError(400, 'هذا العرض بلا رابط للعميل');
+        const r = await customerNotify.sendQuote(db, parseQuote(row), { link: systemOrigin(req, db) + quotePage.path(row), by: staffName(req) });
+        res.json({ ...r, messages: customerNotify.quoteHistory(db, row.id) });
+    }));
     admin.get('/quotes/:id', (req, res) => {
         const row = quoteFor(req, req.params.id);
         const { access_key, ...q } = parseQuote(row);
         const inv = invoices.activeForQuote(db, q.id);
         res.json({
             ...q, customer_url: access_key ? quotePage.path(row) : null,
+            messages: customerNotify.quoteHistory(db, q.id), wa: customerNotify.quoteStatus(),
             expired: Boolean(q.valid_until && q.valid_until < leads.localToday() && ['new', 'contacted'].includes(q.status)),
             invoice: inv ? { id: inv.id, number: inv.number } : null
         });
