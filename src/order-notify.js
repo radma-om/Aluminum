@@ -181,7 +181,16 @@ async function handleTemplatesEvent(db, event, { origin = '', client = null } = 
     const said = String(m.value || (d.selection && (d.selection.id || d.selection.title)) || d.title || '').trim();
     let action = 'ignored';
     let reply = null;
-    if (MUTE_RE.test(said)) {
+    // The calculator's «رمز تأكيد الرقم: 4827» (src/phone-verify.js)
+    const verified = require('./phone-verify').confirmFromWhatsApp(db, phone, said);
+    if (verified) {
+        action = verified.result === 'verified' ? 'verified' : 'verify_failed';
+        reply = verified.result === 'verified'
+            ? '✅ تم تأكيد رقمكم. ارجعوا إلى صفحة الحاسبة — يُرسل طلبكم تلقائياً خلال ثوانٍ.'
+            : verified.result === 'other_number'
+                ? '⚠️ هذا الرمز لرقم آخر غير الرقم الذي أرسلتم منه. اكتبوا في الحاسبة رقم الواتساب الذي تراسلوننا منه، ثم أعيدوا المحاولة.'
+                : '⚠️ الرمز غير صحيح أو انتهت صلاحيته (15 دقيقة). اطلبوا رمزاً جديداً من صفحة الحاسبة.';
+    } else if (MUTE_RE.test(said)) {
         mute(db, phone);
         action = 'muted';
         reply = `تم إيقاف إشعارات الطلبات لمدة ${MUTE_HOURS} ساعة 🔕\nلمعرفة حالة طلبكم في أي وقت اكتبوا «تتبع».`;

@@ -124,7 +124,8 @@ test('an expired token logs in again once; admin test message and status', async
     t.after(() => { fake.server.close(); app.server.close(); });
 
     const status = await (await fetch(app.base + '/api/admin/mazbot/status', { headers: { Authorization: 'Bearer test-token' } })).json();
-    const { work_orders: wo, templates_webhook_path: hook, ...main } = status;
+    const { work_orders: wo, templates_webhook_path: hook, phone_verify: pv, ...main } = status;
+    assert.equal(pv.required, false, 'phone confirmation off by default');
     assert.deepStrictEqual(main, { configured: true, overhead_configured: true, motors_configured: false, dry_run: false, recipients: ['96876979066', '96890660001'],
         customer: { login: true, separate_account: false, invoice: false, payment: false, balance: false } });
     assert.deepStrictEqual(wo, { enabled: true, login: true, scheduled: false, on_the_way: false, started: false, done: false });

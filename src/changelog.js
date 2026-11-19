@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.50.0', date: '2026-11-19',
+        ar: ['حاسبات العملاء: تأكيد رقم الجوال عبر واتساب قبل إرسال الطلب — يرسل العميل رمزاً من 4 أرقام برسالة جاهزة، فيُرسل الطلب تلقائياً', 'مرة كل 30 يوماً لكل رقم، بلا قالب ولا تكلفة، ويُفعَّل من «الربط» (متوقف افتراضياً)'],
+        en: ['Customer calculators: confirm the mobile number on WhatsApp before the request is sent — the customer sends a 4-digit code in a ready message, then the request is sent by itself', 'Once every 30 days per number, no template and no cost; switched on from «Integrations» (off by default)']
+    },
+    {
         version: '3.49.0', date: '2026-11-19',
         ar: ['«عرض السعر جاهز»: إرسال العرض للعميل من رقم الشركة مع رابط صفحة المراجعة والموافقة — من نافذة العرض، أو مباشرة بعد حفظ عرض جديد', 'بعد الإرسال تصبح حالة العرض «تم التواصل»، ويظهر سجل الإرسال في نافذة العرض'],
         en: ['«Quote ready»: send the quote to the customer from the company number with the link to its review and acceptance page — from the quote window, or right after saving a new quote', 'After sending, the quote becomes «contacted», and the send log shows in the quote window']

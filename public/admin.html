@@ -2193,6 +2193,9 @@
                     <button class="btn btn-outline btn-sm" onclick="loadTemplatesInbound()">تحديث</button>
                 </div>
                 <p class="status-text" id="tplWebhookHint"></p>
+                <div class="check-row"><label><input type="checkbox" id="calculatorVerifyPhone"> حاسبات العملاء: تأكيد رقم الجوال عبر واتساب قبل إرسال الطلب (مرة كل 30 يوماً لكل رقم)</label></div>
+                <div class="form-group" style="max-width:320px"><label>رقم واتساب التأكيد <span class="unit">(يرسل إليه العميل الرمز — رقم حساب القوالب)</span></label><input type="text" id="verifyWhatsappNumber" dir="ltr" placeholder="90660005"></div>
+                <p class="status-text" id="verifyStatus"></p>
                 <div id="tplInboundList" style="margin-top:8px"></div>
                 <div class="db-actions">
                     <button class="btn btn-accent" onclick="saveSettingsToServer()">حفظ</button>

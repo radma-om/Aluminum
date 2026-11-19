@@ -99,3 +99,110 @@ function promoRows(p) {
         + (label && cut > 0 ? `<div class="promo-row"><span>🎉 ${safe(label)} — خصم ${percent}%${parts && parts.length ? ` (${safe(parts.join(' و'))})` : ''}</span><span dir="ltr">-${span(cut, cutTo)}</span></div>` : '')
         + (gift > 0 ? `<div class="promo-row"><span>🎁 هدية: ${safe(giftName)} — خصم 100%</span><span dir="ltr">-${money(gift)}</span></div>` : '');
 }
+
+/* ---------- Confirming the mobile on WhatsApp before the request (when the company asks for it) ----------
+   The customer sends one WhatsApp message with a code to the company's number; the page sees it confirmed
+   and sends the request. Remembered in this browser for 30 days for that number. */
+const VERIFY_KEY = 'radmaPhoneVerified';
+const normPhone = (p) => { let d = String(p || '').replace(/\D/g, '').replace(/^00/, ''); if (d.length === 8) d = '968' + d; return d; };
+function savedVerify(phone) {
+    try {
+        const v = JSON.parse(localStorage.getItem(VERIFY_KEY) || 'null');
+        if (v && v.phone === normPhone(phone) && Date.parse(String(v.until).replace(' ', 'T') + 'Z') > Date.now()) return v.token;
+    } catch { /* private mode: ask again */ }
+    return null;
+}
+const forgetVerify = () => { try { localStorage.removeItem(VERIFY_KEY); } catch { /* ignore */ } };
+
+function verifyBox() {
+    let box = $('verifyBox');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'verifyBox';
+        box.style.cssText = 'margin:14px 0;padding:16px;border:2px solid #25d366;border-radius:14px;background:#f2fdf6;text-align:center;line-height:1.8';
+        $('submitStatus').insertAdjacentElement('afterend', box);
+    }
+    return box;
+}
+
+/* Resolves with a confirmed token; rejects when the customer cancels or the code expires */
+function verifyPhone(phone) {
+    return new Promise(async (resolve, reject) => {
+        let started;
+        try {
+            const res = await fetch('/api/public/verify/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
+            started = await res.json();
+            if (!res.ok) throw new Error(started.error || 'تعذر بدء تأكيد الرقم');
+        } catch (err) { reject(err); return; }
+        const box = verifyBox();
+        const intl = normPhone(phone);
+        box.hidden = false;
+        box.innerHTML = `
+            <div style="font-weight:700;font-size:1.1rem;margin-bottom:6px">📱 تأكيد رقم الجوال</div>
+            <div>لإرسال طلبك، أكّد أن الرقم <b dir="ltr">+${esc(intl)}</b> رقمك برسالة واتساب واحدة:</div>
+            <a id="verifyWa" href="${esc(started.wa_url)}" target="_blank" rel="noopener"
+               style="display:block;margin:12px auto;max-width:340px;padding:13px 16px;border-radius:12px;background:#25d366;color:#fff;font-weight:700;text-decoration:none;font-size:1.05rem">
+               <i class="fab fa-whatsapp"></i> أرسل رمز التأكيد عبر واتساب</a>
+            <div style="font-size:.9rem;color:#555">الرمز: <b dir="ltr" style="font-size:1.15rem;letter-spacing:3px">${esc(started.code)}</b> — أرسل الرسالة كما هي من نفس الرقم، ثم ارجع لهذه الصفحة.</div>
+            <div id="verifyState" style="margin-top:10px;font-weight:700;color:#8a5a00">⏳ بانتظار رسالتك…</div>
+            <button type="button" id="verifyCancel" style="all:unset;display:inline-block;margin-top:8px;padding:4px 8px;color:#a93226;text-decoration:underline;cursor:pointer;font-size:.95rem">إلغاء</button>`;
+        scrollToEl(box);
+        let done = false;
+        const finish = (ok, value) => {
+            if (done) return;
+            done = true;
+            clearInterval(timer);
+            document.removeEventListener('visibilitychange', poll);
+            if (ok) {
+                $('verifyState').style.color = '#1e8449';
+                $('verifyState').textContent = '✅ تم تأكيد رقمك — جاري إرسال الطلب…';
+                setTimeout(() => { box.hidden = true; }, 1500);
+                resolve(value);
+            } else {
+                box.hidden = true;
+                reject(new Error(value));
+            }
+        };
+        async function poll() {
+            if (done) return;
+            try {
+                const s = await (await fetch('/api/public/verify/status?token=' + encodeURIComponent(started.token))).json();
+                if (s.status === 'verified') {
+                    try { localStorage.setItem(VERIFY_KEY, JSON.stringify({ phone: s.phone, token: started.token, until: s.until })); } catch { /* ignore */ }
+                    finish(true, started.token);
+                } else if (s.status === 'expired' || s.status === 'unknown') {
+                    finish(false, '⚠️ انتهت صلاحية رمز التأكيد (15 دقيقة) — اضغط الزر مرة أخرى للحصول على رمز جديد.');
+                }
+            } catch { /* try again on the next tick */ }
+        }
+        const timer = setInterval(poll, 3000);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+        $('verifyCancel').onclick = () => finish(false, 'تم إلغاء تأكيد الرقم — لم يُرسل الطلب.');
+    });
+}
+
+/* POST a calculator request; confirms the mobile first when the company asks for it */
+async function calcSendQuote(url, body) {
+    const post = (b) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    let cfg = { required: false };
+    try { cfg = await (await fetch('/api/public/verify/config')).json(); } catch { /* the server checks anyway */ }
+    if (!cfg.required) return post(body);
+    let token = savedVerify(body.customer_phone);
+    if (!token) {
+        setStatus('pending', 'يرجى تأكيد رقم الجوال عبر واتساب لإرسال الطلب ⬇️');
+        token = await verifyPhone(body.customer_phone);
+        setStatus('pending', 'جاري احتساب السعر وإرسال الطلب...');
+    }
+    let res = await post({ ...body, verify_token: token });
+    if (res.status === 403) {
+        const d = await res.clone().json().catch(() => ({}));
+        if (d.need_verification) {
+            // The confirmation kept in this browser is no longer valid: once more
+            forgetVerify();
+            setStatus('pending', 'يرجى تأكيد رقم الجوال عبر واتساب لإرسال الطلب ⬇️');
+            token = await verifyPhone(body.customer_phone);
+            res = await post({ ...body, verify_token: token });
+        }
+    }
+    return res;
+}
