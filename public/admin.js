@@ -504,11 +504,27 @@ function quoteShareRow(q) {
     const link = location.origin + q.customer_url;
     const phone = String(q.customer_phone || '').replace(/\D/g, '');
     const text = `مرحباً ${String(q.customer_name || '').trim().split(/\s+/)[0] || ''}، عرض السعر رقم ${q.ref} جاهز.\nراجعوا البنود والمبلغ ووافقوا عليه من هنا:\n${link}`;
-    return `<div class="form-buttons" style="margin-top:4px">
+    const wa = q.wa || {};
+    const sent = (q.messages || []).some((m) => m.ok);
+    const log = (q.messages || []).slice(0, 4).map((m) => `<li class="${m.ok ? 'ok' : 'err'}">${m.ok ? '✓' : '✗'} ${esc(String(m.created_at).slice(0, 16))}${m.sent_by ? ` — ${esc(m.sent_by)}` : ''}${m.ok ? '' : `<br><small>${esc(m.error || '')}</small>`}</li>`).join('');
+    const company = wa.login && q.status !== 'rejected'
+        ? `<button class="btn btn-primary btn-sm" onclick="sendQuoteWhatsapp(${q.id})"><i class="fab fa-whatsapp"></i> إرسال العرض للعميل من رقم الشركة${sent ? ' ✓' : ''}${wa.template ? '' : ' <small title="لا يوجد قالب معتمد: تصل الرسالة فقط إذا راسلكم العميل خلال آخر 24 ساعة">(بلا قالب)</small>'}</button>` : '';
+    return `${log ? `<ul class="inv-wa-log">${log}</ul>` : ''}<div class="form-buttons" style="margin-top:4px">
+        ${company}
         <a class="btn btn-outline btn-sm" href="${esc(link)}" target="_blank" rel="noopener"><i class="fas fa-eye"></i> صفحة العرض للعميل</a>
         <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText('${esc(link)}').then(() => tell('نُسخ الرابط ✓ — يراجع به العميل العرض ويوافق عليه'))">نسخ رابط العرض</button>
         ${phone ? `<a class="btn btn-outline btn-sm" href="https://wa.me/${esc(phone)}?text=${encodeURIComponent(text)}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> إرسال الرابط من جوالي</a>` : ''}
     </div>`;
+}
+
+/* «عرض السعر جاهز» from the company's number (the quote's page link) */
+async function sendQuoteWhatsapp(id) {
+    try {
+        const r = await api('POST', `/api/admin/quotes/${id}/whatsapp`, {});
+        await tell(r.ok ? 'أُرسل العرض للعميل على واتساب ✓ — يصله رابط المراجعة والموافقة' : `لم يُرسل: ${r.error}\n\nيمكنك الإرسال من جوالك بزر «إرسال الرابط من جوالي».`);
+        if (!$id('quoteSheet').hidden) viewQuote(id);
+        if (document.querySelector('#tab-quotes.active')) loadQuotes().catch(() => {});
+    } catch (err) { tell(err.message); }
 }
 
 async function viewQuote(id) {

@@ -128,3 +128,29 @@ test('two MazBot accounts: the templates to customers through their own account,
     // The calculators keep the main account
     assert.equal(require('../src/mazbot').hasLogin(), false, 'the main account is untouched by the customer one');
 });
+
+test('«عرض السعر جاهز»: the template with the quote page link; the quote becomes «contacted»; logged', async (t) => {
+    const { db, call } = await start(t);
+    process.env.MAZBOT_QUOTE_TEMPLATE_ID = '501';
+    t.after(() => { delete process.env.MAZBOT_QUOTE_TEMPLATE_ID; });
+    const priced = { items: [{ name: 'بوابة', unit: 'piece', quantity: 1, unit_price: 400, line_total: 400 }], subtotal: 400, vat_percent: 5, vat: 20, total: 420 };
+    const q = saveQuote(db, { customer_name: 'خالد سالم', customer_phone: '91234567', source: 'staff', priced, details: { staff_quote: true, created_by: 'سارة' } });
+    const row = db.prepare('SELECT * FROM quotes WHERE id = ?').get(q.id);
+    const got = (await call('GET', `/api/admin/quotes/${q.id}`)).body;
+    assert.deepEqual(got.wa, { login: false, template: true });
+    assert.deepEqual(got.messages, []);
+
+    const r = await call('POST', `/api/admin/quotes/${q.id}/whatsapp`, {});
+    assert.equal(r.body.ok, true);
+    const m = sent.at(-1);
+    assert.equal(m.kind, 'quote');
+    assert.equal(m.templateId, '501');
+    assert.equal(m.mobile, '96891234567');
+    assert.deepEqual(m.values.slice(0, 4), ['خالد', row.ref, '420.00', row.valid_until]);
+    assert.match(m.values[4], new RegExp(`/q/${row.access_key}$`), 'the quote page');
+    assert.equal(db.prepare('SELECT status FROM quotes WHERE id = ?').get(q.id).status, 'contacted');
+    assert.equal(r.body.messages[0].ok, true);
+
+    db.prepare("UPDATE quotes SET status = 'rejected' WHERE id = ?").run(q.id);
+    assert.equal((await call('POST', `/api/admin/quotes/${q.id}/whatsapp`, {})).status, 400);
+});

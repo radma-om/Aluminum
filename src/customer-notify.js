@@ -33,6 +33,16 @@ let sender = null; // tests
 const setSenderForTests = (fn) => { sender = fn; };
 
 function ensureTable(db) {
+    db.exec(`CREATE TABLE IF NOT EXISTS quote_messages (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        quote_id   INTEGER NOT NULL,
+        phone      TEXT,
+        via        TEXT,
+        ok         INTEGER NOT NULL DEFAULT 0,
+        error      TEXT,
+        sent_by    TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    ); CREATE INDEX IF NOT EXISTS quote_messages_quote ON quote_messages (quote_id, id);`);
     db.exec(`CREATE TABLE IF NOT EXISTS invoice_messages (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         invoice_id INTEGER NOT NULL,
@@ -55,6 +65,56 @@ function status() {
     // Ready when the templates' account can sign in (or, without templates, the main one for plain messages)
     const login = acct.client.hasLogin() || mazbot.hasLogin();
     return { login, separate_account: acct.separate, invoice: Boolean(templateId('invoice')), payment: Boolean(templateId('payment')), balance: Boolean(templateId('balance')) };
+}
+const quoteTemplateId = () => String(process.env.MAZBOT_QUOTE_TEMPLATE_ID || '').trim();
+const quoteStatus = () => ({ login: status().login, template: Boolean(quoteTemplateId()) });
+
+/**
+ * «عرض السعر جاهز»: the quote's number, total, validity and the link to its page (review and accept).
+ *   MAZBOT_QUOTE_TEMPLATE_ID  {{1}} name {{2}} quote no. {{3}} total {{4}} valid until {{5}} link
+ * Like the invoice: the approved template through the templates account, else a plain message (24 hours).
+ */
+async function sendQuote(db, quote, { link, by = null }) {
+    ensureTable(db);
+    if (!/^https:\/\//.test(String(link || '')) && !/^http:\/\/(localhost|127\.)/.test(String(link || ''))) {
+        throw err(400, 'رابط النظام العام غير مضبوط — حدده في الإعدادات (رابط النظام) حتى يصل العميل رابط العرض');
+    }
+    if (quote.status === 'rejected') throw err(400, 'العرض مرفوض');
+    const mobile = mobileOf(quote.customer_phone);
+    if (mobile.length < 11) throw err(400, 'رقم جوال العميل غير صالح في العرض');
+    const name = String(quote.customer_name || '').trim().split(/\s+/)[0] || 'عميلنا العزيز';
+    const range = (quote.details && quote.details.range) || {};
+    const total = range.total_to != null && Math.abs(range.total_to - quote.total) > 0.0005 ? `${money(quote.total)} – ${money(range.total_to)}` : money(quote.total);
+    const valid = quote.valid_until || '—';
+    const values = [name, quote.ref, total, valid, link];
+    const text = `مرحباً ${name}،\nعرض السعر رقم ${quote.ref} جاهز 📄\nالإجمالي: ${total} ر.ع\nساري حتى: ${valid}\nلمراجعة البنود والموافقة على العرض: ${link}\nللاستفسار راسلونا على 90660001.`;
+    const id = quoteTemplateId();
+    const via = id ? 'template' : 'text';
+    const acct = mazbot.templatesAccount();
+    if (!sender && !(via === 'template' ? acct.client.hasLogin() : mazbot.hasLogin())) {
+        throw err(400, 'MazBot غير مضبوط على الخادم — أرسل الرابط من جوالك بزر «إرسال الرابط من جوالي»');
+    }
+    let r;
+    try {
+        r = sender ? await sender({ via, mobile, templateId: id, values, text, account: via === 'template' && acct.separate ? 'templates' : 'main', kind: 'quote' })
+            : id ? await acct.client.sendTemplate(mobile, values, id) : await mazbot.sendTextToPhone(mobile, text);
+    } catch (e) { r = { ok: false, error: e.message }; }
+    const ok = Boolean(r && r.ok);
+    let error = ok ? null : String((r && r.error) || 'failed').slice(0, 300);
+    if (!ok && via === 'text') error = `لم تصل (لا يوجد قالب معتمد، والرسالة النصية تصل فقط خلال 24 ساعة من آخر رسالة من العميل) — ${error}`;
+    db.prepare('INSERT INTO quote_messages (quote_id, phone, via, ok, error, sent_by) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(quote.id, mobile, via === 'template' && acct.separate ? 'template:templates' : via, ok ? 1 : 0, error, by);
+    if (ok) {
+        // «تم التواصل» once the customer has the quote
+        db.prepare("UPDATE quotes SET status = 'contacted' WHERE id = ? AND status = 'new'").run(quote.id);
+        const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(mobile);
+        if (lead) require('./leads').addMessage(db, lead, 'system', `📤 أُرسل عرض السعر ${quote.ref} (${total} ر.ع) للعميل على واتساب مع رابط المراجعة والموافقة`, { author: by });
+    }
+    return { ok, via, error, message: text };
+}
+function quoteHistory(db, quoteId) {
+    ensureTable(db);
+    return db.prepare('SELECT * FROM quote_messages WHERE quote_id = ? ORDER BY id DESC LIMIT 20').all(Number(quoteId)).map((m) => ({ ...m, ok: Boolean(m.ok) }));
 }
 
 /* Oman numbers: 8 digits → 968…; anything else as typed (digits only) */
@@ -141,4 +201,4 @@ function history(db, invoiceId) {
         .map((m) => ({ ...m, ok: Boolean(m.ok), kind_label: (KINDS[m.kind] || {}).label || m.kind }));
 }
 
-module.exports = { KINDS, ensureTable, status, send, history, content, mobileOf, setSenderForTests };
+module.exports = { KINDS, ensureTable, status, send, history, content, mobileOf, setSenderForTests, sendQuote, quoteHistory, quoteStatus };

@@ -52,6 +52,7 @@ const LABELS = [
     ['PATCH', /^\/invoices\/\d+$/, 'تعديل فاتورة'],
     ['POST', /^\/invoices\/\d+\/payments$/, 'تسجيل دفعة'],
     ['POST', /^\/work-orders\/\d+\/on-the-way$/, 'أمر العمل: الفني في الطريق (إشعار للعميل)'],
+    ['POST', /^\/quotes\/\d+\/whatsapp$/, 'إرسال عرض السعر للعميل على واتساب'],
     ['POST', /^\/invoices\/\d+\/whatsapp$/, 'إرسال واتساب للعميل (فاتورة / دفعة / تذكير)'],
     ['DELETE', /^\/invoices\/\d+\/payments\/\d+$/, 'حذف دفعة'],
     ['POST', /^\/invoices\/\d+\/cancel$/, 'إلغاء فاتورة'],
