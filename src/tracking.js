@@ -19,6 +19,29 @@ const KEY_RE = /^[0-9a-f]{32}$/;
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const dayName = (d) => { const t = Date.parse(d + 'T00:00:00Z'); return Number.isNaN(t) ? '' : DAYS[new Date(t).getUTCDay()]; };
 
+const STYLE = `:root{--p:#1a5276;--ok:#1e8449;--now:#d35400;--mut:#6b7785;--bd:#e3e8ee;--bg:#f4f6f9}
+*{box-sizing:border-box}body{margin:0;font-family:Tahoma,"Segoe UI",Arial,sans-serif;background:var(--bg);color:#1c2733;line-height:1.6}
+header{background:var(--p);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px}header img{height:34px;background:#fff;border-radius:8px;padding:3px}
+header b{font-size:1.05rem}main{max-width:640px;margin:0 auto;padding:14px 16px 40px}
+.card{background:#fff;border:1px solid var(--bd);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+h1{font-size:1.15rem;margin:0 0 4px}.status{display:inline-block;background:#eef6f1;color:var(--ok);border-radius:999px;padding:3px 12px;font-weight:700;font-size:.9rem}
+.status.off{background:#fdecea;color:#a93226}.mut{color:var(--mut);font-size:.88rem;margin:6px 0 0}
+ol.steps{list-style:none;margin:0;padding:0}ol.steps li{position:relative;padding:0 30px 16px 0}
+ol.steps li:before{content:"";position:absolute;right:7px;top:6px;width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid var(--bd)}
+ol.steps li:after{content:"";position:absolute;right:13px;top:22px;bottom:-2px;width:2px;background:var(--bd)}ol.steps li:last-child:after{display:none}
+ol.steps li.done:before{background:var(--ok);border-color:var(--ok)}ol.steps li.done:after{background:var(--ok)}
+ol.steps li.now:before{background:var(--now);border-color:var(--now);box-shadow:0 0 0 4px #fbe3d2}ol.steps li.now b{color:var(--now)}
+ol.steps li.later b{color:var(--mut)}ol.steps li.due:before{background:#f5b041;border-color:#f5b041}ol.steps li.due b{color:#9a6700}ol.steps small{display:block;color:var(--mut);font-size:.85rem}
+table{width:100%;border-collapse:collapse;font-size:.92rem}td,th{padding:7px 4px;border-bottom:1px solid var(--bd);text-align:right;vertical-align:top}
+th{color:var(--mut);font-weight:400;font-size:.82rem}td.n,th.n{text-align:left;white-space:nowrap}td small{display:block;color:var(--mut);font-size:.8rem}
+.tot div{display:flex;justify-content:space-between;padding:4px 0}.tot .big{font-size:1.1rem;font-weight:700;border-top:1px solid var(--bd);margin-top:4px;padding-top:8px}
+.tot .bal{color:#a93226;font-weight:700}.tot .paid{color:var(--ok)}.dep{background:#fff8ec;border-radius:10px;padding:8px 10px;margin:8px 0 0;font-size:.9rem}
+ul.pays{list-style:none;margin:0;padding:0}ul.pays li{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--bd);font-size:.9rem}
+.btns{display:grid;gap:8px}.btn{display:block;text-align:center;text-decoration:none;border-radius:12px;padding:12px;font-weight:700;background:var(--p);color:#fff}
+.btn.wa{background:#1e8449}.btn.out{background:#fff;color:var(--p);border:1px solid var(--p)}
+footer{text-align:center;color:var(--mut);font-size:.8rem;margin-top:16px}
+`;
+
 const path = (inv) => `/t/${inv.access_key}`;
 
 /* The invoice of a tracking key (null: not found / malformed) */
@@ -86,29 +109,7 @@ function page(db, inv, settings) {
     return `<!doctype html>
 <html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow"><link rel="icon" href="/icons/icon-192.png"><title>تتبع طلبك — ${esc(inv.number)}</title>
-<style>
-:root{--p:#1a5276;--ok:#1e8449;--now:#d35400;--mut:#6b7785;--bd:#e3e8ee;--bg:#f4f6f9}
-*{box-sizing:border-box}body{margin:0;font-family:Tahoma,"Segoe UI",Arial,sans-serif;background:var(--bg);color:#1c2733;line-height:1.6}
-header{background:var(--p);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px}header img{height:34px;background:#fff;border-radius:8px;padding:3px}
-header b{font-size:1.05rem}main{max-width:640px;margin:0 auto;padding:14px 16px 40px}
-.card{background:#fff;border:1px solid var(--bd);border-radius:14px;padding:14px 16px;margin-bottom:12px}
-h1{font-size:1.15rem;margin:0 0 4px}.status{display:inline-block;background:#eef6f1;color:var(--ok);border-radius:999px;padding:3px 12px;font-weight:700;font-size:.9rem}
-.status.off{background:#fdecea;color:#a93226}.mut{color:var(--mut);font-size:.88rem;margin:6px 0 0}
-ol.steps{list-style:none;margin:0;padding:0}ol.steps li{position:relative;padding:0 30px 16px 0}
-ol.steps li:before{content:"";position:absolute;right:7px;top:6px;width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid var(--bd)}
-ol.steps li:after{content:"";position:absolute;right:13px;top:22px;bottom:-2px;width:2px;background:var(--bd)}ol.steps li:last-child:after{display:none}
-ol.steps li.done:before{background:var(--ok);border-color:var(--ok)}ol.steps li.done:after{background:var(--ok)}
-ol.steps li.now:before{background:var(--now);border-color:var(--now);box-shadow:0 0 0 4px #fbe3d2}ol.steps li.now b{color:var(--now)}
-ol.steps li.later b{color:var(--mut)}ol.steps li.due:before{background:#f5b041;border-color:#f5b041}ol.steps li.due b{color:#9a6700}ol.steps small{display:block;color:var(--mut);font-size:.85rem}
-table{width:100%;border-collapse:collapse;font-size:.92rem}td,th{padding:7px 4px;border-bottom:1px solid var(--bd);text-align:right;vertical-align:top}
-th{color:var(--mut);font-weight:400;font-size:.82rem}td.n,th.n{text-align:left;white-space:nowrap}td small{display:block;color:var(--mut);font-size:.8rem}
-.tot div{display:flex;justify-content:space-between;padding:4px 0}.tot .big{font-size:1.1rem;font-weight:700;border-top:1px solid var(--bd);margin-top:4px;padding-top:8px}
-.tot .bal{color:#a93226;font-weight:700}.tot .paid{color:var(--ok)}.dep{background:#fff8ec;border-radius:10px;padding:8px 10px;margin:8px 0 0;font-size:.9rem}
-ul.pays{list-style:none;margin:0;padding:0}ul.pays li{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--bd);font-size:.9rem}
-.btns{display:grid;gap:8px}.btn{display:block;text-align:center;text-decoration:none;border-radius:12px;padding:12px;font-weight:700;background:var(--p);color:#fff}
-.btn.wa{background:#1e8449}.btn.out{background:#fff;color:var(--p);border:1px solid var(--p)}
-footer{text-align:center;color:var(--mut);font-size:.8rem;margin-top:16px}
-</style></head><body>
+<style>${STYLE}</style></head><body>
 <header><img src="/images/logo.png" alt=""><b>${esc(company)}</b></header>
 <main>
 <section class="card"><h1>مرحباً ${esc(first)} 👋</h1>
@@ -133,6 +134,45 @@ ${phone ? `<a class="btn out" href="tel:+${esc(phone.length === 8 ? '968' + phon
 </main></body></html>`;
 }
 
+/* A work order with no invoice (a maintenance visit…) has a key of its own (order-notify.js) */
+function findOrder(db, key) {
+    const k = String(key || '').toLowerCase();
+    if (!KEY_RE.test(k)) return null;
+    require('./order-notify').ensureTables(db);
+    const row = db.prepare("SELECT id FROM work_orders WHERE access_key = ? AND status != 'cancelled'").get(k);
+    return row ? workorders.get(db, row.id) : null;
+}
+
+/* The page of an order alone: the appointment, the technician, how far it is */
+function orderPage(order, settings) {
+    const company = settings.company_name || 'رادما';
+    const phone = String(settings.company_phone || '').replace(/\D/g, '');
+    const intl = phone.length === 8 ? '968' + phone : phone;
+    const first = String(order.customer_name || '').trim().split(/\s+/)[0] || 'عميلنا العزيز';
+    const done = order.status === 'done';
+    const working = order.status === 'in_progress';
+    const steps = [
+        { title: `طلب ${workorders.KINDS[order.kind] || 'عمل'}`, note: order.number, state: 'done' },
+        { title: 'الموعد', note: order.scheduled_date ? `${dayName(order.scheduled_date)} ${order.scheduled_date}${order.scheduled_time ? ` — ${order.scheduled_time}` : ''}${order.technician_name ? ` — الفني ${order.technician_name}` : ''}` : 'سنتواصل معكم لتحديد الموعد', state: done || working ? 'done' : 'now' },
+        { title: 'جاري التنفيذ', note: working ? 'الفني يعمل على طلبكم الآن' : '', state: done ? 'done' : working ? 'now' : 'later' },
+        { title: 'اكتمل العمل', note: '', state: done ? 'done' : 'later' }
+    ];
+    return `<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow"><link rel="icon" href="/icons/icon-192.png"><title>تتبع طلبك — ${esc(order.number)}</title>
+<style>${STYLE}</style></head><body>
+<header><img src="/images/logo.png" alt=""><b>${esc(company)}</b></header>
+<main>
+<section class="card"><h1>مرحباً ${esc(first)} 👋</h1><span class="status">${esc(done ? 'اكتمل العمل ✅' : working ? 'جاري التنفيذ 🔧' : order.scheduled_date ? 'تم تحديد الموعد 📅' : 'بانتظار تحديد الموعد')}</span>
+<p class="mut">طلب ${esc(order.number)}</p></section>
+<section class="card"><ol class="steps">${steps.map((s) => `<li class="${s.state}"><b>${esc(s.title)}</b>${s.note ? `<small>${esc(s.note)}</small>` : ''}</li>`).join('')}</ol></section>
+<section class="card btns">
+${intl ? `<a class="btn wa" href="https://wa.me/${esc(intl)}">💬 تواصل معنا على واتساب</a><a class="btn out" href="tel:+${esc(intl)}">📞 اتصال</a>` : ''}
+</section>
+<footer>هذا الرابط خاص بكم — يُحدَّث تلقائياً مع كل خطوة.<br>${esc(company)}</footer>
+</main></body></html>`;
+}
+
 /* Express handler: GET /t/:key */
 function route(db, getSettings) {
     return (req, res) => {
@@ -141,9 +181,13 @@ function route(db, getSettings) {
             'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         });
         const inv = find(db, req.params.key);
+        if (!inv) {
+            const order = findOrder(db, req.params.key);
+            if (order) return res.type('html').send(orderPage(order, getSettings(db)));
+        }
         if (!inv) return res.status(404).type('html').send('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>غير موجود</title><p style="font-family:Tahoma;padding:24px">الرابط غير صحيح أو انتهى.</p></html>');
         res.type('html').send(page(db, inv, getSettings(db)));
     };
 }
 
-module.exports = { path, find, view, page, route };
+module.exports = { path, find, findOrder, view, page, orderPage, route };

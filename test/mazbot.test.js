@@ -124,8 +124,11 @@ test('an expired token logs in again once; admin test message and status', async
     t.after(() => { fake.server.close(); app.server.close(); });
 
     const status = await (await fetch(app.base + '/api/admin/mazbot/status', { headers: { Authorization: 'Bearer test-token' } })).json();
-    assert.deepStrictEqual(status, { configured: true, overhead_configured: true, motors_configured: false, dry_run: false, recipients: ['96876979066', '96890660001'],
+    const { work_orders: wo, templates_webhook_path: hook, ...main } = status;
+    assert.deepStrictEqual(main, { configured: true, overhead_configured: true, motors_configured: false, dry_run: false, recipients: ['96876979066', '96890660001'],
         customer: { login: true, separate_account: false, invoice: false, payment: false, balance: false } });
+    assert.deepStrictEqual(wo, { enabled: true, login: true, scheduled: false, on_the_way: false, started: false, done: false });
+    assert.strictEqual(hook, null);
 
     const r = await (await app.post('/api/admin/mazbot/test', {}, 'test-token')).json();
     assert.strictEqual(r.sent, 2);

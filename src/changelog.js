@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.47.0', date: '2026-11-19',
+        ar: ['إشعارات أوامر العمل للعميل على واتساب مع رابط «تتبع طلبي»: موعد التركيب، الفني في الطريق، بدء العمل، اكتمال العمل والمتبقي', 'زر «في الطريق» للفني في بطاقة أمر العمل', 'العميل يوقف الإشعارات 48 ساعة بزر في الرسالة، ويكتب «تتبع» ليصله رابط طلباته', 'أمر العمل بلا فاتورة له صفحة تتبع خاصة به'],
+        en: ['Work order notices to the customer on WhatsApp with the «Track my order» link: the appointment, technician on the way, work started, work done and the balance', 'An «On the way» button for the technician on the work order card', 'The customer mutes notices for 48 hours with a button in the message, and writes «تتبع» to get their order links', 'A work order without an invoice has its own tracking page']
+    },
+    {
         version: '3.46.0', date: '2026-11-19',
         ar: ['«تتبع طلبي»: صفحة خاصة لكل عميل تعرض مراحل طلبه (عرض السعر، الفاتورة، الدفع، موعد التركيب والفني، التنفيذ، الاكتمال) والمبالغ والمتبقي والفاتورة PDF — بلا تسجيل دخول', 'رسائل واتساب للعميل ترسل رابط صفحة التتبع، وفي الفاتورة زر «صفحة التتبع» و«نسخ رابط التتبع»'],
         en: ['«Track my order»: a private page for each customer showing the steps of their order (quote, invoice, payment, installation appointment and technician, work, done), the amounts, the balance and the invoice PDF — no sign-in', 'WhatsApp messages to the customer send the tracking page link; the invoice has «Tracking page» and «Copy the tracking link»']
