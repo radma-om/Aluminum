@@ -34,6 +34,7 @@ const invoices = require('./invoices');
 const customerNotify = require('./customer-notify');
 const tracking = require('./tracking');
 const orderNotify = require('./order-notify');
+const quotePage = require('./quote-page');
 const workorders = require('./workorders');
 const servicerequests = require('./servicerequests');
 const costs = require('./costs');
@@ -453,6 +454,7 @@ function createApp(db, { agentClient } = {}) {
     pruneOldLogs(db);
     wallets.ensureTables(db);
     orderNotify.ensureTables(db);
+    quotePage.ensureColumns(db);
     try { workorders.cancelOrphans(db); } catch (err) { console.error('[work-orders] orphans', err.message); }
     // Statistics: quotes / customers of cancelled invoices no longer counted as sold; no frozen unfinished month
     try { invoices.repairCancelled(db); require('./bonuses').dropUnfinished(db); } catch (err) { console.error('[stats] repair', err.message); }
@@ -767,6 +769,8 @@ function createApp(db, { agentClient } = {}) {
     });
     /* «تتبع طلبي»: the customer's page of an invoice — the steps, the amounts, the appointment (src/tracking.js) */
     app.get('/t/:key', tracking.route(db, getSettings));
+    /* «عرض السعر»: the customer reviews the quote and accepts it (src/quote-page.js) */
+    quotePage.routes(app, db, getSettings, express);
     const sendInvoicePdf = (res, inv) => {
         const quoteRef = inv.quote_id ? (db.prepare('SELECT ref FROM quotes WHERE id = ?').get(inv.quote_id) || {}).ref : null;
         res.setHeader('Content-Type', 'application/pdf');
@@ -1175,7 +1179,7 @@ function createApp(db, { agentClient } = {}) {
             const { access_key, ...q } = parseQuote(r);
             const inv = invoices.activeForQuote(db, q.id);
             return {
-                ...q,
+                ...q, customer_url: access_key ? quotePage.path(r) : null,
                 expired: Boolean(q.valid_until && q.valid_until < today && ['new', 'contacted'].includes(q.status)),
                 invoice: inv ? { id: inv.id, number: inv.number } : null
             };
@@ -1961,10 +1965,11 @@ function createApp(db, { agentClient } = {}) {
 
     /* One quote, to show it on screen (the same data the PDF is drawn from) */
     admin.get('/quotes/:id', (req, res) => {
-        const { access_key, ...q } = parseQuote(quoteFor(req, req.params.id));
+        const row = quoteFor(req, req.params.id);
+        const { access_key, ...q } = parseQuote(row);
         const inv = invoices.activeForQuote(db, q.id);
         res.json({
-            ...q,
+            ...q, customer_url: access_key ? quotePage.path(row) : null,
             expired: Boolean(q.valid_until && q.valid_until < leads.localToday() && ['new', 'contacted'].includes(q.status)),
             invoice: inv ? { id: inv.id, number: inv.number } : null
         });

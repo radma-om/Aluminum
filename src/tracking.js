@@ -190,4 +190,4 @@ function route(db, getSettings) {
     };
 }
 
-module.exports = { path, find, findOrder, view, page, orderPage, route };
+module.exports = { path, find, findOrder, view, page, orderPage, route, STYLE };

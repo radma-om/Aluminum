@@ -499,6 +499,18 @@ let quotesTimer = null;
 function debouncedQuotes() { clearTimeout(quotesTimer); quotesTimer = setTimeout(() => loadQuotes().catch(() => {}), 250); }
 
 /* The quote on screen, as the PDF shows it: customer, items, discounts and totals — nothing to download */
+/* The customer's page of the quote (review and «أوافق على العرض»): open it, copy it, or send it from my WhatsApp */
+function quoteShareRow(q) {
+    const link = location.origin + q.customer_url;
+    const phone = String(q.customer_phone || '').replace(/\D/g, '');
+    const text = `مرحباً ${String(q.customer_name || '').trim().split(/\s+/)[0] || ''}، عرض السعر رقم ${q.ref} جاهز.\nراجعوا البنود والمبلغ ووافقوا عليه من هنا:\n${link}`;
+    return `<div class="form-buttons" style="margin-top:4px">
+        <a class="btn btn-outline btn-sm" href="${esc(link)}" target="_blank" rel="noopener"><i class="fas fa-eye"></i> صفحة العرض للعميل</a>
+        <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText('${esc(link)}').then(() => tell('نُسخ الرابط ✓ — يراجع به العميل العرض ويوافق عليه'))">نسخ رابط العرض</button>
+        ${phone ? `<a class="btn btn-outline btn-sm" href="https://wa.me/${esc(phone)}?text=${encodeURIComponent(text)}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> إرسال الرابط من جوالي</a>` : ''}
+    </div>`;
+}
+
 async function viewQuote(id) {
     let q;
     try { q = await api('GET', `/api/admin/quotes/${id}`); } catch (err) { return alert(err.message); }
@@ -561,6 +573,8 @@ async function viewQuote(id) {
         ${d.extra_fees_note ? `<p class="status-text">${esc(d.extra_fees_note)}</p>` : ''}
         ${q.notes ? `<div class="wo-desc no-i18n">${esc(q.notes)}</div>` : ''}
         ${d.free_lines && ME && ME.role === 'manager' ? `<p class="status-text" style="color:#8a5a00">⚠️ في هذا العرض ${esc(d.free_lines)} بند حر بسعر كتبه الموظف يدوياً — راجع سعره، فحد الخصم لا يراه.</p>` : ''}
+        ${q.accepted_via === 'customer_page' ? `<p class="status-text" style="color:#1e8449;font-weight:700">✅ وافق العميل على العرض من صفحة العرض${q.accepted_at ? ` — ${esc(String(q.accepted_at).slice(0, 16))}` : ''}</p>` : ''}
+        ${q.customer_url ? quoteShareRow(q) : ''}
         <div class="form-buttons">
             <button class="btn btn-outline" onclick="openQuotePdf(${q.id})"><i class="fas fa-file-pdf"></i> تحميل PDF</button>
             ${canEdit ? `<button class="btn btn-outline" onclick="viewQuoteEdit(${q.id})"><i class="fas fa-pen"></i> تعديل البنود</button>` : ''}
