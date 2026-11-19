@@ -15,8 +15,9 @@ const crypto = require('node:crypto');
 const cleanValue = (v) => String(v ?? '—').replace(/[\r\n\t]+/g, ' / ').replace(/ {4,}/g, '   ').trim().slice(0, 1000) || '—';
 
 /* One MazBot account: its own key, staff sign-in and token. prefix: 'MAZBOT_' (the main account — the
-   calculators, incoming messages, replies) or 'MAZBOT_CUSTOMER_' (an account of its own for the approved
-   templates to customers: invoice, payment, reminder). */
+   incoming messages, replies — and the templates when no templates account is set) or 'MAZBOT_TEMPLATES_'
+   (an account of its own for every approved template: the calculators' to the sales numbers and the
+   customers' — invoice, payment, reminder). */
 function makeClient(prefix) {
     const env = () => ({
         apiKey: process.env[prefix + 'API_KEY'] || '',
@@ -154,9 +155,11 @@ function makeClient(prefix) {
 }
 
 const main = makeClient('MAZBOT_');
-const customerOwn = makeClient('MAZBOT_CUSTOMER_');
-/* The account for the templates to customers: its own when MAZBOT_CUSTOMER_API_KEY is set, else the main one */
-const customerAccount = () => (process.env.MAZBOT_CUSTOMER_API_KEY ? { client: customerOwn, separate: true } : { client: main, separate: false });
+const templatesOwn = makeClient('MAZBOT_TEMPLATES_');
+/* The account that sends the approved templates: its own when MAZBOT_TEMPLATES_API_KEY is set (e.g. the main
+   account cannot send templates — its Meta billing), else the main one. The main account keeps the incoming
+   messages and the plain replies (within 24 hours, no template). */
+const templatesAccount = () => (process.env.MAZBOT_TEMPLATES_API_KEY ? { client: templatesOwn, separate: true } : { client: main, separate: false });
 
 const env = () => ({
     ...main.env(),
@@ -169,8 +172,8 @@ const hasLogin = main.hasLogin;
 /* Template of each calculator ('' = not set) */
 const templateFor = (calculator) => ({ overhead: env().overheadTemplateId, motors: env().motorsTemplateId }[calculator] ?? env().templateId);
 
-const isConfigured = (calculator = 'rolling_shutter') => hasLogin() && Boolean(templateFor(calculator));
-const { sendTemplate, sendText, resolveContact, sendTextToPhone, checkLogin } = main;
+const isConfigured = (calculator = 'rolling_shutter') => templatesAccount().client.hasLogin() && Boolean(templateFor(calculator));
+const { sendText, resolveContact, sendTextToPhone, checkLogin } = main;
 
 /* ------------------------- Incoming webhook signature ------------------------- */
 
@@ -204,9 +207,10 @@ function parseRecipients(text) {
 /* Each recipient is sent independently; returns a short status for the quote ("2/2 ✓") */
 async function sendToAll(recipients, values, calculator = 'rolling_shutter') {
     const templateId = templateFor(calculator);
+    const { client } = templatesAccount();
     const results = [];
     for (const mobile of recipients) {
-        const r = await sendTemplate(mobile, values, templateId);
+        const r = await client.sendTemplate(mobile, values, templateId);
         results.push({ mobile, ...r });
         if (!r.ok) console.error('[mazbot]', mobile, r.error);
     }
@@ -215,6 +219,6 @@ async function sendToAll(recipients, values, calculator = 'rolling_shutter') {
 }
 
 /* One approved template to one mobile (the customer messages: invoice, payment, reminder) */
-const sendTemplateTo = (mobile, values, templateId) => sendTemplate(mobile, values, templateId);
+const sendTemplateTo = (mobile, values, templateId) => templatesAccount().client.sendTemplate(mobile, values, templateId);
 
-module.exports = { isConfigured, hasLogin, checkLogin, resolveContact, templateFor, sendToAll, sendTemplateTo, customerAccount, sendText, sendTextToPhone, verifySignature, parseRecipients, cleanValue, _reset: () => { main.reset(); customerOwn.reset(); } };
+module.exports = { isConfigured, hasLogin, checkLogin, resolveContact, templateFor, sendToAll, sendTemplateTo, templatesAccount, sendText, sendTextToPhone, verifySignature, parseRecipients, cleanValue, _reset: () => { main.reset(); templatesOwn.reset(); } };

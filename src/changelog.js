@@ -7,8 +7,8 @@
 module.exports = [
     {
         version: '3.45.1', date: '2026-11-19',
-        ar: ['حساب MazBot مستقل لقوالب العملاء: الفاتورة والدفعة والتذكير تُرسل من رقم القوالب المعتمدة، ويبقى الحساب الأساسي للحاسبات والرسائل الواردة والردود', 'حالة الحسابين في تبويب «الربط»'],
-        en: ['A MazBot account of its own for customer templates: the invoice, payment and reminder go from the approved templates number, and the main account stays for the calculators, incoming messages and replies', 'Both accounts\' status in the «Integrations» tab']
+        ar: ['حساب MazBot مستقل للقوالب المعتمدة: قوالب الحاسبات لأرقام المبيعات وقوالب العملاء (الفاتورة والدفعة والتذكير) تُرسل منه، ويبقى الحساب الأساسي للرسائل الواردة والمساعد والردود', 'حالة الحسابين في تبويب «الربط»'],
+        en: ['A MazBot account of its own for approved templates: the calculators\' templates to the sales numbers and the customer templates (invoice, payment, reminder) go from it, and the main account stays for incoming messages, the assistant and replies', 'Both accounts\' status in the «Integrations» tab']
     },
     {
         version: '3.45.0', date: '2026-11-17',

@@ -975,6 +975,7 @@ function createApp(db, { agentClient } = {}) {
         const missing = [];
         if (!agent.isConfigured()) missing.push('مفتاح الذكاء الاصطناعي (OPENAI_API_KEY)');
         if (!mazbot.hasLogin()) missing.push('بيانات MazBot (MAZBOT_API_KEY / MAZBOT_STAFF_EMAIL / MAZBOT_STAFF_PASSWORD)');
+        else if (mazbot.templatesAccount().separate && !mazbot.templatesAccount().client.hasLogin()) missing.push('بيانات حساب القوالب (MAZBOT_TEMPLATES_STAFF_EMAIL / MAZBOT_TEMPLATES_STAFF_PASSWORD)');
         else if (!mazbot.isConfigured()) missing.push('رقم قالب الرولينج شتر (MAZBOT_TEMPLATE_ID)');
         if ((process.env.MAZBOT_WEBHOOK_SECRET || '').length < 16) missing.push('سر رابط Webhook (MAZBOT_WEBHOOK_SECRET)');
         if (missing.length) {
@@ -2461,12 +2462,12 @@ function createApp(db, { agentClient } = {}) {
         // The account of the approved templates to customers (invoice, payment, reminder)
         customer: customerNotify.status()
     }));
-    /* Sign in to each account now: the main one (calculators, messages) and the customer templates' one */
+    /* Sign in to each account now: the main one (incoming messages, replies) and the templates' one */
     admin.get('/mazbot/check-accounts', asyncRoute(async (req, res) => {
-        const acct = mazbot.customerAccount();
+        const acct = mazbot.templatesAccount();
         res.json({
             main: await mazbot.checkLogin(),
-            customer: acct.separate ? await acct.client.checkLogin() : { ok: null, same_as_main: true }
+            templates: acct.separate ? await acct.client.checkLogin() : { ok: null, same_as_main: true }
         });
     }));
 

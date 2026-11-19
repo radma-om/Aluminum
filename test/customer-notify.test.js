@@ -109,8 +109,8 @@ test('a technician sends their order\'s invoice only; staff without the invoices
 
 test('two MazBot accounts: the templates to customers through their own account, the plain message through the main one', async (t) => {
     const { db, call } = await start(t);
-    Object.assign(process.env, { MAZBOT_CUSTOMER_API_KEY: 'k', MAZBOT_CUSTOMER_STAFF_EMAIL: 'c@x', MAZBOT_CUSTOMER_STAFF_PASSWORD: 'p', MAZBOT_INVOICE_TEMPLATE_ID: '201' });
-    t.after(() => { for (const k of ['MAZBOT_CUSTOMER_API_KEY', 'MAZBOT_CUSTOMER_STAFF_EMAIL', 'MAZBOT_CUSTOMER_STAFF_PASSWORD', 'MAZBOT_INVOICE_TEMPLATE_ID']) delete process.env[k]; });
+    Object.assign(process.env, { MAZBOT_TEMPLATES_API_KEY: 'k', MAZBOT_TEMPLATES_STAFF_EMAIL: 'c@x', MAZBOT_TEMPLATES_STAFF_PASSWORD: 'p', MAZBOT_INVOICE_TEMPLATE_ID: '201' });
+    t.after(() => { for (const k of ['MAZBOT_TEMPLATES_API_KEY', 'MAZBOT_TEMPLATES_STAFF_EMAIL', 'MAZBOT_TEMPLATES_STAFF_PASSWORD', 'MAZBOT_INVOICE_TEMPLATE_ID']) delete process.env[k]; });
     const inv = invoiceFor(db);
     const got = (await call('GET', `/api/admin/invoices/${inv.id}`)).body;
     assert.equal(got.wa.separate_account, true);
@@ -118,8 +118,8 @@ test('two MazBot accounts: the templates to customers through their own account,
 
     let r = await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'invoice' });
     assert.equal(r.body.ok, true);
-    assert.equal(sent.at(-1).account, 'customer', 'the template goes through the customer templates\' account');
-    assert.equal(r.body.messages[0].via, 'template:customer');
+    assert.equal(sent.at(-1).account, 'templates', 'the template goes through the templates account');
+    assert.equal(r.body.messages[0].via, 'template:templates');
     // No balance template: a plain message, through the main account (the customers chat with its number)
     invoices.addPayment(db, inv.id, { amount: 100, method: 'cash' }, 'المكتب');
     r = await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'balance' });
