@@ -177,11 +177,11 @@ test('«تتبع» finds the quotes not invoiced yet and the customer\'s second 
     const text = replies.at(-1).text;
     const v = db.prepare('SELECT ref, access_key FROM quotes WHERE id = ?').get(valid.id);
     assert.ok(text.includes(`📄 عرض سعر ${v.ref} (363.960 ر.ع) — ساري حتى`), 'the valid quote');
-    assert.ok(text.includes(`${base}/quotes/${encodeURIComponent(v.ref)}.pdf?k=${v.access_key}`), 'with its PDF');
+    assert.ok(text.includes(`${base}/q/${v.access_key}`), 'with its page (review and accept)');
     assert.match(text, /454\.950 ر\.ع\) — انتهت صلاحيته، راسلونا لتحديث السعر/);
     assert.ok(!text.includes(inv.number), 'nothing of another customer');
-    // The quote's own link opens
-    assert.equal((await fetch(`${base}/quotes/${encodeURIComponent(v.ref)}.pdf?k=${v.access_key}`)).status, 200);
+    // The quote's own page opens
+    assert.equal((await fetch(`${base}/q/${v.access_key}`)).status, 200);
 
     // Once invoiced, the quote is no longer listed — its invoice is
     const row = db.prepare('SELECT * FROM quotes WHERE id = ?').get(valid.id);
