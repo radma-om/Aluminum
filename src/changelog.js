@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.52.4', date: '2026-11-21',
+        ar: ['رمز التحقق في الحاسبات: يُرسل الرمز أيضاً لزر «نسخ الرمز» في قالب المصادقة كما تشترط Meta — كان الإرسال يُرفض بخطأ (#131008)'],
+        en: ['The calculators\' verification code: the code is also sent to the Authentication template\'s «Copy code» button, as Meta requires — sends were refused with (#131008)']
+    },
+    {
         version: '3.52.3', date: '2026-11-21',
         ar: ['«الربط» ← رمز التحقق في الحاسبات: عدد الرموز المرسلة والمؤكدة والفاشلة في آخر 24 ساعة، وسبب آخر فشل في الإرسال كما ذكره MazBot'],
         en: ['«Integrations» → the calculators\' verification code: codes sent, confirmed and failed in the last 24 hours, and MazBot\'s reason for the latest failed send']
