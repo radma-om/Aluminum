@@ -108,3 +108,59 @@ test('refused without a last day, without the template; staff accounts cannot us
     assert.equal(await asStaff('GET', '/api/admin/promo-reminders'), 403);
     assert.equal(await asStaff('POST', '/api/admin/promo-reminders/send'), 403);
 });
+
+test('one row: sent to that customer only; refused when already reminded, invoiced, of another offer, older, or by an employee', async (t) => {
+    const { db, call, quote, base } = await start(t);
+    const a = quote('91111111', promo);
+    const b = quote('92222222', promo);
+    const older = quote('94444444', promo);
+    const newer = quote('94444444', promo);
+    const other = quote('95555555', { promo_label: 'عرض الصيف', discount_total: 30 });
+    const inv = quote('96666666', promo);
+    invoices.createFromQuote(db, { ...inv, items: JSON.parse(inv.items_json), details: JSON.parse(inv.details_json) }, {}, 'سارة');
+
+    // The row of «a»: only «a» gets it, with the same values as the button for everyone
+    let r = await call('POST', `/api/admin/promo-reminders/${a.id}/send`);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.ok, true);
+    assert.deepEqual(sent.map((x) => x.mobile), ['96891111111']);
+    assert.deepEqual(sent[0].values, ['خالد', a.ref, '45.000', 'عرض الشتاء', future(3), `https://calc.example.com/q/${a.access_key}`]);
+    assert.equal(db.prepare('SELECT valid_until FROM quotes WHERE id = ?').get(a.id).valid_until, future(3));
+    assert.ok(r.body.list.sent.some((x) => x.quote_id === a.id));
+    assert.ok(r.body.list.candidates.some((x) => x.quote_id === b.id), '«b» still to get it');
+
+    // Already reminded for this offer: refused, nothing sent
+    sent.length = 0;
+    r = await call('POST', `/api/admin/promo-reminders/${a.id}/send`);
+    assert.equal(r.status, 409);
+    assert.match(r.body.error, /مرة واحدة لكل رقم/);
+    // Invoiced / another offer / an older quote of a listed number / unknown
+    assert.match((await call('POST', `/api/admin/promo-reminders/${inv.id}/send`)).body.error, /صدرت له فاتورة/);
+    assert.match((await call('POST', `/api/admin/promo-reminders/${other.id}/send`)).body.error, /ليس ضمن العرض الحالي/);
+    r = await call('POST', `/api/admin/promo-reminders/${older.id}/send`);
+    assert.match(r.body.error, new RegExp(`عرض أحدث في القائمة \\(${newer.ref}\\)`));
+    assert.equal((await call('POST', '/api/admin/promo-reminders/999999/send')).status, 404);
+    assert.equal(sent.length, 0, 'nothing sent by the refused ones');
+
+    // The button for everyone still works as before (the rest of the list)
+    r = await call('POST', '/api/admin/promo-reminders/send');
+    assert.deepEqual(sent.map((x) => x.mobile).sort(), ['96892222222', '96894444444']);
+
+    // An employee: 403; the audit log records who sent which row
+    require('../src/staff').create(db, { username: 'sara', display_name: 'سارة', password: 'pass-12345', role: 'staff', permissions: ['quotes', 'leads'] });
+    const login = await call('POST', '/api/auth/login', { username: 'sara', password: 'pass-12345' });
+    const res = await fetch(`${base}/api/admin/promo-reminders/${b.id}/send`, { method: 'POST', headers: { Authorization: 'Bearer ' + login.body.token } });
+    assert.equal(res.status, 403);
+    const audit = db.prepare("SELECT actor, path FROM audit_log WHERE path LIKE '/promo-reminders/%/send' ORDER BY id").all();
+    assert.ok(audit.some((x) => x.path === `/promo-reminders/${a.id}/send`), JSON.stringify(audit));
+});
+
+test('one row: refused without the template, nothing sent', async (t) => {
+    const { call, quote } = await start(t);
+    const a = quote('91111111', promo);
+    delete process.env.MAZBOT_PROMO_REMINDER_TEMPLATE_ID;
+    const r = await call('POST', `/api/admin/promo-reminders/${a.id}/send`);
+    assert.equal(r.status, 400);
+    assert.match(r.body.error, /MAZBOT_PROMO_REMINDER_TEMPLATE_ID/);
+    assert.equal(sent.length, 0);
+});

@@ -689,13 +689,35 @@ async function loadPromoReminders() {
         : !r.template ? 'قالب التذكير غير مضبوط (MAZBOT_PROMO_REMINDER_TEMPLATE_ID) — أضفه بعد اعتماده من Meta.'
             : !r.login ? 'حساب القوالب في MazBot غير مضبوط.' : '';
     setStatus('promoReminderStatus', why || `${offer} — سيصل التذكير لـ ${r.candidates.length} عميل${r.sent.length ? `، ووصل سابقاً لـ ${r.sent.length}` : ''}.`, why ? 'err' : '');
-    const row = (c, state) => `<tr><td data-label="العميل">${esc(c.customer_name || '')}<br><small dir="ltr">${esc(c.phone)}</small></td>
-        <td data-label="عرض السعر">${esc(c.ref)}</td><td data-label="التوفير">${money2(c.saving)} ر.ع</td><td data-label="ينتهي">${esc(c.until)}</td><td data-label="الحالة">${state}</td></tr>`;
-    box.innerHTML = [...r.candidates.map((c) => row(c, c.last_error ? `<span class="badge">لم يصل: ${esc(c.last_error.slice(0, 80))}</span>` : 'سيصله')),
-        ...r.sent.map((c) => row(c, `<span class="badge on">✓ وصله ${esc(String(c.sent_at).slice(0, 16))}</span>`))].join('')
-        || '<tr><td colspan="5" class="status-text">لا يوجد عملاء لهذا العرض بعد.</td></tr>';
+    // A row still to get it has its own «إرسال» (only when sending is possible at all)
+    const row = (c, state, canSend) => `<tr id="promoRow${c.quote_id}"><td data-label="العميل">${esc(c.customer_name || '')}<br><small dir="ltr">${esc(c.phone)}</small></td>
+        <td data-label="عرض السعر">${esc(c.ref)}</td><td data-label="التوفير">${money2(c.saving)} ر.ع</td><td data-label="ينتهي">${esc(c.until)}</td>
+        <td data-label="الحالة" class="promo-state">${state}</td>
+        <td>${canSend ? `<button class="btn btn-outline btn-sm" onclick="sendPromoReminderOne(${Number(c.quote_id)}, this)"><i class="fas fa-paper-plane"></i> إرسال</button>` : ''}</td></tr>`;
+    box.innerHTML = [...r.candidates.map((c) => row(c, c.last_error ? `<span class="badge">لم يصل: ${esc(c.last_error.slice(0, 80))}</span>` : 'سيصله', !why)),
+        ...r.sent.map((c) => row(c, `<span class="badge on">✓ وصله ${esc(String(c.sent_at).slice(0, 16))}</span>`, false))].join('')
+        || '<tr><td colspan="6" class="status-text">لا يوجد عملاء لهذا العرض بعد.</td></tr>';
     $id('promoReminderSend').disabled = Boolean(why) || !r.candidates.length;
 }
+/* One customer: confirm with their name and number, then update only their row */
+async function sendPromoReminderOne(quoteId, btn) {
+    const c = promoReminders && promoReminders.candidates.find((x) => x.quote_id === quoteId);
+    if (!c) return;
+    if (!(await askYes(`إرسال تذكير بانتهاء العرض إلى ${c.customer_name || 'العميل'} (${c.phone})؟`, { okLabel: 'إرسال' }))) return;
+    const tr = $id('promoRow' + quoteId);
+    btn.disabled = true;
+    try {
+        const out = await api('POST', `/api/admin/promo-reminders/${quoteId}/send`);
+        promoReminders = out.list;
+        tr.querySelector('.promo-state').innerHTML = out.ok ? '<span class="badge on">✓ وصله الآن</span>' : `<span class="badge">لم يصل: ${esc(String(out.error || '').slice(0, 80))}</span>`;
+        if (out.ok) btn.remove(); else btn.disabled = false;
+    } catch (err) {
+        tr.querySelector('.promo-state').innerHTML = `<span class="badge">${esc(err.message)}</span>`;
+        btn.disabled = false;
+    }
+    $id('promoReminderSend').disabled = !promoReminders || !promoReminders.candidates.length;
+}
+
 async function sendPromoReminders() {
     const r = promoReminders;
     if (!r || !r.candidates.length) return;

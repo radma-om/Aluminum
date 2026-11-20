@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.53.1', date: '2026-11-21',
+        ar: ['تذكير العملاء بانتهاء العرض: زر «إرسال» لكل عميل في القائمة، مع تأكيد يذكر اسمه ورقمه، وتتحدث حالة صفه فوراً — لتجربة الرسالة أو للإرسال لعملاء مختارين', 'نفس القواعد: مرة واحدة لكل رقم في كل عرض، ولا تذكير لعرض صدرت له فاتورة أو من عرض آخر'],
+        en: ['Offer-ending reminder: a «Send» button on each customer of the list, with a confirmation naming them and their number, and their row updated at once — to try the message or send to chosen customers', 'The same rules: once per number per offer, never for an invoiced quote or another offer']
+    },
+    {
         version: '3.53.0', date: '2026-11-21',
         ar: ['«العروض والهدايا» ← تذكير العملاء بانتهاء العرض: قائمة بمن حصل على عرض سعر بالخصم أو الهدية الحالية ولم يُصدر له فاتورة، وزر «إرسال التذكير» على واتساب', 'الرسالة: كم يوفّر العرض، وآخر يوم، ورابط عرض السعر للموافقة — مرة لكل رقم في كل عرض، وتُمدَّد صلاحية عرض السعر حتى آخر يوم'],
         en: ['«Offers & gifts» → remind customers the offer ends: a list of those with a quote under the current discount or gift and no invoice, and a «Send the reminder» button on WhatsApp', 'The message: how much the offer saves, the last day, and the quote link to accept — once per number per offer; the quote\'s validity is extended to the last day']

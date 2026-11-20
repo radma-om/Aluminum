@@ -2004,6 +2004,12 @@ function createApp(db, { agentClient } = {}) {
         const r = await pr.send(db, { origin: systemOrigin(req, db), by: staffName(req) });
         res.json({ ...r, list: pr.list(db) });
     }));
+    // One customer of the list (the button on their row): the same send, the same rules
+    admin.post('/promo-reminders/:quoteId/send', asyncRoute(async (req, res) => {
+        const pr = require('./promo-reminders');
+        const r = await pr.sendQuote(db, req.params.quoteId, { origin: systemOrigin(req, db), by: staffName(req) });
+        res.json({ ...r, list: pr.list(db) });
+    }));
     admin.post('/quotes/:id/whatsapp', asyncRoute(async (req, res) => {
         const row = quoteFor(req, req.params.id);
         if (!row.access_key) throw httpError(400, 'هذا العرض بلا رابط للعميل');
