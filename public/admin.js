@@ -1739,6 +1739,26 @@ async function testMazbot(calculator) {
     }
 }
 
+/* Sign in to each MazBot account now, and say in plain words what is wrong */
+async function checkMazbotAccounts() {
+    const box = $id('mazbotAccountsStatus');
+    box.textContent = 'جاري الفحص...';
+    const why = (r) => {
+        if (r.ok) return '✅ يعمل';
+        if (r.error === 'missing') return `❌ متغيرات ناقصة: ${(r.missing || []).join('، ')}`;
+        if (/http_401|http_403/.test(r.error)) return `❌ رفض MazBot الدخول — مفتاح API أو بريد/كلمة مرور الموظف غير صحيحة (هل أُعيد توليد المفتاح أو تغيّرت كلمة المرور؟). التفاصيل: ${r.error}`;
+        if (/http_429/.test(r.error)) return '⏳ محاولات دخول كثيرة — انتظر دقيقة ثم أعد الفحص';
+        return `❌ ${r.error}`;
+    };
+    try {
+        const r = await api('GET', '/api/admin/mazbot/check-accounts');
+        box.textContent = `الحساب الرئيسي (الرسائل الواردة والردود): ${why(r.main)}\n`
+            + `حساب القوالب (الحاسبات والفواتير والتقييم): ${r.templates.same_as_main ? 'نفس الحساب الرئيسي' : why(r.templates)}`;
+    } catch (err) {
+        box.textContent = err.message;
+    }
+}
+
 async function sendChat() {
     const input = $id('chatInput');
     const message = input.value.trim();

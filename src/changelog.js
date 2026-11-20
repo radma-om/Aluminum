@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.52.2', date: '2026-11-21',
+        ar: ['«الربط»: زر «فحص الدخول لحسابات MazBot» يوضح لكل حساب (الرئيسي والقوالب) هل يعمل، وما المتغير الناقص أو الخطأ', 'رسالة فشل الدخول تذكر الحساب وسبب رفض MazBot، والمسافات أو علامات التنصيص حول القيم في متغيرات البيئة لا تُفشل الدخول'],
+        en: ['«Integrations»: a «Check the MazBot accounts sign-in» button says for each account (main and templates) whether it works, and which variable is missing or what is wrong', 'A failed sign-in names the account and MazBot\'s reason, and spaces or quotes around values in the environment variables no longer break the sign-in']
+    },
+    {
         version: '3.52.1', date: '2026-11-20',
         ar: ['طلب التقييم: إن فشل إرساله (قالب لم يُعتمد بعد، أو عطل في MazBot) يُعاد بعد 6 ساعات، حتى 3 محاولات خلال الأيام الثلاثة — وكل محاولة مكتوبة في سجل أمر العمل'],
         en: ['Rating request: a failed send (template not approved yet, or MazBot down) is tried again 6 hours later, up to 3 attempts within the 3 days — each attempt is written in the work order log']

@@ -18,11 +18,16 @@ const cleanValue = (v) => String(v ?? '—').replace(/[\r\n\t]+/g, ' / ').replac
    incoming messages, replies — and the templates when no templates account is set) or 'MAZBOT_TEMPLATES_'
    (an account of its own for every approved template: the calculators' to the sales numbers and the
    customers' — invoice, payment, reminder). */
+/* A value pasted in the hosting panel: spaces, a new line or quotes around it are not part of it */
+const cleanEnv = (v) => String(v || '').trim().replace(/^(["'])(.*)\1$/, '$2').trim();
+
 function makeClient(prefix) {
+    // Which account an error is about (the panel and the alerts say it)
+    const label = prefix === 'MAZBOT_TEMPLATES_' ? 'حساب القوالب' : 'الحساب الرئيسي';
     const env = () => ({
-        apiKey: process.env[prefix + 'API_KEY'] || '',
-        email: process.env[prefix + 'STAFF_EMAIL'] || '',
-        password: process.env[prefix + 'STAFF_PASSWORD'] || '',
+        apiKey: cleanEnv(process.env[prefix + 'API_KEY']),
+        email: cleanEnv(process.env[prefix + 'STAFF_EMAIL']),
+        password: cleanEnv(process.env[prefix + 'STAFF_PASSWORD']),
         baseUrl: (process.env[prefix + 'BASE_URL'] || process.env.MAZBOT_BASE_URL || 'https://mazbot.net/api').replace(/\/$/, ''),
         dryRun: process.env.MAZBOT_DRY_RUN === '1'
     });
@@ -66,7 +71,11 @@ function makeClient(prefix) {
         const e = env();
         const res = await post('/login', { email: e.email, password: e.password });
         const token = res.body && res.body.data && res.body.data.token;
-        if (res.status !== 200 || !token) throw new Error(res.error || `login_failed_http_${res.status}`);
+        if (res.status !== 200 || !token) {
+            // MazBot's own words (e.g. «Invalid API key» or «Invalid credentials») say which value is wrong
+            const said = res.body && (res.body.message || res.body.error);
+            throw new Error(res.error || `login_failed_http_${res.status} (${label})${said ? `: ${String(said).slice(0, 120)}` : ''}`);
+        }
         tokenCache = { token, expiresAt: Date.now() + TOKEN_TTL_MS };
         return token;
     }
@@ -145,12 +154,16 @@ function makeClient(prefix) {
 
     /* A fresh login (diagnostics): are MAZBOT_API_KEY and the staff email / password accepted? */
     async function checkLogin() {
-        if (!hasLogin()) return { ok: false, error: 'missing' };
+        if (!hasLogin()) {
+            const e = env();
+            const missing = [['API_KEY', e.apiKey], ['STAFF_EMAIL', e.email], ['STAFF_PASSWORD', e.password]].filter(([, v]) => !v).map(([k]) => prefix + k);
+            return { ok: false, error: 'missing', missing };
+        }
         if (env().dryRun) return { ok: true, dry_run: true };
         try { await getToken(true); return { ok: true }; } catch (err) { return { ok: false, error: err.message }; }
     }
 
-    return { env, hasLogin, getToken, sendTemplate, sendText, resolveContact, sendTextToPhone, checkLogin,
+    return { label, env, hasLogin, getToken, sendTemplate, sendText, resolveContact, sendTextToPhone, checkLogin,
         reset: () => { tokenCache = { token: null, expiresAt: 0 }; } };
 }
 
