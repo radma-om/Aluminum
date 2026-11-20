@@ -43,6 +43,8 @@ const DEFAULT_SETTINGS = {
     // Sales numbers that get the MazBot WhatsApp template for every calculator request
     mazbot_recipients: '76979066, 90660001',
     calculator_verify_phone: false, // the calculators send the customer a code on WhatsApp (MAZBOT_VERIFY_TEMPLATE_ID) before the request
+    wo_rating_requests: true,       // the day after a work order is done the customer is asked to rate it (MAZBOT_RATING_TEMPLATE_ID)
+    google_review_url: '',          // a 4–5 rating is thanked with this link (Google reviews), when set
     wo_customer_notices: true, // the customer hears of their work order on WhatsApp (appointment, on the way, started, done)
     // The AI agent answers customer messages received from MazBot (switch in the admin panel)
     mazbot_agent_enabled: false,
@@ -944,6 +946,9 @@ function saveSettings(db, patch) {
         }
         if (key === 'staff_max_discount_percent' && !(value >= 0 && value <= 100)) {
             throw badValue('حد الخصم يجب أن يكون بين 0 و100%');
+        }
+        if (key === 'google_review_url' && value && !/^https:\/\/[^\s]{6,300}$/.test(String(value).trim())) {
+            throw badValue('رابط تقييم Google يجب أن يبدأ بـ https://');
         }
         if (key === 'quote_validity_days' && !(Number.isInteger(value) && value >= 1 && value <= 365)) {
             throw badValue('صلاحية عرض السعر يجب أن تكون عدد أيام من 1 إلى 365');

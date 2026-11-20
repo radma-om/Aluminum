@@ -146,6 +146,8 @@ function applySettings(s) {
     $id('quoteTerms').value = s.quote_terms || '';
     $id('mazbotRecipients').value = s.mazbot_recipients || '';
     $id('woCustomerNotices').checked = s.wo_customer_notices !== false;
+    $id('woRatingRequests').checked = s.wo_rating_requests !== false;
+    $id('googleReviewUrl').value = s.google_review_url || '';
     $id('calculatorVerifyPhone').checked = Boolean(s.calculator_verify_phone);
     $id('mazbotAgentEnabled').checked = Boolean(s.mazbot_agent_enabled);
     $id('websiteChatEnabled').checked = Boolean(s.website_chat_enabled);
@@ -189,6 +191,8 @@ async function saveSettingsToServer() {
             quote_terms: $id('quoteTerms').value,
             mazbot_recipients: $id('mazbotRecipients').value,
             wo_customer_notices: $id('woCustomerNotices').checked,
+            wo_rating_requests: $id('woRatingRequests').checked,
+            google_review_url: $id('googleReviewUrl').value.trim(),
             calculator_verify_phone: $id('calculatorVerifyPhone').checked,
             mazbot_agent_enabled: $id('mazbotAgentEnabled').checked,
             website_chat_enabled: $id('websiteChatEnabled').checked,
@@ -1618,6 +1622,12 @@ async function loadMazbotStatus() {
         : !pv.template ? 'غير مفعّل: يحتاج قالب رمز التحقق MAZBOT_VERIFY_TEMPLATE_ID (بعد اعتماده من Meta) — بدونه لا يُطلب التأكيد حتى لا تتوقف الطلبات.'
             : !pv.login ? 'غير مفعّل: تعذر الدخول لحساب القوالب في MazBot.'
                 : 'القالب جاهز — ضع العلامة واضغط «حفظ» للتفعيل.';
+    // Rating requests: ready only with their template; the last 30 days at a glance
+    const rt = s.ratings || {};
+    const r30 = rt.last_30_days || {};
+    $id('ratingStatus').textContent = !rt.template ? 'غير مفعّل: يحتاج قالب التقييم MAZBOT_RATING_TEMPLATE_ID (بعد اعتماده من Meta).'
+        : !rt.enabled ? 'متوقف — ضع العلامة واضغط «حفظ».'
+            : `✅ مفعّل — آخر 30 يوماً: أُرسل ${r30.sent || 0}، قيّم ${r30.rated || 0}${r30.average ? `، المتوسط ${r30.average} من 5` : ''}${r30.low ? `، منخفض (1–3): ${r30.low}` : ''}${rt.google ? '' : ' — أضف رابط Google ليصل لمن يقيّم 4 أو 5.'}`;
     // Work order notices: which templates are set, and the templates account's webhook (for «إيقاف الإشعارات» / «تتبع»)
     const w = s.work_orders || {};
     const names = { scheduled: 'الموعد', on_the_way: 'في الطريق', started: 'بدء العمل', done: 'الاكتمال' };

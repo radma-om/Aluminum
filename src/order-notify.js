@@ -186,7 +186,12 @@ async function handleTemplatesEvent(db, event, { origin = '', client = null } = 
     const said = String(m.value || (d.selection && (d.selection.id || d.selection.title)) || d.title || '').trim();
     let action = 'ignored';
     let reply = null;
-    if (MUTE_RE.test(said)) {
+    // A rating («5 ممتاز»…) or the comment after a low one (src/ratings.js)
+    const rated = require('./ratings').handle(db, phone, said);
+    if (rated) {
+        action = rated.action;
+        reply = rated.reply;
+    } else if (MUTE_RE.test(said)) {
         mute(db, phone);
         action = 'muted';
         reply = `تم إيقاف إشعارات الطلبات لمدة ${MUTE_HOURS} ساعة 🔕\nلمعرفة حالة طلبكم في أي وقت اكتبوا «تتبع».`;
