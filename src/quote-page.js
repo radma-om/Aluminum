@@ -21,7 +21,10 @@ const localToday = () => new Date(Date.now() + 4 * 3600_000).toISOString().slice
 
 const path = (quote) => `/q/${quote.access_key}`;
 
+const ready = new WeakSet(); // once per database, not on every page view
 function ensureColumns(db) {
+    if (ready.has(db)) return;
+    ready.add(db);
     const cols = db.prepare('PRAGMA table_info(quotes)').all().map((c) => c.name);
     if (!cols.includes('accepted_at')) db.exec('ALTER TABLE quotes ADD COLUMN accepted_at TEXT');
     if (!cols.includes('accepted_via')) db.exec('ALTER TABLE quotes ADD COLUMN accepted_via TEXT');

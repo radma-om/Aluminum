@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.50.3', date: '2026-11-20',
+        ar: ['سرعة: كشف العمولات يفتح أسرع بعدة مرات مع كثرة الفواتير، ولوحة المؤشرات وتقرير الموظفين أخف على الخادم', 'حاسبات العملاء تظهر أسرع: الأيقونات تُحمَّل بجانب الصفحة بدل أن تؤخرها', 'حماية: حد لعدد طلبات صفحات «تتبع طلبي» و«عرض السعر» من نفس العنوان'],
+        en: ['Speed: the commissions statement opens several times faster with many invoices, and the dashboard and the team report are lighter on the server', 'The customer calculators show sooner: the icons load beside the page instead of holding it back', 'Protection: a limit on requests to the «Track my order» and «Quote» pages from one address']
+    },
+    {
         version: '3.50.2', date: '2026-11-20',
         ar: ['المبالغ بثلاث خانات عشرية في كل مكان: ملفات PDF للفواتير وعروض الأسعار، لوحة النظام، إشعارات الجوال، التقرير الأسبوعي، سجل العميل وردود المساعد'],
         en: ['Amounts with three decimals everywhere: invoice and quote PDFs, the panel, phone notifications, the weekly report, the customer log and the assistant replies']

@@ -57,14 +57,15 @@ function share(items, pick) {
 /* An invoice counts towards its salesperson once this share of its total is paid */
 const PAID_SHARE = 0.5;
 
-/* Every issued invoice, with the day its payments reached half of its total (null: not yet) */
+/* Every issued invoice, with the day its payments reached half of its total (null: not yet).
+   Light rows: the lines and the owner are read only for the invoices a statement needs (withBase). */
 function invoicesWithPayments(db) {
     const pays = new Map();
     for (const p of db.prepare('SELECT invoice_id, amount, paid_on FROM payments ORDER BY paid_on, id').all()) {
         if (!pays.has(p.invoice_id)) pays.set(p.invoice_id, []);
         pays.get(p.invoice_id).push(p);
     }
-    return db.prepare("SELECT id, number, customer_name, issue_date, subtotal, total, items_json, details_json, created_by FROM invoices WHERE status = 'issued' ORDER BY issue_date, id")
+    return db.prepare("SELECT id, number, customer_name, issue_date, subtotal, total FROM invoices WHERE status = 'issued' ORDER BY issue_date, id")
         .all().map((r) => {
             let paid = 0;
             let qualified = null;
@@ -75,15 +76,21 @@ function invoicesWithPayments(db) {
             // Never before the invoice was issued: a deposit dated earlier (paid on the quote) counts
             // in the month of issue, not in a past month that may already be closed
             if (qualified && qualified < r.issue_date) qualified = r.issue_date;
-            const items = parse(r.items_json, []);
-            const excluded = round2(r.subtotal * share(items, (i) => isInstallation(i) || isDelivery(i) || isService(i)));
             return {
                 id: r.id, number: r.number, customer_name: r.customer_name, date: r.issue_date, qualified_on: qualified,
-                owner: (parse(r.details_json, {}) || {}).created_by || r.created_by || null,
                 total: round2(r.total), paid: round2(paid), paid_percent: r.total > 0 ? Math.round((paid / r.total) * 1000) / 10 : 0,
-                subtotal: round2(r.subtotal), excluded, base: round2(r.subtotal - excluded)
+                subtotal: round2(r.subtotal)
             };
         });
+}
+/* An invoice of a statement: who issued it, and what counts for the commission (without installation, delivery, services) */
+function withBase(db, inv, done) {
+    if (done.has(inv.id)) return { ...inv, ...done.get(inv.id) };
+    const r = db.prepare('SELECT subtotal, items_json, details_json, created_by FROM invoices WHERE id = ?').get(inv.id);
+    const excluded = round2(r.subtotal * share(parse(r.items_json, []), (i) => isInstallation(i) || isDelivery(i) || isService(i)));
+    const extra = { owner: (parse(r.details_json, {}) || {}).created_by || r.created_by || null, excluded, base: round2(r.subtotal - excluded) };
+    done.set(inv.id, extra);
+    return { ...inv, ...extra };
 }
 
 function installationsOf(db, month) {
@@ -157,19 +164,21 @@ function countedMonth(inv, closed) {
 
 /* ------------------------------ Statement ------------------------------ */
 
-function compute(db, month, nowMs = Date.now()) {
+/* shared: what several statements of one request have in common (the invoices, the closed months) — read once */
+function compute(db, month, nowMs = Date.now(), shared = {}) {
     const per = period(month, nowMs);
     // At this pace until the month ends (current month only, from the 3rd day: earlier is noise)
     const pace = (v) => (per.current && per.days_passed >= 3 ? round2(v / per.days_passed * per.days) : null);
     const users = db.prepare("SELECT id, display_name, role, active, bonus_target, bonus_percent FROM staff_users ORDER BY role = 'technician', display_name").all();
-    const all = invoicesWithPayments(db);
+    const all = shared.all || (shared.all = invoicesWithPayments(db));
+    const done = shared.done || (shared.done = new Map());
     // Counted in the month half of it was paid; still waiting: issued up to the month's end, under half paid now
-    const closed = closedMonths(db);
+    const closed = shared.closed || (shared.closed = closedMonths(db));
     const sales = all.filter((i) => i.qualified_on).map((i) => {
         const m = countedMonth(i, closed);
         return m === i.qualified_on.slice(0, 7) ? { ...i, month: m } : { ...i, month: m, late_from: i.qualified_on.slice(0, 7) };
-    }).filter((i) => i.month === month);
-    const waiting = per.ended ? [] : all.filter((i) => !i.qualified_on && i.date <= per.to);
+    }).filter((i) => i.month === month).map((i) => withBase(db, i, done));
+    const waiting = per.ended ? [] : all.filter((i) => !i.qualified_on && i.date <= per.to).map((i) => withBase(db, i, done));
     const installs = installationsOf(db, month);
     const named = new Set(users.map((u) => u.display_name));
     const people = users.map((u) => {
@@ -220,19 +229,19 @@ function compute(db, month, nowMs = Date.now()) {
     };
 }
 
-function statement(db, month = thisMonth()) {
+function statement(db, month = thisMonth(), shared = {}) {
     if (!isMonth(month)) throw err(400, 'الشهر غير صالح');
     const saved = db.prepare('SELECT * FROM bonus_months WHERE month = ?').get(month);
     if (saved) return { ...parse(saved.data_json, {}), period: period(month), approved: { by: saved.approved_by, at: saved.approved_at } };
-    return { ...compute(db, month), approved: null };
+    return { ...compute(db, month, Date.now(), shared), approved: null };
 }
 
 /* The last months side by side (approved months as they were saved) */
-function history(db, month = thisMonth(), n = 6) {
+function history(db, month = thisMonth(), n = 6, shared = {}) {
     const out = [];
     for (let i = n - 1; i >= 0; i--) {
         const m = addMonths(month, -i);
-        const s = statement(db, m);
+        const s = statement(db, m, shared);
         out.push({ month: m, name: monthName(m), sales: s.totals.sales, installations: s.totals.installations, commission: s.totals.commission,
             reached: s.stats ? s.stats.reached : null, with_target: s.stats ? s.stats.with_target : null, approved: Boolean(s.approved) });
     }
@@ -310,11 +319,12 @@ function setPlan(db, userId, { target, percent }) {
 /* What an employee sees of their own month: their target, how far they are, their commission so far */
 function mine(db, user, month = thisMonth()) {
     if (!user || user.owner || !user.id) return null;
-    const s = statement(db, month);
+    const shared = {};
+    const s = statement(db, month, shared);
     const me = s.people.find((p) => p.user_id === user.id);
     if (!me || (!me.percent && !me.target)) return null;
     const { invoices, orders, pending_invoices: pendingInvoices, ...summary } = me;
-    const before = statement(db, addMonths(month, -1)).people.find((p) => p.user_id === user.id);
+    const before = statement(db, addMonths(month, -1), shared).people.find((p) => p.user_id === user.id);
     return { month, period: s.period || period(month), approved: Boolean(s.approved), ...summary,
         previous: before ? { month: addMonths(month, -1), name: monthName(addMonths(month, -1)), commission: before.commission, progress: before.progress ?? null } : null };
 }

@@ -27,7 +27,10 @@ const digits = (s) => String(s || '').replace(/[٠-٩]/g, (d) => String('٠١٢�
 let sender = null; // tests
 const setSenderForTests = (fn) => { sender = fn; };
 
+const ready = new WeakSet(); // once per database, not on every request
 function ensureTable(db) {
+    if (ready.has(db)) return;
+    ready.add(db);
     db.exec(`CREATE TABLE IF NOT EXISTS phone_verifications (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
         phone          TEXT NOT NULL,

@@ -14,6 +14,9 @@ const leads = require('./leads');
 const { getSettings } = require('./db');
 
 const TZ = '+4 hours';
+/* A Muscat day (or days from – to) as a range of the stored UTC times: the index on the column is used,
+   where date(column, '+4 hours') = ? reads the whole table */
+const dayRange = (col) => `${col} >= datetime(?, '-4 hours') AND ${col} < datetime(?, '+20 hours')`;
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const pct = (part, whole) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : null);
 const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) && !Number.isNaN(Date.parse(d + 'T00:00:00Z'));
@@ -35,7 +38,7 @@ function pulse(db, { days = 30, today = leads.localToday() } = {}) {
     const one = (sql, ...args) => db.prepare(sql).get(...args);
     const yesterday = addDays(today, -1);
 
-    const quotesOn = (d) => one(`SELECT COUNT(*) AS count, IFNULL(SUM(total), 0) AS value FROM quotes WHERE date(created_at, '${TZ}') = ?`, d);
+    const quotesOn = (d) => one(`SELECT COUNT(*) AS count, IFNULL(SUM(total), 0) AS value FROM quotes WHERE ${dayRange('created_at')}`, d, d);
     const invoicesOn = (d) => one("SELECT COUNT(*) AS count, IFNULL(SUM(total), 0) AS value FROM invoices WHERE status = 'issued' AND issue_date = ?", d);
     const paidOn = (d) => one(`SELECT COUNT(*) AS count, IFNULL(SUM(p.amount), 0) AS value FROM payments p JOIN invoices i ON i.id = p.invoice_id
                                WHERE i.status = 'issued' AND p.paid_on = ?`, d);
@@ -47,7 +50,7 @@ function pulse(db, { days = 30, today = leads.localToday() } = {}) {
     const tile = (now, before) => ({ count: now.count, value: round2(now.value), previous_count: before.count, previous_value: round2(before.value) });
 
     // Three rates over the period
-    const q = one(`SELECT COUNT(*) AS total, IFNULL(SUM(status IN ('accepted', 'done')), 0) AS won FROM quotes WHERE date(created_at, '${TZ}') >= ?`, from);
+    const q = one(`SELECT COUNT(*) AS total, IFNULL(SUM(status IN ('accepted', 'done')), 0) AS won FROM quotes WHERE created_at >= datetime(?, '-4 hours')`, from);
     const inv = one(`SELECT COUNT(*) AS count, IFNULL(SUM(i.total), 0) AS total, IFNULL(SUM(MIN(IFNULL(p.paid, 0), i.total)), 0) AS paid,
                             IFNULL(SUM(IFNULL(p.paid, 0) >= i.total - 0.005), 0) AS settled
                      FROM invoices i LEFT JOIN (SELECT invoice_id, SUM(amount) AS paid FROM payments GROUP BY invoice_id) p ON p.invoice_id = i.id
@@ -86,7 +89,7 @@ function pulse(db, { days = 30, today = leads.localToday() } = {}) {
         collected: tile(paidOn(today), paidOn(yesterday)),
         visits: { total: visits.total, done: visits.done, running: visits.running },
         pending_requests: one("SELECT COUNT(*) AS n FROM service_requests WHERE status = 'pending'").n,
-        customer_messages: one(`SELECT COUNT(*) AS n FROM lead_messages WHERE role = 'customer' AND date(created_at, '${TZ}') = ?`, today).n,
+        customer_messages: one(`SELECT COUNT(*) AS n FROM lead_messages WHERE role = 'customer' AND ${dayRange('created_at')}`, today, today).n,
         outstanding: { value: round2(owed.value), count: owed.count },
         rates: {
             win: { percent: pct(q.won, q.total), part: q.won, whole: q.total },
@@ -109,7 +112,7 @@ function pulse(db, { days = 30, today = leads.localToday() } = {}) {
 function load(db, from, to) {
     const between = (col) => `date(${col}, '${TZ}') BETWEEN ? AND ?`;
     const quotes = db.prepare(`SELECT id, ref, customer_name, total, status, details_json, created_at, date(created_at, '${TZ}') AS date
-                               FROM quotes WHERE ${between('created_at')}`).all(from, to)
+                               FROM quotes WHERE ${dayRange('created_at')}`).all(from, to)
         .map((r) => { const d = parse(r.details_json); return { ...r, name: d.created_by || null, discount_percent: Number(d.discount_percent) || 0, staff_quote: Boolean(d.staff_quote) }; })
         .filter((r) => r.name);
     const invoices = db.prepare(`SELECT number, customer_name, total, created_by, details_json, created_at, issue_date AS date
@@ -124,7 +127,7 @@ function load(db, from, to) {
                               WHERE n.author IS NOT NULL AND n.author != 'النظام' AND n.kind != 'handover' AND ${between('n.created_at')}`).all(from, to);
     const replies = db.prepare(`SELECT m.lead_id, m.author AS name, m.text, m.created_at, date(m.created_at, '${TZ}') AS date, l.name AS lead_name, l.phone
                                 FROM lead_messages m JOIN leads l ON l.id = m.lead_id
-                                WHERE m.role = 'staff' AND m.author IS NOT NULL AND ${between('m.created_at')}`).all(from, to);
+                                WHERE m.role = 'staff' AND m.author IS NOT NULL AND ${dayRange('m.created_at')}`).all(from, to);
     const assignments = db.prepare(`SELECT a.lead_id, a.from_employee, a.to_employee, a.assigned_by, a.created_at, date(a.created_at, '${TZ}') AS date, l.name AS lead_name, l.phone
                                     FROM lead_assignments a JOIN leads l ON l.id = a.lead_id WHERE ${between('a.created_at')}`).all(from, to);
     const jobs = db.prepare(`SELECT w.number, w.kind, w.customer_name, w.scheduled_date, w.completed_at, date(w.completed_at, '${TZ}') AS date, u.display_name AS name

@@ -43,9 +43,17 @@ function build(db, { days = 30, user = null } = {}) {
     const tomorrow = day(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1)));
     const employee = user && user.role !== 'manager' ? user.display_name : null;
 
-    const rows = db.prepare('SELECT id, total, status, source, customer_city, customer_phone, details_json, created_at FROM quotes WHERE created_at >= ? ORDER BY id')
+    // Only the few fields the dashboard reads from each quote's details (never the whole JSON: it holds every line)
+    const rows = db.prepare(`SELECT id, total, status, source, customer_city, customer_phone, created_at,
+                                    json_extract(details_json, '$.created_by') AS d_by, json_extract(details_json, '$.region') AS d_region,
+                                    json_extract(details_json, '$.calculator') AS d_calc, json_extract(details_json, '$.staff_quote') AS d_staff,
+                                    json_extract(details_json, '$.width_cm') AS d_width, json_extract(details_json, '$.shutter_type') AS d_type
+                             FROM quotes WHERE created_at >= ? ORDER BY id`)
         .all(utcOf(previousFrom))
-        .map((q) => ({ ...q, details: parseJson(q.details_json), date: local(q.created_at) }))
+        .map(({ d_by: by, d_region: region, d_calc: calculator, d_staff: staffQuote, d_width: width, d_type: type, ...q }) => ({
+            ...q, date: local(q.created_at),
+            details: { created_by: by, region, calculator, staff_quote: staffQuote, width_cm: width, shutter_type: type }
+        }))
         .filter((q) => !employee || quoteOwner(q) === employee);
     const current = rows.filter((q) => q.date >= from);
     const previous = rows.filter((q) => q.date < from);
@@ -96,14 +104,14 @@ function build(db, { days = 30, user = null } = {}) {
         .all(periodStart, periodEnd);
     const messageRows = db.prepare("SELECT author, created_at FROM lead_messages WHERE role = 'staff' AND author IS NOT NULL AND created_at >= ? AND created_at < ?")
         .all(periodStart, periodEnd);
-    const invoiceRows = db.prepare("SELECT created_by, details_json, total, issue_date FROM invoices WHERE status = 'issued' AND issue_date >= ? AND issue_date < ?")
+    const invoiceRows = db.prepare("SELECT created_by, json_extract(details_json, '$.created_by') AS d_by, total, issue_date FROM invoices WHERE status = 'issued' AND issue_date >= ? AND issue_date < ?")
         .all(from, tomorrow)
         .map((invoice) => ({
             ...invoice,
             // A manager may issue the invoice for an employee's quote. Credit the sale to
             // the employee who created that quote, while keeping a sensible fallback for
             // invoices that did not originate from a staff quote.
-            owner: quoteOwner({ details: parseJson(invoice.details_json) }) || invoice.created_by
+            owner: (invoice.d_by ? String(invoice.d_by) : null) || invoice.created_by
         }));
     const staffAccounts = db.prepare('SELECT display_name, role, permissions_json FROM staff_users WHERE active = 1').all().filter(canFollow);
     const names = new Set(staffAccounts.map((s) => s.display_name));
