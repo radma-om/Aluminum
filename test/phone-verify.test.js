@@ -121,3 +121,76 @@ test('«الربط» shows the last 24 hours and MazBot\'s words for the latest 
     // The public config never shows it
     assert.deepEqual(Object.keys((await call('GET', '/api/public/verify/config')).body).sort(), ['required', 'valid_days']);
 });
+
+test('the Authentication template gets the code twice: body_values[1] and button_values[1] (numbered from 1)', async (t) => {
+    // A local stand-in of MazBot (no real message): it records the send-template form fields
+    const forms = [];
+    const srv = http.createServer((req, res) => {
+        let raw = '';
+        req.on('data', (d) => { raw += d; }).on('end', () => {
+            res.setHeader('Content-Type', 'application/json');
+            if (req.url === '/login') return res.end(JSON.stringify({ data: { token: 'jwt' } }));
+            const fields = {};
+            for (const m of raw.matchAll(/name="([^"]+)"\r\n\r\n([^\r]*)\r\n/g)) fields[m[1]] = m[2];
+            forms.push(fields);
+            res.end(JSON.stringify({ success: true }));
+        });
+    });
+    await new Promise((r) => srv.listen(0, r));
+    const env = { MAZBOT_TEMPLATES_BASE_URL: `http://127.0.0.1:${srv.address().port}`, MAZBOT_TEMPLATES_API_KEY: 'k', MAZBOT_TEMPLATES_STAFF_EMAIL: 'e@x', MAZBOT_TEMPLATES_STAFF_PASSWORD: 'p', MAZBOT_VERIFY_TEMPLATE_ID: '3396' };
+    const before = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, env);
+    phoneVerify.setSenderForTests(null);
+    require('../src/mazbot')._reset();
+    t.after(() => { srv.close(); for (const [k, v] of Object.entries(before)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+
+    const db = openDatabase(':memory:');
+    saveSettings(db, { calculator_verify_phone: true });
+    const s = await phoneVerify.start(db, '99887897');
+    const code = db.prepare('SELECT code FROM phone_verifications WHERE token = ?').get(s.token).code;
+    const f = forms.at(-1);
+    assert.equal(f.template_id, '3396');
+    assert.equal(f.mobile, '96899887897');
+    assert.deepEqual([f['body_matchs[1]'], f['button_matchs[1]']], ['input_value', 'input_value']);
+    assert.equal(f['body_values[1]'], code);
+    assert.equal(f['button_values[1]'], f['body_values[1]'], 'the button gets the same code as the text');
+    assert.match(f['button_values[1]'], /^\d{4}$/, 'the raw code: digits only, no «otp», no link');
+    assert.equal(Object.keys(f).some((k) => /\[0\]/.test(k)), false, 'nothing numbered from 0');
+});
+
+test('other templates send no button fields; a refused send is kept without the code', async (t) => {
+    const forms = [];
+    let reply = { success: true };
+    const srv = http.createServer((req, res) => {
+        let raw = '';
+        req.on('data', (d) => { raw += d; }).on('end', () => {
+            res.setHeader('Content-Type', 'application/json');
+            if (req.url === '/login') return res.end(JSON.stringify({ data: { token: 'jwt' } }));
+            const fields = {};
+            for (const m of raw.matchAll(/name="([^"]+)"\r\n\r\n([^\r]*)\r\n/g)) fields[m[1]] = m[2];
+            forms.push(fields);
+            // MazBot may answer HTTP 200 with success:false, echoing the values
+            res.end(JSON.stringify(typeof reply === 'function' ? reply(fields) : reply));
+        });
+    });
+    await new Promise((r) => srv.listen(0, r));
+    const env = { MAZBOT_TEMPLATES_BASE_URL: `http://127.0.0.1:${srv.address().port}`, MAZBOT_TEMPLATES_API_KEY: 'k', MAZBOT_TEMPLATES_STAFF_EMAIL: 'e@x', MAZBOT_TEMPLATES_STAFF_PASSWORD: 'p', MAZBOT_VERIFY_TEMPLATE_ID: '3396' };
+    const before = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, env);
+    phoneVerify.setSenderForTests(null);
+    const mazbot = require('../src/mazbot');
+    mazbot._reset();
+    t.after(() => { srv.close(); for (const [k, v] of Object.entries(before)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+
+    assert.equal((await mazbot.sendTemplateTo('96891234567', ['خالد', 'INV-1'], '3362')).ok, true);
+    assert.equal(Object.keys(forms.at(-1)).some((k) => k.startsWith('button_')), false, 'no button fields for an ordinary template');
+
+    reply = (f) => ({ success: false, message: `(#131008) Required parameter is missing — got ${f['body_values[1]']}` });
+    const db = openDatabase(':memory:');
+    saveSettings(db, { calculator_verify_phone: true });
+    await assert.rejects(phoneVerify.start(db, '99887897'), /تعذر إرسال رمز التحقق/);
+    const row = db.prepare("SELECT code, send_error FROM phone_verifications WHERE status = 'failed'").get();
+    assert.match(row.send_error, /131008/);
+    assert.ok(!row.send_error.includes(row.code), 'the code is never kept in the error');
+    assert.match(row.send_error, /\*\*\*\*/);
+});

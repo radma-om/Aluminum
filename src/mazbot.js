@@ -81,27 +81,37 @@ function makeClient(prefix) {
     }
 
 
-    async function sendTemplateOnce(jwt, mobile, values, templateId) {
-        const bodyValues = {};
-        const bodyMatchs = {};
-        values.forEach((v, i) => { bodyValues[i + 1] = cleanValue(v); bodyMatchs[i + 1] = 'input_value'; });
-        const res = await post('/whatsapp/send-template', {
-            template_id: templateId, mobile, body_matchs: bodyMatchs, body_values: bodyValues
-        }, { jwt, multipart: true });
+    /* buttons: the values of the template's dynamic buttons, in order (e.g. an Authentication template's
+       «نسخ الرمز» needs the code again) — sent as button_matchs[1] / button_values[1], numbered from 1 like the body */
+    async function sendTemplateOnce(jwt, mobile, values, templateId, buttons = []) {
+        const numbered = (list, clean) => {
+            const matchs = {};
+            const vals = {};
+            list.forEach((v, i) => { vals[i + 1] = clean(v); matchs[i + 1] = 'input_value'; });
+            return [matchs, vals];
+        };
+        const [bodyMatchs, bodyValues] = numbered(values, cleanValue);
+        const fields = { template_id: templateId, mobile, body_matchs: bodyMatchs, body_values: bodyValues };
+        if (buttons.length) {
+            // A button's value is raw (a code, a link's tail): no line breaks, nothing else changed
+            const [buttonMatchs, buttonValues] = numbered(buttons, (v) => String(v ?? '').replace(/[\r\n\t]+/g, ' ').trim());
+            Object.assign(fields, { button_matchs: buttonMatchs, button_values: buttonValues });
+        }
+        const res = await post('/whatsapp/send-template', fields, { jwt, multipart: true });
         const ok = res.status === 200 && Boolean(res.body && res.body.success);
         return { ok, status: res.status, error: ok ? null : res.error || `template_failed_http_${res.status} ${JSON.stringify(res.body)}` };
     }
 
     /* Send to one mobile: one new login after a 401 (JWT expired), one retry on a network/5xx error */
-    async function sendTemplate(mobile, values, templateId) {
+    async function sendTemplate(mobile, values, templateId, { buttons = [] } = {}) {
         if (env().dryRun) return { ok: true, status: 200, error: 'dry_run' };
         let jwt;
         try { jwt = await getToken(); } catch (err) { return { ok: false, status: 0, error: err.message }; }
-        let result = await sendTemplateOnce(jwt, mobile, values, templateId);
+        let result = await sendTemplateOnce(jwt, mobile, values, templateId, buttons);
         if (!result.ok && result.status === 401) {
-            try { jwt = await getToken(true); result = await sendTemplateOnce(jwt, mobile, values, templateId); } catch (err) { result = { ok: false, status: 0, error: err.message }; }
+            try { jwt = await getToken(true); result = await sendTemplateOnce(jwt, mobile, values, templateId, buttons); } catch (err) { result = { ok: false, status: 0, error: err.message }; }
         }
-        if (!result.ok && (result.status === 0 || result.status >= 500)) result = await sendTemplateOnce(jwt, mobile, values, templateId);
+        if (!result.ok && (result.status === 0 || result.status >= 500)) result = await sendTemplateOnce(jwt, mobile, values, templateId, buttons);
         return result;
     }
 
