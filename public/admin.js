@@ -674,6 +674,40 @@ function offersSummary(st) {
 
 async function loadOffers() {
     try { fillPromo(await api('GET', '/api/admin/settings')); } catch (err) { setStatus('promoStatus', err.message, 'err'); }
+    loadPromoReminders();
+}
+
+/* «تذكير العملاء بانتهاء العرض»: who will get it (and who got it), and the button that sends it */
+let promoReminders = null;
+async function loadPromoReminders() {
+    const box = $id('promoReminderRows');
+    if (!box) return;
+    try { promoReminders = await api('GET', '/api/admin/promo-reminders'); } catch (err) { setStatus('promoReminderStatus', err.message, 'err'); return; }
+    const r = promoReminders;
+    const offer = [r.promo && `«${r.promo.label}» حتى ${r.promo.until}`, r.gift && `هدية «${r.gift.name}» حتى ${r.gift.until}`].filter(Boolean).join(' و');
+    const why = !r.promo && !r.gift ? 'لا يوجد عرض أو هدية يعمل الآن بتاريخ انتهاء — حدّد «آخر يوم» للعرض.'
+        : !r.template ? 'قالب التذكير غير مضبوط (MAZBOT_PROMO_REMINDER_TEMPLATE_ID) — أضفه بعد اعتماده من Meta.'
+            : !r.login ? 'حساب القوالب في MazBot غير مضبوط.' : '';
+    setStatus('promoReminderStatus', why || `${offer} — سيصل التذكير لـ ${r.candidates.length} عميل${r.sent.length ? `، ووصل سابقاً لـ ${r.sent.length}` : ''}.`, why ? 'err' : '');
+    const row = (c, state) => `<tr><td data-label="العميل">${esc(c.customer_name || '')}<br><small dir="ltr">${esc(c.phone)}</small></td>
+        <td data-label="عرض السعر">${esc(c.ref)}</td><td data-label="التوفير">${money2(c.saving)} ر.ع</td><td data-label="ينتهي">${esc(c.until)}</td><td data-label="الحالة">${state}</td></tr>`;
+    box.innerHTML = [...r.candidates.map((c) => row(c, c.last_error ? `<span class="badge">لم يصل: ${esc(c.last_error.slice(0, 80))}</span>` : 'سيصله')),
+        ...r.sent.map((c) => row(c, `<span class="badge on">✓ وصله ${esc(String(c.sent_at).slice(0, 16))}</span>`))].join('')
+        || '<tr><td colspan="5" class="status-text">لا يوجد عملاء لهذا العرض بعد.</td></tr>';
+    $id('promoReminderSend').disabled = Boolean(why) || !r.candidates.length;
+}
+async function sendPromoReminders() {
+    const r = promoReminders;
+    if (!r || !r.candidates.length) return;
+    if (!(await askYes(`إرسال تذكير بانتهاء العرض إلى ${r.candidates.length} عميل على واتساب؟`, { okLabel: 'إرسال' }))) return;
+    setStatus('promoReminderStatus', 'جاري الإرسال...');
+    try {
+        const out = await api('POST', '/api/admin/promo-reminders/send');
+        await loadPromoReminders();
+        setStatus('promoReminderStatus', `وصل ${out.sent}${out.failed ? `، ولم يصل ${out.failed} (السبب في القائمة)` : ''} ✓`, out.failed ? 'err' : 'ok');
+    } catch (err) {
+        setStatus('promoReminderStatus', err.message, 'err');
+    }
 }
 const switchTabBeforeOffers = window.switchTab;
 window.switchTab = function (tabId) {

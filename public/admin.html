@@ -1875,6 +1875,17 @@
                 </div>
                 <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="saveGift()">حفظ</button><span id="giftStatus" class="status-text"></span></div>
             </div>
+            <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-bell"></i></span> تذكير العملاء بانتهاء العرض</div>
+                <p class="status-text" style="margin:0 0 10px">رسالة واتساب لمن حصل على عرض سعر بالخصم أو الهدية الحالية ولم يُصدر له فاتورة: كم يوفّر، وآخر يوم للعرض، ورابط عرضه للموافقة. مرة واحدة لكل رقم في كل عرض، وتُمدَّد صلاحية عرض السعر حتى آخر يوم.</p>
+                <p class="status-text" id="promoReminderStatus"></p>
+                <div class="table-wrapper"><table class="stack-table">
+                    <thead><tr><th>العميل</th><th>عرض السعر</th><th>التوفير</th><th>ينتهي</th><th>الحالة</th></tr></thead>
+                    <tbody id="promoReminderRows"></tbody>
+                </table></div>
+                <div class="form-buttons"><button class="btn btn-primary btn-sm" id="promoReminderSend" onclick="sendPromoReminders()"><i class="fas fa-paper-plane"></i> إرسال التذكير</button>
+                    <button class="btn btn-outline btn-sm" onclick="loadPromoReminders()">تحديث</button></div>
+            </div>
         </div>
 
         <div id="tab-quotes" class="tab-content">
