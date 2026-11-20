@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.52.5', date: '2026-11-21',
+        ar: ['عند فشل إرسال قالب واتساب يُذكر رقم القالب في سطر الحالة (مثل «فشل 1/4: قالب 3366: …») — في تنبيهات الحاسبات والفواتير وأوامر العمل والتقييم ورمز التحقق، فيُعرف من MazBot أي قالب رُفض ولماذا'],
+        en: ['When a WhatsApp template fails, its number is in the status line (e.g. «failed 1/4: template 3366: …») — in the calculator alerts, invoices, work orders, ratings and the verification code — so MazBot shows which template was refused and why']
+    },
+    {
         version: '3.52.4', date: '2026-11-21',
         ar: ['رمز التحقق في الحاسبات: يُرسل الرمز أيضاً لزر «نسخ الرمز» في قالب المصادقة كما تشترط Meta — كان الإرسال يُرفض بخطأ (#131008)'],
         en: ['The calculators\' verification code: the code is also sent to the Authentication template\'s «Copy code» button, as Meta requires — sends were refused with (#131008)']
