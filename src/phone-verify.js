@@ -77,9 +77,14 @@ async function start(db, phone) {
     const token = crypto.randomBytes(16).toString('hex');
     const info = db.prepare('INSERT INTO phone_verifications (phone, code, token, expires_at) VALUES (?, ?, ?, ?)')
         .run(p, code, token, sqlTime(Date.now() + CODE_MINUTES * 60_000));
-    const r = sender ? await sender(p, [code]) : await mazbot.templatesAccount().client.sendTemplate(p, [code], templateId());
+    // An Authentication template takes the code twice: in its text ({{1}}) and in its «نسخ الرمز» button
+    const r = sender ? await sender(p, [code], { buttons: [code] })
+        : await mazbot.templatesAccount().client.sendTemplate(p, [code], templateId(), { buttons: [code] });
     if (!r || !r.ok) {
-        db.prepare("UPDATE phone_verifications SET status = 'failed', send_error = ? WHERE id = ?").run(String((r && r.error) || 'send_failed').slice(0, 300), info.lastInsertRowid);
+        // Why, in MazBot's words — never the code itself (MazBot may echo the values back)
+        const why = String((r && r.error) || 'send_failed').split(code).join('****').slice(0, 300);
+        console.error('[phone-verify] the code was not sent:', why);
+        db.prepare("UPDATE phone_verifications SET status = 'failed', send_error = ? WHERE id = ?").run(why, info.lastInsertRowid);
         throw err(502, 'تعذر إرسال رمز التحقق على واتساب — تأكد من الرقم أو حاول بعد قليل.', { expose: true });
     }
     return { token, phone: p, expires_in: CODE_MINUTES * 60 };
