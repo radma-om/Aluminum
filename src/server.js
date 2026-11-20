@@ -2536,7 +2536,7 @@ function createApp(db, { agentClient } = {}) {
         customer: customerNotify.status(),
         // The work order notices (appointment, on the way, started, done) and the templates account's webhook
         work_orders: orderNotify.status(db),
-        phone_verify: phoneVerify.config(db),
+        phone_verify: { ...phoneVerify.config(db), ...phoneVerify.recent(db) },
         ratings: require('./ratings').status(db),
         templates_webhook_path: req.user.role === 'manager' && (process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET || '').length >= 16
             ? `/webhooks/mazbot-templates/${process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET}` : null

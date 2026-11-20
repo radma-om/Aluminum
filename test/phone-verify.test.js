@@ -110,3 +110,14 @@ test('the template could not be sent: the page is told, and that code never conf
     assert.equal(row.status, 'failed');
     assert.equal((await call('POST', '/api/public/verify/confirm', { token: row.token, code: sent[0].values[0] })).body.verify, 'unknown');
 });
+
+test('«الربط» shows the last 24 hours and MazBot\'s words for the latest failed send', async (t) => {
+    const { db, call } = await start(t, { fail: true });
+    saveSettings(db, { calculator_verify_phone: true });
+    await call('POST', '/api/public/verify/start', { phone: '99123456' });
+    const r = phoneVerify.recent(db);
+    assert.deepEqual(r.last_24h, { sent: 0, verified: 0, failed: 1 });
+    assert.equal(r.last_error.error, 'x');
+    // The public config never shows it
+    assert.deepEqual(Object.keys((await call('GET', '/api/public/verify/config')).body).sort(), ['required', 'valid_days']);
+});

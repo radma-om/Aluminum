@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.52.3', date: '2026-11-21',
+        ar: ['«الربط» ← رمز التحقق في الحاسبات: عدد الرموز المرسلة والمؤكدة والفاشلة في آخر 24 ساعة، وسبب آخر فشل في الإرسال كما ذكره MazBot'],
+        en: ['«Integrations» → the calculators\' verification code: codes sent, confirmed and failed in the last 24 hours, and MazBot\'s reason for the latest failed send']
+    },
+    {
         version: '3.52.2', date: '2026-11-21',
         ar: ['«الربط»: زر «فحص الدخول لحسابات MazBot» يوضح لكل حساب (الرئيسي والقوالب) هل يعمل، وما المتغير الناقص أو الخطأ', 'رسالة فشل الدخول تذكر الحساب وسبب رفض MazBot، والمسافات أو علامات التنصيص حول القيم في متغيرات البيئة لا تُفشل الدخول'],
         en: ['«Integrations»: a «Check the MazBot accounts sign-in» button says for each account (main and templates) whether it works, and which variable is missing or what is wrong', 'A failed sign-in names the account and MazBot\'s reason, and spaces or quotes around values in the environment variables no longer break the sign-in']
