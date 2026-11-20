@@ -7,8 +7,8 @@
 module.exports = [
     {
         version: '3.50.1', date: '2026-11-20',
-        ar: ['مراجعة للأخطاء: رابط عرض سعر أو فاتورة بمفتاح خاطئ يحتوي حروفاً غير لاتينية كان يُظهر «خطأ في الخادم» بدل «غير موجود»', 'رد «إيقاف الإشعارات»: كلمة stop توقف الإشعارات فقط إذا كانت الرسالة كلها، لا إذا وردت داخل جملة'],
-        en: ['Bug review: a quote or invoice link with a wrong key holding non-Latin characters showed «server error» instead of «not found»', '«Stop notifications»: the word stop mutes only when it is the whole message, not inside a sentence']
+        ar: ['مراجعة للأخطاء: رابط عرض سعر أو فاتورة بمفتاح خاطئ يحتوي حروفاً غير لاتينية كان يُظهر «خطأ في الخادم» بدل «غير موجود»', 'رد «إيقاف الإشعارات»: كلمة stop توقف الإشعارات فقط إذا كانت الرسالة كلها، لا إذا وردت داخل جملة', 'رسائل واتساب للعملاء (الفاتورة، الدفعة، المتبقي، عرض السعر) تكتب المبالغ بثلاث خانات عشرية مثل صفحات التتبع'],
+        en: ['Bug review: a quote or invoice link with a wrong key holding non-Latin characters showed «server error» instead of «not found»', '«Stop notifications»: the word stop mutes only when it is the whole message, not inside a sentence', 'Customer WhatsApp messages (invoice, payment, balance, quote) write amounts with three decimals, like the tracking pages']
     },
     {
         version: '3.50.0', date: '2026-11-19',

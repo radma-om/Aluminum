@@ -26,7 +26,7 @@ const KINDS = {
     payment: { label: 'تأكيد دفعة', env: 'MAZBOT_PAYMENT_TEMPLATE_ID' },
     balance: { label: 'تذكير بالمتبقي', env: 'MAZBOT_BALANCE_TEMPLATE_ID' }
 };
-const money = (n) => Number(n || 0).toFixed(2);
+const money = (n) => Number(n || 0).toFixed(3);
 const err = (status, message) => Object.assign(new Error(message), { status });
 
 let sender = null; // tests
