@@ -99,7 +99,8 @@ function makeClient(prefix) {
         }
         const res = await post('/whatsapp/send-template', fields, { jwt, multipart: true });
         const ok = res.status === 200 && Boolean(res.body && res.body.success);
-        return { ok, status: res.status, error: ok ? null : res.error || `template_failed_http_${res.status} ${JSON.stringify(res.body)}` };
+        // The template's number leads the error: in MazBot it shows which template (name, language, account) was refused
+        return { ok, status: res.status, error: ok ? null : `قالب ${templateId}: ${res.error || `template_failed_http_${res.status} ${JSON.stringify(res.body)}`}` };
     }
 
     /* Send to one mobile: one new login after a 401 (JWT expired), one retry on a network/5xx error */

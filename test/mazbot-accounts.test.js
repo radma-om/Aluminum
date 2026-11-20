@@ -71,3 +71,25 @@ test('a pasted value with spaces or quotes still signs in; a refused sign-in say
     assert.equal(r.ok, false);
     assert.equal(r.error, 'login_failed_http_401 (حساب القوالب): Invalid API key');
 });
+
+test('a refused template names its number first (the panel shows which template failed)', async (t) => {
+    const srv = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', (d) => { body += d; }).on('end', () => {
+            res.setHeader('Content-Type', 'application/json');
+            if (req.url === '/login') return res.end(JSON.stringify({ data: { token: 'jwt' } }));
+            res.end(JSON.stringify({ success: false, message: '(#132001) Template name does not exist in the translation' }));
+        });
+    });
+    await new Promise((r) => srv.listen(0, r));
+    const keys = { MAZBOT_BASE_URL: `http://127.0.0.1:${srv.address().port}`, MAZBOT_API_KEY: 'K', MAZBOT_STAFF_EMAIL: 'o@x', MAZBOT_STAFF_PASSWORD: 'p',
+        MAZBOT_TEMPLATES_API_KEY: '', MAZBOT_OVERHEAD_TEMPLATE_ID: '3366' };
+    const before = Object.fromEntries(Object.keys(keys).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, keys);
+    t.after(() => { srv.close(); for (const [k, v] of Object.entries(before)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+    const mazbot = require('../src/mazbot');
+    mazbot._reset();
+    const r = await mazbot.sendToAll(['96876979066'], ['a'], 'overhead');
+    assert.equal(r.sent, 0);
+    assert.match(r.results[0].error, /^قالب 3366: template_failed_http_200 .*132001/);
+});
