@@ -59,7 +59,7 @@ test('the invoice, a payment, a reminder: the template\'s values in order, the P
     const m = sent.at(-1);
     assert.equal(m.mobile, '96891234567');
     assert.equal(m.templateId, '101');
-    assert.deepEqual(m.values.slice(0, 5), ['خالد', inv.number, '420.00', '0.00', '420.00']);
+    assert.deepEqual(m.values.slice(0, 5), ['خالد', inv.number, '420.000', '0.000', '420.000']);
     assert.match(m.values[5], /^http:\/\/127\.0\.0\.1:\d+\/t\/[0-9a-f]{32}$/, 'the customer\'s tracking page');
     assert.equal(r.body.messages[0].sent_by, 'المدير العام');
     const log = db.prepare('SELECT text FROM lead_messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1').get(lead.id).text;
@@ -69,14 +69,14 @@ test('the invoice, a payment, a reminder: the template\'s values in order, the P
     const paid = invoices.addPayment(db, inv.id, { amount: 200, method: 'cash' }, 'المكتب');
     r = await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'payment', payment_id: paid.payments[0].id });
     assert.equal(r.body.ok, true);
-    assert.deepEqual(sent.at(-1).values.slice(0, 5), ['خالد', '200.00', inv.number, '200.00', '220.00']);
+    assert.deepEqual(sent.at(-1).values.slice(0, 5), ['خالد', '200.000', inv.number, '200.000', '220.000']);
     assert.equal(r.body.messages[0].payment_id, paid.payments[0].id);
     assert.equal((await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'payment', payment_id: 999 })).status, 404);
 
     // The reminder has no template: a plain message (it reaches the customer only within 24 hours)
     r = await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'balance' });
     assert.equal(r.body.via, 'text');
-    assert.match(sent.at(-1).text, /المتبقي على الفاتورة رقم .* هو 220\.00 ر\.ع/);
+    assert.match(sent.at(-1).text, /المتبقي على الفاتورة رقم .* هو 220\.000 ر\.ع/);
     fail = 'outside 24h';
     r = await call('POST', `/api/admin/invoices/${inv.id}/whatsapp`, { kind: 'balance' });
     assert.equal(r.body.ok, false);
@@ -146,7 +146,7 @@ test('«عرض السعر جاهز»: the template with the quote page link; the
     assert.equal(m.kind, 'quote');
     assert.equal(m.templateId, '501');
     assert.equal(m.mobile, '96891234567');
-    assert.deepEqual(m.values.slice(0, 4), ['خالد', row.ref, '420.00', row.valid_until]);
+    assert.deepEqual(m.values.slice(0, 4), ['خالد', row.ref, '420.000', row.valid_until]);
     assert.match(m.values[4], new RegExp(`/q/${row.access_key}$`), 'the quote page');
     assert.equal(db.prepare('SELECT status FROM quotes WHERE id = ?').get(q.id).status, 'contacted');
     assert.equal(r.body.messages[0].ok, true);

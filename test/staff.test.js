@@ -278,6 +278,8 @@ test('quote PDFs and the quote list follow the customer scope; managers and publ
     const pub = await fetch(`http://127.0.0.1:${server.address().port}${otherQ.pdf_url}`);
     assert.strictEqual(pub.status, 200);
     assert.strictEqual((await fetch(`http://127.0.0.1:${server.address().port}/quotes/${otherQ.ref}.pdf?k=wrong`)).status, 404);
+    // A key of the right length with a non-ASCII character: still 404, never a server error
+    assert.strictEqual((await fetch(`http://127.0.0.1:${server.address().port}/quotes/${otherQ.ref}.pdf?k=${encodeURIComponent('é'.repeat(32))}`)).status, 404);
 });
 
 test('a new own password ends every earlier session at once; the old password stops working', async (t) => {

@@ -404,7 +404,7 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
 
     // ---- Terms and conditions (admin setting; one term per line, numbered here) ----
     const terms = (inv ? '' : String(settings.quote_terms || '')).split('\n')
-        .map((t) => t.trim().replace(/^\(?\d+\s*[).\-]\s*/, ''))   // drop any typed "1)" — numbers are drawn below
+        .map((t) => t.trim().replace(/^\(?\d+\s*[).-]\s*/, ''))   // drop any typed "1)" — numbers are drawn below
         .filter(Boolean);
     if (terms.length) {
         ensureSpace(40);
