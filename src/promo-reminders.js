@@ -91,39 +91,71 @@ function list(db) {
     return out;
 }
 
+/* What a send needs before anything goes out: a running offer with a last day, the template, the system's
+   public address (for the links), and the templates account. Throws 400 with what is missing. */
+function ready_(l, origin) {
+    if (!l.key) throw err(400, 'لا يوجد عرض أو هدية يعمل الآن بتاريخ انتهاء — حدّد «آخر يوم» للعرض أولاً');
+    if (!l.template) throw err(400, 'قالب التذكير غير مضبوط (MAZBOT_PROMO_REMINDER_TEMPLATE_ID) — أضفه بعد اعتماده من Meta');
+    if (!/^https:\/\//.test(String(origin || '')) && !/^http:\/\/(localhost|127\.)/.test(String(origin || ''))) {
+        throw err(400, 'رابط النظام العام غير مضبوط — حدده في الإعدادات (رابط النظام) حتى يصل العميل رابط عرضه');
+    }
+    if (!sender && !mazbot.templatesAccount().client.hasLogin()) throw err(400, 'حساب القوالب في MazBot غير مضبوط');
+}
+
+/* One customer of the list: the quote holds until the offer's last day, the template goes out (MazBot's
+   «success» decides), the attempt is recorded, and the customer's log says so. Returns { ref, phone, ok, error }. */
+async function sendOne(db, l, c, { origin, by }) {
+    if (!c.valid_until || c.valid_until < c.until) db.prepare('UPDATE quotes SET valid_until = ? WHERE id = ?').run(c.until, c.quote_id);
+    const id = templateId();
+    const name = String(c.customer_name || '').trim().split(/\s+/)[0] || 'عميلنا العزيز';
+    const values = [name, c.ref, money(c.saving), c.offer, c.until, `${origin}/q/${c.access_key}`];
+    let r;
+    try { r = sender ? await sender({ mobile: c.phone, templateId: id, values }) : await mazbot.templatesAccount().client.sendTemplate(c.phone, values, id); } catch (e) { r = { ok: false, error: e.message }; }
+    const ok = Boolean(r && r.ok);
+    const error = ok ? null : String((r && r.error) || 'failed').slice(0, 300);
+    db.prepare('INSERT INTO promo_reminders (promo_key, quote_id, phone, ok, error, sent_by) VALUES (?, ?, ?, ?, ?, ?)').run(l.key, c.quote_id, c.phone, ok ? 1 : 0, error, by);
+    if (ok) {
+        const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(c.phone);
+        if (lead) require('./leads').addMessage(db, lead, 'system', `⏰ أُرسل تذكير بانتهاء «${c.offer}» في ${c.until} — عرض السعر ${c.ref}`, { author: by });
+    } else {
+        console.error('[promo-reminders]', c.ref, error);
+    }
+    return { ref: c.ref, phone: c.phone, ok, error };
+}
+
 /**
  * Send the reminder to everyone on the list now (the manager pressed the button). origin: the system's public
  * address for the quote links. Returns { sent, failed, results }.
  */
 async function send(db, { origin, by = null }) {
     const l = list(db);
-    if (!l.key) throw err(400, 'لا يوجد عرض أو هدية يعمل الآن بتاريخ انتهاء — حدّد «آخر يوم» للعرض أولاً');
-    if (!l.template) throw err(400, 'قالب التذكير غير مضبوط (MAZBOT_PROMO_REMINDER_TEMPLATE_ID) — أضفه بعد اعتماده من Meta');
-    if (!/^https:\/\//.test(String(origin || '')) && !/^http:\/\/(localhost|127\.)/.test(String(origin || ''))) {
-        throw err(400, 'رابط النظام العام غير مضبوط — حدده في الإعدادات (رابط النظام) حتى يصل العميل رابط عرضه');
-    }
-    const acct = mazbot.templatesAccount();
-    if (!sender && !acct.client.hasLogin()) throw err(400, 'حساب القوالب في MazBot غير مضبوط');
-    const id = templateId();
-    const record = db.prepare('INSERT INTO promo_reminders (promo_key, quote_id, phone, ok, error, sent_by) VALUES (?, ?, ?, ?, ?, ?)');
+    ready_(l, origin);
     const results = [];
-    for (const c of l.candidates) {
-        // The link must still let the customer accept: the quote holds until the offer's last day
-        if (!c.valid_until || c.valid_until < c.until) db.prepare('UPDATE quotes SET valid_until = ? WHERE id = ?').run(c.until, c.quote_id);
-        const name = String(c.customer_name || '').trim().split(/\s+/)[0] || 'عميلنا العزيز';
-        const values = [name, c.ref, money(c.saving), c.offer, c.until, `${origin}/q/${c.access_key}`];
-        let r;
-        try { r = sender ? await sender({ mobile: c.phone, templateId: id, values }) : await acct.client.sendTemplate(c.phone, values, id); } catch (e) { r = { ok: false, error: e.message }; }
-        const ok = Boolean(r && r.ok);
-        const error = ok ? null : String((r && r.error) || 'failed').slice(0, 300);
-        record.run(l.key, c.quote_id, c.phone, ok ? 1 : 0, error, by);
-        if (ok) {
-            const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(c.phone);
-            if (lead) require('./leads').addMessage(db, lead, 'system', `⏰ أُرسل تذكير بانتهاء «${c.offer}» في ${c.until} — عرض السعر ${c.ref}`, { author: by });
-        }
-        results.push({ ref: c.ref, phone: c.phone, ok, error });
-    }
+    for (const c of l.candidates) results.push(await sendOne(db, l, c, { origin, by }));
     return { sent: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length, results };
 }
 
-module.exports = { ensureTable, running, list, send, setSenderForTests };
+/**
+ * The reminder to one customer of the list (the button on their row). Refused, with the reason, when the
+ * quote is not on the list: already reminded for this offer, invoiced, declined / accepted, of another offer,
+ * or an older quote of a number whose latest one is listed. Returns { ref, phone, ok, error }.
+ */
+async function sendQuote(db, quoteId, { origin, by = null }) {
+    const l = list(db);
+    ready_(l, origin);
+    const qid = Number(quoteId);
+    const c = l.candidates.find((x) => x.quote_id === qid);
+    if (c) return sendOne(db, l, c, { origin, by });
+    const q = db.prepare('SELECT id, ref, customer_phone, status FROM quotes WHERE id = ?').get(qid);
+    if (!q) throw err(404, 'عرض السعر غير موجود');
+    const phone = mobileOf(q.customer_phone);
+    const got = l.sent.find((x) => x.phone === phone);
+    if (got) throw err(409, `وصل هذا الرقم تذكير «${got.offer}» في ${String(got.sent_at).slice(0, 16)} — مرة واحدة لكل رقم في كل عرض`);
+    if (db.prepare("SELECT 1 FROM invoices WHERE quote_id = ? AND status = 'issued'").get(qid)) throw err(400, `عرض السعر ${q.ref} صدرت له فاتورة — لا حاجة للتذكير`);
+    if (!['new', 'contacted'].includes(q.status)) throw err(400, `عرض السعر ${q.ref} ليس «جديد» أو «تم التواصل» — لا يُرسل له تذكير`);
+    const newer = l.candidates.find((x) => x.phone === phone);
+    if (newer) throw err(400, `لهذا الرقم عرض أحدث في القائمة (${newer.ref}) — أرسل التذكير من صفه`);
+    throw err(400, `عرض السعر ${q.ref} ليس ضمن العرض الحالي (أو أقدم من 90 يوماً، أو رقمه غير صالح)`);
+}
+
+module.exports = { ensureTable, running, list, send, sendQuote, setSenderForTests };

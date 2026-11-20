@@ -54,6 +54,7 @@ const LABELS = [
     ['POST', /^\/work-orders\/\d+\/on-the-way$/, 'أمر العمل: الفني في الطريق (إشعار للعميل)'],
     ['POST', /^\/quotes\/\d+\/whatsapp$/, 'إرسال عرض السعر للعميل على واتساب'],
     ['POST', /^\/promo-reminders\/send$/, 'إرسال تذكير بانتهاء العرض للعملاء'],
+    ['POST', /^\/promo-reminders\/\d+\/send$/, 'إرسال تذكير بانتهاء العرض لعميل واحد'],
     ['POST', /^\/invoices\/\d+\/whatsapp$/, 'إرسال واتساب للعميل (فاتورة / دفعة / تذكير)'],
     ['DELETE', /^\/invoices\/\d+\/payments\/\d+$/, 'حذف دفعة'],
     ['POST', /^\/invoices\/\d+\/cancel$/, 'إلغاء فاتورة'],
