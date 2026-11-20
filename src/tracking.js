@@ -97,7 +97,7 @@ function view(db, inv) {
 
 function page(db, inv, settings) {
     const v = view(db, inv);
-    const company = settings.company_name || 'رادما';
+    const company = settings.company_name || 'ردما للبوابات الإلكترونية';
     const phone = String(settings.company_phone || '').replace(/\D/g, '');
     const wa = phone ? `https://wa.me/${phone.length === 8 ? '968' + phone : phone}` : null;
     const pdf = `/invoices/${encodeURIComponent(inv.number)}.pdf?k=${inv.access_key}`;
@@ -145,7 +145,7 @@ function findOrder(db, key) {
 
 /* The page of an order alone: the appointment, the technician, how far it is */
 function orderPage(order, settings) {
-    const company = settings.company_name || 'رادما';
+    const company = settings.company_name || 'ردما للبوابات الإلكترونية';
     const phone = String(settings.company_phone || '').replace(/\D/g, '');
     const intl = phone.length === 8 ? '968' + phone : phone;
     const first = String(order.customer_name || '').trim().split(/\s+/)[0] || 'عميلنا العزيز';

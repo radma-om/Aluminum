@@ -38,7 +38,7 @@ const DEFAULT_SETTINGS = {
         { details: 'شريحة نابكو 1.1 ملم', thickness: 1.1, weight: 0.63 },
         { details: 'شريحة نابكو 1.5 ملم', thickness: 1.5, weight: 0.839 }
     ],
-    company_name: 'مصنع شرائح الألمنيوم',
+    company_name: 'ردما للبوابات الإلكترونية',
     company_whatsapp: '',
     // Sales numbers that get the MazBot WhatsApp template for every calculator request
     mazbot_recipients: '76979066, 90660001',
@@ -844,6 +844,9 @@ function openDatabase(file = process.env.DB_FILE || path.join(__dirname, '..', '
         }
     }
     migrate(db);
+    // The company's name: «ردما للبوابات الإلكترونية» where the old default or the short «رادما» was kept (once)
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'company_name' AND value IN (?, ?, ?)")
+        .run(JSON.stringify(DEFAULT_SETTINGS.company_name), JSON.stringify('مصنع شرائح الألمنيوم'), JSON.stringify('رادما'), JSON.stringify('ردما'));
     seedRegions(db);        // wilayat first: the catalog import sets their installation fees
     seedConfigurator(db);
     require('./motors').ensureSections(db);
