@@ -57,6 +57,15 @@ function config(db) {
     return { required: Boolean(s.calculator_verify_phone) && template && login, enabled: Boolean(s.calculator_verify_phone), template, login };
 }
 
+/* The last 24 hours, for «الربط»: codes sent, confirmed, failed, and why the latest one failed */
+function recent(db) {
+    ensureTable(db);
+    const r = db.prepare(`SELECT COUNT(*) AS total, IFNULL(SUM(status = 'verified'), 0) AS verified, IFNULL(SUM(status = 'failed'), 0) AS failed
+                          FROM phone_verifications WHERE created_at >= datetime('now', '-1 day')`).get();
+    const last = db.prepare("SELECT created_at AS at, send_error AS error FROM phone_verifications WHERE status = 'failed' AND created_at >= datetime('now', '-1 day') ORDER BY id DESC LIMIT 1").get();
+    return { last_24h: { sent: r.total - r.failed, verified: r.verified, failed: r.failed }, last_error: last ? { at: last.at, error: last.error } : null };
+}
+
 /* A new code, sent to the number on WhatsApp. Returns { token, phone, expires_in } — never the code. */
 async function start(db, phone) {
     ensureTable(db);
@@ -109,4 +118,4 @@ function require_(db, body, phone) {
     }
 }
 
-module.exports = { ensureTable, config, start, confirm, check, require: require_, mobileOf, setSenderForTests, CODE_MINUTES, VALID_DAYS, MAX_TRIES };
+module.exports = { ensureTable, config, recent, start, confirm, check, require: require_, mobileOf, setSenderForTests, CODE_MINUTES, VALID_DAYS, MAX_TRIES };

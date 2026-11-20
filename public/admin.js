@@ -1622,6 +1622,10 @@ async function loadMazbotStatus() {
         : !pv.template ? 'غير مفعّل: يحتاج قالب رمز التحقق MAZBOT_VERIFY_TEMPLATE_ID (بعد اعتماده من Meta) — بدونه لا يُطلب التأكيد حتى لا تتوقف الطلبات.'
             : !pv.login ? 'غير مفعّل: تعذر الدخول لحساب القوالب في MazBot.'
                 : 'القالب جاهز — ضع العلامة واضغط «حفظ» للتفعيل.';
+    // The last 24 hours, and why the latest code did not go out (MazBot's words)
+    const v24 = pv.last_24h || {};
+    if (v24.sent || v24.failed) $id('verifyStatus').textContent += ` — آخر 24 ساعة: أُرسل ${v24.sent}، تأكّد ${v24.verified}${v24.failed ? `، فشل ${v24.failed}` : ''}`;
+    if (pv.last_error) $id('verifyStatus').textContent += `\n⚠️ آخر فشل في الإرسال (${pv.last_error.at}): ${pv.last_error.error}`;
     // Rating requests: ready only with their template; the last 30 days at a glance
     const rt = s.ratings || {};
     const r30 = rt.last_30_days || {};
