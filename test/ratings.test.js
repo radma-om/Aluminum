@@ -130,3 +130,46 @@ test('through the templates webhook handler: a rating press is answered, «تت�
     const track = await notify.handleTemplatesEvent(db, { type: 'message.received', data: { contact: { phone: '96891234567' }, message: { value: 'تتبع' } } }, { origin: 'https://x.test', client });
     assert.equal(track.action, 'track');
 });
+
+test('a failed send is tried again 6 hours later, 3 attempts in all; a success stops it', async (t) => {
+    const { db, order } = setup(t);
+    const o = order('91234567', '2026-11-20 08:00:00');
+    const results = [];
+    let fail = true;
+    ratings.setSenderForTests(async (m) => { results.push(m.mobile); return fail ? { ok: false, error: 'template not approved' } : { ok: true }; });
+    t.after(() => ratings.setSenderForTests(async (m) => { sent.push(m); return { ok: true }; }));
+    const row = () => db.prepare('SELECT status, attempts FROM rating_requests WHERE order_id = ?').get(o.id);
+
+    assert.equal((await ratings.sendDue(db, AT_1030)).failed, 1);
+    assert.deepEqual({ ...row() }, { status: 'failed', attempts: 1 });
+    // Within 6 hours: not again
+    assert.equal((await ratings.sendDue(db, AT_1030 + 2 * 3600_000)).failed, 0);
+    // 6 hours later (4:30 pm): attempt 2
+    assert.equal((await ratings.sendDue(db, AT_1030 + 6 * 3600_000)).failed, 1);
+    assert.equal(row().attempts, 2);
+    assert.ok(logOf(db, o.id).some((l) => l.includes('المحاولة 2 من 3') && l.includes('يُعاد بعد 6 ساعات')));
+    // The next morning, 10:30: attempt 3 succeeds
+    fail = false;
+    assert.equal((await ratings.sendDue(db, AT_1030 + 24 * 3600_000)).sent, 1);
+    assert.deepEqual({ ...row() }, { status: 'sent', attempts: 3 });
+    assert.ok(logOf(db, o.id).some((l) => l.startsWith('📤') && l.includes('(المحاولة 3)')));
+    // Sent: never again
+    assert.equal(results.length, 3);
+    await ratings.sendDue(db, AT_1030 + 30 * 3600_000);
+    assert.equal(results.length, 3);
+});
+
+test('after 3 failed attempts it stops; a failed send does not block the number\'s other order', async (t) => {
+    const { db, order } = setup(t);
+    const a = order('91234567', '2026-11-20 08:00:00');
+    let calls = 0;
+    ratings.setSenderForTests(async () => { calls++; return { ok: false, error: 'down' }; });
+    t.after(() => ratings.setSenderForTests(async (m) => { sent.push(m); return { ok: true }; }));
+    for (const h of [0, 6, 24, 30, 48]) await ratings.sendDue(db, AT_1030 + h * 3600_000);
+    assert.equal(calls, 3, 'three attempts, then no more');
+    assert.ok(logOf(db, a.id).some((l) => l.includes('المحاولة 3 من 3') && l.includes('لن يُعاد')));
+    // The same number, another order: the failed request did not count as «asked this week»
+    ratings.setSenderForTests(async (m) => { sent.push(m); return { ok: true }; });
+    order('91234567', '2026-11-22 08:00:00');
+    assert.equal((await ratings.sendDue(db, Date.parse('2026-11-23T06:30:00Z'))).sent, 1);
+});
