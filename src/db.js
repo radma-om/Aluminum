@@ -16,7 +16,6 @@ const DEFAULT_SETTINGS = {
     sqm_to_linear: 13,       // 1 م² = 13 متر طولي من الشرائح
     // Employees who follow customers (names); they become accounts with permissions later
     staff_members: [],
-    quote_validity_days: 15,
     staff_max_discount_percent: 10,
     staff_free_lines: true,
     wallet_min_default: 0,          // العهدة: أقل رصيد قبل تنبيه الإدارة (0 = بلا تنبيه)، ولكل موظف حده إن وُجد
