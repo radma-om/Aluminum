@@ -137,7 +137,7 @@ function log(db, order, text, by) {
 
 /* ---- The templates account's webhook: the customer pressed a button, or wrote to that number ---- */
 
-const MUTE_RE = /إيقاف الإشعارات|ايقاف الاشعارات|stop/i;
+const MUTE_RE = /إيقاف الإشعارات|ايقاف الاشعارات|^\s*stop\s*$/i;
 const TRACK_RE = /تتبع|track/i;
 
 /* The customer's numbers: the one they wrote from, and the other on their record */

@@ -131,15 +131,14 @@ const postJson = async (url, body) => {
 };
 
 /* Resolves with a confirmed token; rejects when the customer cancels or the code can't be sent */
-function verifyPhone(phone) {
-    return new Promise(async (resolve, reject) => {
-        let started;
-        const send = async () => {
-            const r = await postJson('/api/public/verify/start', { phone });
-            if (!r.ok) throw new Error(r.data.error || 'تعذر إرسال رمز التحقق');
-            return r.data;
-        };
-        try { started = await send(); } catch (err) { reject(err); return; }
+async function verifyPhone(phone) {
+    const send = async () => {
+        const r = await postJson('/api/public/verify/start', { phone });
+        if (!r.ok) throw new Error(r.data.error || 'تعذر إرسال رمز التحقق');
+        return r.data;
+    };
+    let started = await send();
+    return new Promise((resolve, reject) => {
         const box = verifyBox();
         box.hidden = false;
         box.innerHTML = `

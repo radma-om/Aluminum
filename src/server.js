@@ -67,6 +67,12 @@ const clip = (v, n) => String(v ?? '').trim().slice(0, n);
 // expose: the message is written for the user (shown even for 5xx); other server errors stay generic
 const httpError = (status, message) => Object.assign(new Error(message), { status, expose: true });
 const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+/* Equal secrets, in constant time; compares bytes (a non-ASCII character must not throw) */
+const safeEqual = (given, expected) => {
+    const a = Buffer.from(String(given ?? ''));
+    const b = Buffer.from(String(expected ?? ''));
+    return a.length === b.length && a.length > 0 && crypto.timingSafeEqual(a, b);
+};
 
 function withPrices(product, settings) {
     return {
@@ -775,8 +781,7 @@ function createApp(db, { agentClient } = {}) {
     app.get('/quotes/:ref.pdf', (req, res) => {
         const row = db.prepare('SELECT * FROM quotes WHERE ref = ?').get(req.params.ref);
         const key = String(req.query.k || '');
-        if (!row || !row.access_key || key.length !== row.access_key.length ||
-            !crypto.timingSafeEqual(Buffer.from(key), Buffer.from(row.access_key))) {
+        if (!row || !safeEqual(key, row.access_key)) {
             return res.status(404).type('text/plain').send('Not found');
         }
         sendPdf(res, parseQuote(row), getSettings(db));
@@ -786,7 +791,7 @@ function createApp(db, { agentClient } = {}) {
     app.get('/invoices/:number.pdf', (req, res) => {
         const inv = invoices.byNumber(db, req.params.number);
         const key = String(req.query.k || '');
-        if (!inv || key.length !== inv.access_key.length || !crypto.timingSafeEqual(Buffer.from(key), Buffer.from(inv.access_key))) {
+        if (!inv || !safeEqual(key, inv.access_key)) {
             return res.status(404).type('text/plain').send('Not found');
         }
         sendInvoicePdf(res, inv);
@@ -2718,8 +2723,7 @@ function createApp(db, { agentClient } = {}) {
         (SELECT id FROM inbound_events WHERE source = ? ORDER BY id DESC LIMIT 100)`).run(source, source);
     const webhookSecretOk = (given) => {
         const secret = process.env.MAZBOT_WEBHOOK_SECRET || '';
-        return secret.length >= 16 && given.length === secret.length &&
-            crypto.timingSafeEqual(Buffer.from(given), Buffer.from(secret));
+        return secret.length >= 16 && safeEqual(given, secret);
     };
     app.all('/webhooks/mazbot/:secret', express.raw({ type: () => true, limit: '1mb' }), (req, res) => {
         if (!webhookSecretOk(String(req.params.secret))) return res.status(404).json({ error: 'غير موجود' });
@@ -2762,7 +2766,7 @@ function createApp(db, { agentClient } = {}) {
     app.all('/webhooks/mazbot-templates/:secret', express.raw({ type: () => true, limit: '1mb' }), (req, res) => {
         const secret = cleanSecret(process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET);
         const given = String(req.params.secret);
-        if (!(secret.length >= 16 && given.length === secret.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(secret)))) {
+        if (!(secret.length >= 16 && safeEqual(given, secret))) {
             return res.status(404).json({ error: 'غير موجود' });
         }
         const raw = req.rawBody || (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
