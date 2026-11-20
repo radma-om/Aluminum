@@ -118,7 +118,14 @@ test('pages link their scripts and styles with the app version, so no browser ke
     for (const f of ['admin.js', 'admin-crm.js', 'admin-users.js', 'admin-ui.css']) {
         assert.ok(admin.includes(`"${f}?v=${version}"`), f);
     }
-    assert.ok(admin.includes('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"'), 'external links untouched');
+    // The icons are this system's own (no CDN), versioned like the rest; their font is preloaded
+    assert.ok(admin.includes(`"icons.css?v=${version}"`), 'icons.css');
+    assert.ok(!admin.includes('font-awesome'), 'no icon CDN');
+    const font = /href="(fonts\/fa-solid-[0-9a-f]{8}\.woff2)"/.exec(admin);
+    assert.ok(font, 'the icon font is preloaded');
+    const css = await (await fetch(`${base}/icons.css?v=${version}`)).text();
+    assert.ok(css.includes(font[1]) && css.includes('.fa-whatsapp::before'), 'icons.css names the same font file');
+    assert.strictEqual((await fetch(`${base}/${font[1]}`)).status, 200);
     for (const [page, f] of [['/', 'calc-common.js'], ['/overhead', 'calc.css'], ['/motors', 'location.js']]) {
         assert.ok((await (await fetch(base + page)).text()).includes(`"${f}?v=${version}"`), page);
     }

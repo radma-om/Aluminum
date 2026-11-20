@@ -17,10 +17,9 @@
         try { if (localStorage.getItem('adminLang') === 'en') document.write('<script src="admin-i18n-en.js"><\/script>'); } catch (e) { /* private mode: Arabic */ }
     </script>
     <script src="admin-i18n.js"></script>
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <!-- Icons: loaded without holding the page back (they appear a moment later on a slow line) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
-    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"></noscript>
+    <!-- Icons: served by this system (only the ones used, ~13 KB), never from a CDN -->
+    <link rel="preload" href="fonts/fa-solid-7486976f.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="icons.css">
     <style>
         /* ===== CSS Variables & Reset ===== */
         :root {
