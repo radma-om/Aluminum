@@ -2537,6 +2537,7 @@ function createApp(db, { agentClient } = {}) {
         // The work order notices (appointment, on the way, started, done) and the templates account's webhook
         work_orders: orderNotify.status(db),
         phone_verify: phoneVerify.config(db),
+        ratings: require('./ratings').status(db),
         templates_webhook_path: req.user.role === 'manager' && (process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET || '').length >= 16
             ? `/webhooks/mazbot-templates/${process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET}` : null
     }));
@@ -2853,6 +2854,7 @@ function start() {
     backup.scheduleDailyBackups(db);
     offsite.scheduleDaily(db);
     followup.schedule(db);
+    require('./ratings').schedule(db);
     // PORT is usually a number; some hosting runners pass a socket path instead
     const port = process.env.PORT || 3000;
     createApp(db).listen(/^\d+$/.test(String(port)) ? Number(port) : port, () => {
