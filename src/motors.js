@@ -120,7 +120,7 @@ function loadExtraFees(db, { includeInactive = false } = {}) {
 const sectionFees = (fees, sectionId) => fees.filter((f) => f.section_id == null || f.section_id === sectionId)
     .map((f) => ({ name: f.name, amount: f.amount }));
 
-const feeText = (f) => `${f.name}: ${f.amount != null ? `${Number(f.amount).toFixed(2)} ر.ع` : 'تُحدد بعد المعاينة'}`;
+const feeText = (f) => `${f.name}: ${f.amount != null ? `${Number(f.amount).toFixed(3)} ر.ع` : 'تُحدد بعد المعاينة'}`;
 const extraFeesNote = (fees) => (fees.length ? 'رسوم إضافية عند الحاجة (غير مشمولة في السعر): ' + fees.map(feeText).join('، ') : '');
 
 /* Wilayat of the enabled governorates (installation fee may be missing: then it is set after a visit) */

@@ -256,13 +256,13 @@ function closeEndedMonth(db, nowMs = Date.now()) {
     const push = require('./push');
     push.send(db, push.accountsOf(db, (u) => u.role === 'manager'), {
         title: `💰 أُغلق كشف عمولات ${monthName(prev)}`,
-        body: `إجمالي العمولات ${s.totals.commission.toFixed(2)} ر.ع — حقق الهدف ${s.stats ? s.stats.reached : 0} من ${s.stats ? s.stats.with_target : 0}`,
+        body: `إجمالي العمولات ${s.totals.commission.toFixed(3)} ر.ع — حقق الهدف ${s.stats ? s.stats.reached : 0} من ${s.stats ? s.stats.with_target : 0}`,
         url: '/admin#tab=bonuses', tag: 'bonus-' + prev
     }).catch(() => {});
     for (const p of s.people.filter((x) => x.commission > 0)) {
         push.send(db, [`u:${p.user_id}`], {
             title: `💰 عمولتك لشهر ${monthName(prev)}`,
-            body: `${p.commission.toFixed(2)} ر.ع${p.kind === 'sales' ? ` — حققت ${p.progress}% من هدفك` : ` — ${p.count} تركيبات`}`,
+            body: `${p.commission.toFixed(3)} ر.ع${p.kind === 'sales' ? ` — حققت ${p.progress}% من هدفك` : ` — ${p.count} تركيبات`}`,
             url: '/admin', tag: 'bonus-' + prev
         }).catch(() => {});
     }

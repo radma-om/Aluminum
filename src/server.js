@@ -1573,8 +1573,8 @@ function createApp(db, { agentClient } = {}) {
         if (own) inv = null;
         const sum = Math.round(lines.reduce((s, l) => s + l.line_total, 0) * 100) / 100;
         const what = lines.length === 1
-            ? `خدمة «${lines[0].name}» (${lines[0].quantity} × ${lines[0].unit_price.toFixed(2)} = ${lines[0].line_total.toFixed(2)} ر.ع)`
-            : `${lines.length} خدمات (${lines.map((l) => l.name).join('، ')}) — ${sum.toFixed(2)} ر.ع`;
+            ? `خدمة «${lines[0].name}» (${lines[0].quantity} × ${lines[0].unit_price.toFixed(3)} = ${lines[0].line_total.toFixed(3)} ر.ع)`
+            : `${lines.length} خدمات (${lines.map((l) => l.name).join('، ')}) — ${sum.toFixed(3)} ر.ع`;
         if (inv) {
             inv = invoices.addLines(db, inv.id, lines, `إضافة ${what} — أمر العمل ${order.number}`, who);
         } else {

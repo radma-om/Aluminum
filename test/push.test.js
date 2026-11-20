@@ -115,7 +115,7 @@ test('who is told: customer quotes, a customer handed over, a work order, an app
     saveQuote(db, { customer_name: 'خالد', customer_phone: '96891234567', source: 'web', priced, lead_key: leads.phoneKey('96891234567') });
     await settle();
     assert.deepEqual(to('📄 عرض سعر جديد من عميل'), ['boss', 'sultan']);
-    assert.match(sent.find((m) => m.title === '📄 عرض سعر جديد من عميل').body, /خالد — 500\.00 ر\.ع/);
+    assert.match(sent.find((m) => m.title === '📄 عرض سعر جديد من عميل').body, /خالد — 500\.000 ر\.ع/);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM push_subscriptions WHERE endpoint LIKE '%gone%'").get().n, 0, 'a device the service no longer knows is removed');
     sent.length = 0;
     saveQuote(db, { customer_name: 'خالد', customer_phone: '96891234567', source: 'staff', priced, details: { staff_quote: true, created_by: 'سلطان' } });

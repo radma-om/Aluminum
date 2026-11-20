@@ -204,7 +204,7 @@ const userKeyByName = (db, name) => {
     return row ? `u:${row.id}` : null;
 };
 
-const money = (n) => Number(n || 0).toFixed(2);
+const money = (n) => Number(n || 0).toFixed(3);
 const SOURCES = { mazbot: 'واتساب', whatsapp: 'واتساب', website: 'دردشة الموقع', web: 'الحاسبة', calculator: 'الحاسبة' };
 
 /* A quote a customer made (calculators, WhatsApp, website chat) */
