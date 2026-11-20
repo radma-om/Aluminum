@@ -5,7 +5,8 @@
    ============================================================= */
 
 const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
-const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Amounts: three decimals, like the rest of the system (the name stays: it is used everywhere)
+const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 const compact = (n) => (Math.abs(n) >= 10000 ? new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n) : fmt.format(n));
 const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SVG = 'http://www.w3.org/2000/svg';

@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.50.4', date: '2026-11-20',
+        ar: ['الأيقونات تظهر فوراً: صارت من النظام نفسه بدل موقع خارجي، والأيقونات المستخدمة فقط (13 كيلوبايت بدل نحو 280)، في اللوحة وحاسبات العملاء', 'لوحة المؤشرات: المبالغ بثلاث خانات عشرية مثل باقي النظام'],
+        en: ['Icons show at once: they now come from the system itself instead of an outside site, only the icons used (13 KB instead of about 280), in the panel and the customer calculators', 'Dashboard: amounts with three decimals like the rest of the system']
+    },
+    {
         version: '3.50.3', date: '2026-11-20',
         ar: ['سرعة: كشف العمولات يفتح أسرع بعدة مرات مع كثرة الفواتير، ولوحة المؤشرات وتقرير الموظفين أخف على الخادم', 'حاسبات العملاء تظهر أسرع: الأيقونات تُحمَّل بجانب الصفحة بدل أن تؤخرها', 'حماية: حد لعدد طلبات صفحات «تتبع طلبي» و«عرض السعر» من نفس العنوان'],
         en: ['Speed: the commissions statement opens several times faster with many invoices, and the dashboard and the team report are lighter on the server', 'The customer calculators show sooner: the icons load beside the page instead of holding it back', 'Protection: a limit on requests to the «Track my order» and «Quote» pages from one address']
