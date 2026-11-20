@@ -67,7 +67,7 @@ function priceListText(db) {
         if (!rows.length) continue;
         lines.push(`*${title}*`);
         for (const p of rows) {
-            lines.push(`• ${p.name}${p.type ? ' — ' + p.type : ''}: ${unitSellPrice(p, settings).toFixed(2)} ر.ع / ${unitLabel(p.unit)}`);
+            lines.push(`• ${p.name}${p.type ? ' — ' + p.type : ''}: ${unitSellPrice(p, settings).toFixed(3)} ر.ع / ${unitLabel(p.unit)}`);
         }
         lines.push('');
     }
@@ -83,7 +83,7 @@ function quoteText(quote, settings) {
     lines.push('');
     // Overhead gates are priced as a range (from – to, depending on the color)
     const range = (quote.details && quote.details.range) || {};
-    const amount = (from, to) => (to != null && to !== from ? `${from.toFixed(2)} – ${to.toFixed(2)}` : from.toFixed(2));
+    const amount = (from, to) => (to != null && to !== from ? `${from.toFixed(3)} – ${to.toFixed(3)}` : from.toFixed(3));
     for (const i of quote.items) {
         lines.push(`• ${i.name}${i.type ? ' — ' + i.type : ''}: ${i.quantity} ${unitLabel(i.unit)} × ${amount(i.unit_price, i.unit_price_to)} = ${amount(i.line_total, i.line_total_to)} ر.ع`);
     }

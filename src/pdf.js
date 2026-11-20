@@ -146,7 +146,7 @@ class RtlWriter {
     }
 }
 
-const money = (n) => Number(n).toFixed(2);
+const money = (n) => Number(n).toFixed(3);
 const amount = (from, to) => (to != null && to !== from ? `${money(from)} – ${money(to)}` : money(from));
 const qty = (n) => String(Math.round(Number(n) * 100) / 100);
 

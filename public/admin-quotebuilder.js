@@ -23,7 +23,7 @@ let qbCostOnly = false;  // «حاسبة التكلفة والربح»: no custo
 
 const QB_UNITS = { meter: 'متر', piece: 'قطعة', m2: 'متر مربع', set: 'طقم', kg: 'كجم', service: 'خدمة' };
 const QB_CATS = { slat: 'الشرائح', accessory: 'الإكسسوارات', machine: 'المكائن' };
-const qbMoney = (n) => Number(n || 0).toFixed(2);
+const qbMoney = (n) => Number(n || 0).toFixed(3);
 const QB_CALCS = { rolling_shutter: 'بوابة رول شتر', overhead: 'بوابة أوفرهيد', motors: 'مكينة بوابة' };
 const QB_ICONS = { rolling_shutter: 'fa-warehouse', overhead: 'fa-door-closed', motors: 'fa-cogs' };
 
@@ -101,7 +101,7 @@ async function openQuoteBuilder({ customer = null, quote = null, costOnly = fals
     if (pr) {
         const notes = [];
         if (pr.percent) notes.push(`🎉 ${pr.label}: خصم ${pr.percent}% يُطبَّق تلقائياً على ${pr.applies_to.map((a) => a.name + (a.parts ? ` (${a.parts.join(' و')} فقط)` : '')).join('، ')}${pr.until ? ` حتى ${pr.until}` : ''}`);
-        if (pr.gift) notes.push(`🎁 هدية مع كل بوابة: ${pr.gift.name} (${Number(pr.gift.price).toFixed(2)} ر.ع، تُخصم 100%) في ${pr.gift.applies_to.map((a) => a.name).join('، ')}`);
+        if (pr.gift) notes.push(`🎁 هدية مع كل بوابة: ${pr.gift.name} (${Number(pr.gift.price).toFixed(3)} ر.ع، تُخصم 100%) في ${pr.gift.applies_to.map((a) => a.name).join('، ')}`);
         $id('qbPromo').textContent = notes.join(' — ') + ' — لا يُحسب من حد خصمك.';
     }
     renderQbLines();

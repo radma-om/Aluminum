@@ -12,7 +12,7 @@
      general lowest balance and the expense categories.
    Uses api(), $id(), esc(), setStatus(), askText(), askYes(), closeSheet(), ME, APP_LOCALE.
    ============================================================= */
-const wMoney = (n) => Number(n || 0).toFixed(2);
+const wMoney = (n) => Number(n || 0).toFixed(3);
 const wIsManager = () => ME && ME.role === 'manager';
 let walletMine = null;
 let walletAll = null;

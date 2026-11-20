@@ -7,7 +7,7 @@
 let invMeta = { methods: {}, states: {} };
 let invCurrent = null;
 let invQuote = null;
-const money2 = (n) => Number(n || 0).toFixed(2);
+const money2 = (n) => Number(n || 0).toFixed(3);
 const todayLocal = () => new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10); // Muscat
 
 function closeSheet(id) { $id(id).hidden = true; }

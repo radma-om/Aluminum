@@ -27,7 +27,7 @@ const MAX_RECEIPT = 1_500_000; // bytes, after the phone shrinks the photo
 const err = (status, message) => Object.assign(new Error(message), { status });
 const clip = (v, n) => String(v ?? '').trim().slice(0, n);
 const round3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
-const money = (n) => Number(n || 0).toFixed(2);
+const money = (n) => Number(n || 0).toFixed(3);
 
 function ensureTables(db) {
     db.exec(`

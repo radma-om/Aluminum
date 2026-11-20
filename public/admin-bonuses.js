@@ -7,7 +7,7 @@
    Uses api(), $id(), esc(), setStatus(), ME from the other admin scripts.
    ============================================================= */
 let bonusData = null;
-const bMoney = (n) => Number(n || 0).toFixed(2);
+const bMoney = (n) => Number(n || 0).toFixed(3);
 /* «متبقٍ يوم / يومان / 5 أيام / 17 يوماً» */
 const bDays = (n) => (n === 1 ? 'يوم واحد' : n === 2 ? 'يومان' : n >= 3 && n <= 10 ? `${n} أيام` : `${n} يوماً`);
 
