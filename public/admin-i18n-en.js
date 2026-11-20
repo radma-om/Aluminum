@@ -526,6 +526,7 @@ window.I18N_EN = {
     "صفحة العرض للعميل": "Customer quote page",
     "طلب تقييم الخدمة من العميل على واتساب (اليوم التالي لاكتمال أمر العمل، من الساعة 10 صباحاً)": "Ask the customer to rate the service on WhatsApp (the day after the work order is done, from 10 am)",
     "رابط التقييم على Google": "Google review link",
+    "فحص الدخول لحسابات MazBot": "Check the MazBot accounts sign-in",
     "(يُرسل لمن يقيّم 4 أو 5 — اختياري)": "(sent to those who rate 4 or 5 — optional)",
     "حاسبات العملاء: رمز تحقق على واتساب قبل إرسال الطلب (مرة كل 30 يوماً لكل رقم)": "Customer calculators: a WhatsApp verification code before sending the request (once every 30 days per number)",
     "إرسال العرض للعميل من رقم الشركة": "Send the quote from the company number",
