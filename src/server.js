@@ -1997,6 +1997,13 @@ function createApp(db, { agentClient } = {}) {
 
     /* One quote, to show it on screen (the same data the PDF is drawn from) */
     /* «عرض السعر جاهز»: the quote's page link to the customer from the company's number */
+    /* «تذكير بانتهاء العرض» (managers only: the route is not mapped to a section): who will get it, and send it */
+    admin.get('/promo-reminders', (req, res) => res.json(require('./promo-reminders').list(db)));
+    admin.post('/promo-reminders/send', asyncRoute(async (req, res) => {
+        const pr = require('./promo-reminders');
+        const r = await pr.send(db, { origin: systemOrigin(req, db), by: staffName(req) });
+        res.json({ ...r, list: pr.list(db) });
+    }));
     admin.post('/quotes/:id/whatsapp', asyncRoute(async (req, res) => {
         const row = quoteFor(req, req.params.id);
         if (!row.access_key) throw httpError(400, 'هذا العرض بلا رابط للعميل');
