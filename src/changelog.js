@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.52.1', date: '2026-11-20',
+        ar: ['طلب التقييم: إن فشل إرساله (قالب لم يُعتمد بعد، أو عطل في MazBot) يُعاد بعد 6 ساعات، حتى 3 محاولات خلال الأيام الثلاثة — وكل محاولة مكتوبة في سجل أمر العمل'],
+        en: ['Rating request: a failed send (template not approved yet, or MazBot down) is tried again 6 hours later, up to 3 attempts within the 3 days — each attempt is written in the work order log']
+    },
+    {
         version: '3.52.0', date: '2026-11-20',
         ar: ['تقييم الخدمة على واتساب: في اليوم التالي لاكتمال أمر العمل (من 10 صباحاً) يصل العميل «كيف كانت خدمتنا؟» بأزرار من 5 ممتاز إلى 1 ضعيف', 'تقييم 4–5: شكر مع رابط التقييم على Google؛ تقييم 1–3: اعتذار وسؤال عن السبب، وإشعار فوري للمديرين، وتُحفظ ملاحظة العميل', 'التقييم والملاحظة في سجل أمر العمل وسجل العميل، وملخص آخر 30 يوماً في «الربط»'],
         en: ['Service rating on WhatsApp: the day after a work order is done (from 10 am) the customer gets «How was our service?» with buttons from 5 Excellent to 1 Poor', 'A 4–5 rating is thanked with the Google review link; 1–3 gets an apology asking why, the managers are told at once, and the customer\'s comment is kept', 'The rating and comment are in the work order and customer logs, with a 30-day summary in «Integrations»']
