@@ -376,6 +376,8 @@ CREATE TABLE IF NOT EXISTS lead_messages (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS lead_messages_lead ON lead_messages (lead_id, id);
+-- The dashboard and the team report count the messages of a period
+CREATE INDEX IF NOT EXISTS lead_messages_time ON lead_messages (created_at);
 
 CREATE TABLE IF NOT EXISTS lead_notes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -475,6 +477,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 -- One valid invoice per quote (a cancelled one can be replaced)
 CREATE UNIQUE INDEX IF NOT EXISTS invoices_one_per_quote ON invoices (quote_id) WHERE status = 'issued';
 CREATE INDEX IF NOT EXISTS invoices_customer_activity ON invoices (customer_phone, created_at);
+CREATE INDEX IF NOT EXISTS invoices_issue_date ON invoices (issue_date);
 
 -- Money received against an invoice (deposit, instalments)
 CREATE TABLE IF NOT EXISTS payments (

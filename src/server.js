@@ -797,6 +797,8 @@ function createApp(db, { agentClient } = {}) {
         sendInvoicePdf(res, inv);
     });
     /* «تتبع طلبي»: the customer's page of an invoice — the steps, the amounts, the appointment (src/tracking.js) */
+    // The customer's pages: the random key is the access control; a limit per address keeps guessing and floods away
+    app.use(['/t', '/q'], rateLimit({ windowMs: 10 * 60_000, max: 120 }));
     app.get('/t/:key', tracking.route(db, getSettings));
     /* «عرض السعر»: the customer reviews the quote and accepts it (src/quote-page.js) */
     quotePage.routes(app, db, getSettings, express);
@@ -1863,8 +1865,9 @@ function createApp(db, { agentClient } = {}) {
     /* ---- Monthly commissions (managers only: the route is not mapped to a section); each employee sees their own ---- */
     admin.get('/bonuses', (req, res) => {
         const month = String(req.query.month || bonuses.thisMonth());
-        const s = bonuses.statement(db, month);
-        res.json({ ...s, history: bonuses.history(db, month) });
+        const shared = {}; // the invoices are read once for the statement and its six months of history
+        const s = bonuses.statement(db, month, shared);
+        res.json({ ...s, history: bonuses.history(db, month, 6, shared) });
     });
     // The dashboard: this month in a few figures (managers)
     admin.get('/bonuses/summary', (req, res) => {
