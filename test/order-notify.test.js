@@ -179,7 +179,7 @@ test('«تتبع» finds the quotes not invoiced yet and the customer\'s second 
     assert.ok(text.includes(`📄 عرض سعر ${v.ref}\nالمبلغ: 363.960 ر.ع — ساري حتى`), 'the valid quote: title, then the amount in a sentence');
     assert.ok(text.includes(`\n${base}/q/${v.access_key}`), 'with its page (review and accept), on a line of its own');
     assert.match(text, /المبلغ: 454\.950 ر\.ع — انتهت صلاحيته، راسلونا لتحديث السعر/);
-    assert.match(text, /^طلباتكم لدى رادما 👇\n\n📄/, 'an empty line after the heading');
+    assert.match(text, /^طلباتكم لدى ردما للبوابات الإلكترونية 👇\n\n📄/, 'an empty line after the heading');
     assert.match(text, /\/q\/[0-9a-f]{32}\n\n📄 عرض سعر/, 'an empty line between two quotes');
     assert.ok(!text.includes(inv.number), 'nothing of another customer');
     // The quote's own page opens

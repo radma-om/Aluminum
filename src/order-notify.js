@@ -34,6 +34,7 @@ const WORK = { installation: 'تركيب البوابة', maintenance: 'الصي
 const MUTE_HOURS = 48;
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const money = (n) => Number(n || 0).toFixed(3);
+const companyName = (db) => getSettings(db).company_name || 'ردما للبوابات الإلكترونية';
 
 let sender = null; // tests
 const setSenderForTests = (fn) => { sender = fn; };
@@ -91,7 +92,7 @@ function when(order) {
 function values(db, order, event, link) {
     const name = String(order.customer_name || '').trim().split(/\s+/)[0] || 'عميلنا العزيز';
     const work = WORK[order.kind] || 'العمل';
-    const tech = order.technician_name || 'فريق رادما';
+    const tech = order.technician_name || `فريق ${companyName(db)}`;
     if (event === 'scheduled') return [name, work, when(order), tech, link];
     if (event === 'on_the_way' || event === 'started') return [name, tech, work, link];
     const inv = order.invoice_id ? require('./invoices').get(db, order.invoice_id) : null;
@@ -193,7 +194,7 @@ async function handleTemplatesEvent(db, event, { origin = '', client = null } = 
         const lines = trackingFor(db, phone, origin);
         action = lines.length ? 'track' : 'track_none';
         reply = lines.length
-            ? `طلباتكم لدى رادما 👇\n\n${lines.join('\n\n')}\n\nللاستفسار راسلونا على 90660001.`
+            ? `طلباتكم لدى ${companyName(db)} 👇\n\n${lines.join('\n\n')}\n\nللاستفسار راسلونا على 90660001.`
             : 'لم نجد طلبات مسجلة بهذا الرقم. إذا كان الطلب برقم آخر راسلونا منه، أو تواصلوا مع خدمة العملاء على 90660001.';
     }
     let replyOk = null;

@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.51.0', date: '2026-11-20',
+        ar: ['اسم الشركة «ردما للبوابات الإلكترونية» في كل النظام: ملفات PDF، صفحات تتبع الطلب وعرض السعر، ردود واتساب، والمساعد الذكي', 'يُغيَّر تلقائياً إن كان الاسم المحفوظ «رادما» أو الاسم الافتراضي القديم؛ ويبقى قابلاً للتعديل من الإعدادات'],
+        en: ['The company name «Radma Electronic Gates» across the system: PDFs, the order tracking and quote pages, WhatsApp replies and the assistant', 'Renamed by itself where the saved name was «Radma» or the old default; still editable in the settings']
+    },
+    {
         version: '3.50.5', date: '2026-11-20',
         ar: ['رد «تتبع طلبي» على واتساب أوضح: لكل فاتورة أو طلب أو عرض سطر للعنوان، وسطر للمبلغ (والمتبقي للفاتورة)، والرابط في سطر مستقل، وسطر فارغ بين كل واحد والآخر'],
         en: ['The «Track my order» WhatsApp reply is clearer: for each invoice, order or quote a title line, an amount line (and the balance for an invoice), the link on a line of its own, and an empty line between items']
