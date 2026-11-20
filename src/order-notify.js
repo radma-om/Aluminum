@@ -154,17 +154,21 @@ function trackingFor(db, phone, origin) {
     const phones = phonesOf(db, phone);
     const marks = phones.map(() => '?').join(', ');
     const today = new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
-    const invs = db.prepare(`SELECT id, number, access_key, total FROM invoices WHERE customer_phone IN (${marks}) AND status = 'issued' ORDER BY id DESC LIMIT 3`).all(...phones);
+    const invs = db.prepare(`SELECT i.id, i.number, i.access_key, i.total, IFNULL((SELECT SUM(amount) FROM payments p WHERE p.invoice_id = i.id), 0) AS paid
+                             FROM invoices i WHERE i.customer_phone IN (${marks}) AND i.status = 'issued' ORDER BY i.id DESC LIMIT 3`).all(...phones);
     const orders = db.prepare(`SELECT * FROM work_orders WHERE customer_phone IN (${marks}) AND invoice_id IS NULL AND status IN ('new', 'scheduled', 'in_progress') ORDER BY id DESC LIMIT 3`).all(...phones);
     const quotes = db.prepare(`SELECT q.ref, q.access_key, q.total, q.valid_until FROM quotes q
                                WHERE q.customer_phone IN (${marks}) AND q.status IN ('new', 'contacted', 'accepted') AND q.access_key IS NOT NULL
                                AND q.created_at >= datetime('now', '-90 days')
                                AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.quote_id = q.id AND i.status = 'issued')
                                ORDER BY q.id DESC LIMIT 3`).all(...phones);
+    // One block per item: the title, the amount in an Arabic sentence (WhatsApp keeps «363.960 ر.ع» in order),
+    // and the link on a line of its own (blocks are separated by an empty line)
+    const balance = (i) => Math.max(0, i.total - i.paid);
     return [
-        ...invs.map((i) => `🧾 فاتورة ${i.number}: ${origin}/t/${i.access_key}`),
-        ...orders.map((o) => `🔧 طلب ${WORK[o.kind] || 'عمل'} ${o.number}: ${origin}${trackPath(db, o)}`),
-        ...quotes.map((q) => `📄 عرض سعر ${q.ref} (${money(q.total)} ر.ع)${q.valid_until && q.valid_until < today ? ' — انتهت صلاحيته، راسلونا لتحديث السعر' : q.valid_until ? ` — ساري حتى ${q.valid_until}` : ''}: ${origin}/q/${q.access_key}`)
+        ...invs.map((i) => `🧾 فاتورة ${i.number}\nالمبلغ: ${money(i.total)} ر.ع — ${balance(i) > 0.0005 ? `المتبقي: ${money(balance(i))} ر.ع` : 'مدفوعة بالكامل ✅'}\n${origin}/t/${i.access_key}`),
+        ...orders.map((o) => `🔧 طلب ${WORK[o.kind] || 'عمل'} ${o.number}\n${o.scheduled_date ? `الموعد: ${when(o)}` : 'الموعد: سيُحدَّد قريباً'}\n${origin}${trackPath(db, o)}`),
+        ...quotes.map((q) => `📄 عرض سعر ${q.ref}\nالمبلغ: ${money(q.total)} ر.ع${q.valid_until && q.valid_until < today ? ' — انتهت صلاحيته، راسلونا لتحديث السعر' : q.valid_until ? ` — ساري حتى ${q.valid_until}` : ''}\n${origin}/q/${q.access_key}`)
     ];
 }
 
@@ -189,7 +193,7 @@ async function handleTemplatesEvent(db, event, { origin = '', client = null } = 
         const lines = trackingFor(db, phone, origin);
         action = lines.length ? 'track' : 'track_none';
         reply = lines.length
-            ? `طلباتكم لدى رادما 👇\n${lines.join('\n')}\n\nللاستفسار راسلونا على 90660001.`
+            ? `طلباتكم لدى رادما 👇\n\n${lines.join('\n\n')}\n\nللاستفسار راسلونا على 90660001.`
             : 'لم نجد طلبات مسجلة بهذا الرقم. إذا كان الطلب برقم آخر راسلونا منه، أو تواصلوا مع خدمة العملاء على 90660001.';
     }
     let replyOk = null;
