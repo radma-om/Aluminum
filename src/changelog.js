@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.53.0', date: '2026-11-21',
+        ar: ['«العروض والهدايا» ← تذكير العملاء بانتهاء العرض: قائمة بمن حصل على عرض سعر بالخصم أو الهدية الحالية ولم يُصدر له فاتورة، وزر «إرسال التذكير» على واتساب', 'الرسالة: كم يوفّر العرض، وآخر يوم، ورابط عرض السعر للموافقة — مرة لكل رقم في كل عرض، وتُمدَّد صلاحية عرض السعر حتى آخر يوم'],
+        en: ['«Offers & gifts» → remind customers the offer ends: a list of those with a quote under the current discount or gift and no invoice, and a «Send the reminder» button on WhatsApp', 'The message: how much the offer saves, the last day, and the quote link to accept — once per number per offer; the quote\'s validity is extended to the last day']
+    },
+    {
         version: '3.52.5', date: '2026-11-21',
         ar: ['عند فشل إرسال قالب واتساب يُذكر رقم القالب في سطر الحالة (مثل «فشل 1/4: قالب 3366: …») — في تنبيهات الحاسبات والفواتير وأوامر العمل والتقييم ورمز التحقق، فيُعرف من MazBot أي قالب رُفض ولماذا'],
         en: ['When a WhatsApp template fails, its number is in the status line (e.g. «failed 1/4: template 3366: …») — in the calculator alerts, invoices, work orders, ratings and the verification code — so MazBot shows which template was refused and why']
