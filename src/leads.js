@@ -141,7 +141,7 @@ function quoteCreated(db, quote, { key = null, channel = 'calculator' } = {}) {
     const lead = touch(db, { key: key || phoneKey(quote.customer_phone), channel, name: quote.customer_name, phone: quote.customer_phone });
     if (!lead) return;
     if (quote.customer_phone && !lead.phone) db.prepare('UPDATE leads SET phone = ? WHERE id = ?').run(quote.customer_phone, lead.id);
-    addMessage(db, lead, 'system', `📄 عرض سعر ${quote.ref} — ${Number(quote.total).toFixed(2)} ر.ع`);
+    addMessage(db, lead, 'system', `📄 عرض سعر ${quote.ref} — ${Number(quote.total).toFixed(3)} ر.ع`);
     // A new request from a customer whose follow-up was closed (sold / lost) is new business: open again,
     // so it shows in «المفتوحة» (an employee's own quote reopens it as followed up)
     if (['won', 'lost'].includes(lead.status)) {
@@ -282,7 +282,7 @@ function backfill(db) {
         const lead = touch(db, { key: phoneKey(q.customer_phone), channel, name: q.customer_name, phone: q.customer_phone });
         if (!lead) continue;
         db.prepare('INSERT INTO lead_messages (lead_id, role, text, created_at) VALUES (?, ?, ?, ?)')
-            .run(lead.id, 'system', `📄 عرض سعر ${q.ref} — ${Number(q.total).toFixed(2)} ر.ع`, q.created_at);
+            .run(lead.id, 'system', `📄 عرض سعر ${q.ref} — ${Number(q.total).toFixed(3)} ر.ع`, q.created_at);
         const status = q.status === 'accepted' || q.status === 'done' ? 'won' : q.status === 'rejected' ? 'lost'
             : q.status === 'contacted' ? 'following' : 'new';
         db.prepare(`UPDATE leads SET last_activity_at = ?, last_message = ?, last_role = 'system', message_count = message_count + 1,

@@ -152,7 +152,7 @@ function createFromQuote(db, quote, input = {}, author = null) {
         if (['new', 'contacted'].includes(quote.status)) db.prepare("UPDATE quotes SET status = 'accepted' WHERE id = ?").run(quote.id);
         const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(quote.customer_phone);
         if (lead) {
-            leads.addMessage(db, lead, 'system', `🧾 فاتورة ${number} — ${total.toFixed(2)} ر.ع${author ? ` (${author})` : ''}`);
+            leads.addMessage(db, lead, 'system', `🧾 فاتورة ${number} — ${total.toFixed(3)} ر.ع${author ? ` (${author})` : ''}`);
             if (leads.OPEN_STATUSES.includes(lead.status)) db.prepare("UPDATE leads SET status = 'won' WHERE id = ?").run(lead.id);
         }
         return invoiceId;
@@ -168,7 +168,7 @@ function addPayment(db, invoiceId, input, author = null) {
         const inv = get(db, invoiceId);
         if (!inv) throw err(404, 'الفاتورة غير موجودة');
         if (inv.status === 'cancelled') throw err(400, 'الفاتورة ملغاة — لا تُسجَّل عليها دفعات');
-        if (p.amount > inv.balance + EPS) throw err(400, `المبلغ أكبر من المتبقي على الفاتورة (${inv.balance.toFixed(2)} ر.ع)`);
+        if (p.amount > inv.balance + EPS) throw err(400, `المبلغ أكبر من المتبقي على الفاتورة (${inv.balance.toFixed(3)} ر.ع)`);
         db.prepare('INSERT INTO payments (invoice_id, amount, method, paid_on, reference, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
             .run(inv.id, p.amount, p.method, p.paid_on, p.reference, p.note, author);
     });
@@ -212,7 +212,7 @@ function revise(db, invoiceId, { priced, details, reason }, author = null) {
         if (!inv) throw err(404, 'الفاتورة غير موجودة');
         if (inv.status === 'cancelled') throw err(400, 'الفاتورة ملغاة — لا تُعدَّل');
         if (inv.paid > total + EPS) {
-            throw err(400, `المدفوع على الفاتورة (${inv.paid.toFixed(2)} ر.ع) أكبر من الإجمالي الجديد (${total.toFixed(2)} ر.ع) — الدفعات لا تتغير: عدّل البنود، أو احذف دفعة / سجّل استرداداً أولاً`);
+            throw err(400, `المدفوع على الفاتورة (${inv.paid.toFixed(3)} ر.ع) أكبر من الإجمالي الجديد (${total.toFixed(3)} ر.ع) — الدفعات لا تتغير: عدّل البنود، أو احذف دفعة / سجّل استرداداً أولاً`);
         }
         db.prepare(`INSERT INTO invoice_revisions (invoice_id, items_json, details_json, subtotal, vat, total, new_total, reason, edited_by)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -224,7 +224,7 @@ function revise(db, invoiceId, { priced, details, reason }, author = null) {
             .run(JSON.stringify(priced.items), details ? JSON.stringify(details) : null, round2(priced.subtotal), round2(priced.subtotal),
                 Number(priced.vat_percent) || 0, round2(priced.vat), total, dep ? dep.type : null, dep ? dep.value : null, dep ? dep.amount : null, inv.id);
         const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(inv.customer_phone);
-        if (lead) leads.addMessage(db, lead, 'system', `✏️ عُدّلت الفاتورة ${inv.number}: الإجمالي ${inv.total.toFixed(2)} ← ${total.toFixed(2)} ر.ع — ${why}${author ? ` (${author})` : ''}`);
+        if (lead) leads.addMessage(db, lead, 'system', `✏️ عُدّلت الفاتورة ${inv.number}: الإجمالي ${inv.total.toFixed(3)} ← ${total.toFixed(3)} ر.ع — ${why}${author ? ` (${author})` : ''}`);
         return { ...get(db, inv.id), previous_total: inv.total };
     });
 }
@@ -249,7 +249,7 @@ function addLines(db, invoiceId, lines, reason, author = null) {
             .run(JSON.stringify([...inv.items, ...lines]), round2(inv.quote_subtotal + added), subtotal, vat, total,
                 dep ? dep.type : null, dep ? dep.value : null, dep ? dep.amount : null, inv.id);
         const lead = db.prepare('SELECT * FROM leads WHERE phone = ?').get(inv.customer_phone);
-        if (lead) leads.addMessage(db, lead, 'system', `🧾 ${reason} — الفاتورة ${inv.number}: الإجمالي ${inv.total.toFixed(2)} ← ${total.toFixed(2)} ر.ع${author ? ` (${author})` : ''}`);
+        if (lead) leads.addMessage(db, lead, 'system', `🧾 ${reason} — الفاتورة ${inv.number}: الإجمالي ${inv.total.toFixed(3)} ← ${total.toFixed(3)} ر.ع${author ? ` (${author})` : ''}`);
         return { ...get(db, inv.id), previous_total: inv.total };
     });
 }

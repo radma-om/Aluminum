@@ -174,7 +174,7 @@ test('the month runs 1st to last day; pace and statistics; it closes by itself w
     const to = (who) => sent.find((m) => m.endpoint.endsWith(who));
     assert.match(to('boss').title, /أُغلق كشف عمولات/);
     assert.match(to('ahmed').title, /عمولتك لشهر/);
-    assert.match(to('ahmed').body, /25\.00 ر\.ع — حققت 114\.3% من هدفك/);
+    assert.match(to('ahmed').body, /25\.000 ر\.ع — حققت 114\.3% من هدفك/);
     assert.equal(bonuses.closeEndedMonth(db), null, 'once');
     // The manager reopened it: not closed again by itself
     bonuses.unapprove(db, last);

@@ -270,7 +270,7 @@ function renderProducts() {
             <td>${p.pricing_mode === 'lme' ? '<span class="badge lme">LME</span>' : '<span class="badge">يدوي</span>'}</td>
             <td>${canViewCosts && p.unit_cost != null ? Number(p.unit_cost).toFixed(3) : '—'}</td>
             <td>${canViewCosts ? (p.profit_percent ?? defaultProfit + ' (افتراضي)') : '—'}</td>
-            <td><strong>${p.unit_price.toFixed(2)}</strong>${p.sell_price !== null ? ' <small>(ثابت)</small>' : ''}</td>
+            <td><strong>${p.unit_price.toFixed(3)}</strong>${p.sell_price !== null ? ' <small>(ثابت)</small>' : ''}</td>
             <td>${p.is_public ? '<span class="badge on">نعم</span>' : '<span class="badge">لا</span>'}</td>
             <td style="white-space:nowrap">
                 <button class="btn btn-outline btn-sm" onclick="editProduct(${p.id})">تعديل</button>
@@ -472,8 +472,8 @@ async function loadQuotes() {
             <td>${esc(q.customer_name)}${q.customer_city ? '<br><small>' + esc(q.customer_city) + '</small>' : ''}
                 ${q.notes ? '<br><small style="color:var(--text-light)">' + esc(q.notes) + '</small>' : ''}</td>
             <td><a href="https://wa.me/${esc(q.customer_phone)}" target="_blank" rel="noopener">${esc(q.customer_phone)}</a></td>
-            <td class="quote-items">${q.items.map((i) => `${esc(i.name)}${i.type ? ' — ' + esc(i.type) : ''}: ${i.quantity} × ${i.unit_price.toFixed(2)}${i.unit_price_to != null ? ' – ' + i.unit_price_to.toFixed(2) : ''}${i.description ? `<span class="item-desc">${esc(i.description)}</span>` : ''}`).join('<br>')}</td>
-            <td><strong>${q.total.toFixed(2)}${q.details && q.details.range ? ' – ' + q.details.range.total_to.toFixed(2) : ''}</strong>
+            <td class="quote-items">${q.items.map((i) => `${esc(i.name)}${i.type ? ' — ' + esc(i.type) : ''}: ${i.quantity} × ${i.unit_price.toFixed(3)}${i.unit_price_to != null ? ' – ' + i.unit_price_to.toFixed(3) : ''}${i.description ? `<span class="item-desc">${esc(i.description)}</span>` : ''}`).join('<br>')}</td>
+            <td><strong>${q.total.toFixed(3)}${q.details && q.details.range ? ' – ' + q.details.range.total_to.toFixed(3) : ''}</strong>
                 ${q.details && q.details.free_lines && ME && ME.role === 'manager' ? `<br><span class="badge" style="background:#fdf2e1;color:#8a5a00" title="أسعار كتبها الموظف يدوياً — لا يراها حد الخصم">بند حر × ${esc(q.details.free_lines)}</span>` : ''}</td>
             <td>${esc(SOURCE_NAMES[q.source] || q.source)}</td>
             <td><small>${esc(q.notify_status || '—')}</small></td>
@@ -534,7 +534,7 @@ async function viewQuote(id) {
     try { q = await api('GET', `/api/admin/quotes/${id}`); } catch (err) { return alert(err.message); }
     const d = q.details || {};
     const range = d.range || {};
-    const m = (n) => Number(n || 0).toFixed(2);
+    const m = (n) => Number(n || 0).toFixed(3);
     const amount = (from, to) => (to != null && Math.abs(to - from) > 0.004 ? `${m(from)} – ${m(to)}` : m(from));
     const phone = String(q.customer_phone || '').replace(/\D/g, '');
     const unit = (i) => `${m(i.unit_price)}${i.unit_price_to != null ? ' – ' + m(i.unit_price_to) : ''}`;
@@ -701,7 +701,7 @@ function fillGift(st) {
     $id('giftUntil').value = st.gift_until || '';
     $id('giftScope').querySelectorAll('input').forEach((c) => { c.checked = (st.gift_scope || []).includes(c.value); });
     const ended = st.gift_enabled && st.gift_until && st.gift_until < localDay();
-    setStatus('giftStatus', !st.gift_enabled ? 'متوقفة' : ended ? 'انتهت (مرّ آخر يوم)' : `تعمل الآن: ${st.gift_name} (${Number(st.gift_price).toFixed(2)} ر.ع) مع كل بوابة`, st.gift_enabled && !ended ? 'ok' : '');
+    setStatus('giftStatus', !st.gift_enabled ? 'متوقفة' : ended ? 'انتهت (مرّ آخر يوم)' : `تعمل الآن: ${st.gift_name} (${Number(st.gift_price).toFixed(3)} ر.ع) مع كل بوابة`, st.gift_enabled && !ended ? 'ok' : '');
 }
 
 async function saveGift() {
@@ -817,7 +817,7 @@ let regions = [];
 let governorates = [];
 
 const productOptions = (filter, selected) => products.filter(filter)
-    .map((p) => `<option value="${p.id}" ${p.id === selected ? 'selected' : ''}>${esc(p.name)}${p.type ? ' — ' + esc(p.type) : ''} (${p.unit_price.toFixed(2)} ر.ع/${esc(UNIT_NAMES[p.unit] || p.unit)})</option>`)
+    .map((p) => `<option value="${p.id}" ${p.id === selected ? 'selected' : ''}>${esc(p.name)}${p.type ? ' — ' + esc(p.type) : ''} (${p.unit_price.toFixed(3)} ر.ع/${esc(UNIT_NAMES[p.unit] || p.unit)})</option>`)
     .join('');
 
 async function loadDoors() {
@@ -853,9 +853,9 @@ function renderTypes() {
                 ${t.variants.map((v) => {
                     const p = products.find((x) => x.id === v.product_id);
                     const colors = t.colors.filter((c) => c.variant_id == null || c.variant_id === v.id);
-                    return `<li><strong>${esc(v.label)}</strong> — ${p ? p.unit_price.toFixed(2) + ' ر.ع/' + esc(UNIT_NAMES[p.unit] || p.unit) : '؟'}
+                    return `<li><strong>${esc(v.label)}</strong> — ${p ? p.unit_price.toFixed(3) + ' ر.ع/' + esc(UNIT_NAMES[p.unit] || p.unit) : '؟'}
                         ${v.width_add_cm || v.height_add_cm ? ` <span class="badge">+${v.width_add_cm} عرض / +${v.height_add_cm} ارتفاع سم</span>` : ''}<br>
-                        ${colors.map((c) => `<span class="swatch-dot" style="background:${esc(c.hex || '#ccc')}"></span> ${esc(c.name)}${c.price_per_m2 != null ? ` (${Number(c.price_per_m2).toFixed(2)}/م²)` : ''}${c.fixed_fee > 0 ? ` (+${c.fixed_fee} صبغ)` : ''}`).join('، ') || 'بدون اختيار لون'}</li>`;
+                        ${colors.map((c) => `<span class="swatch-dot" style="background:${esc(c.hex || '#ccc')}"></span> ${esc(c.name)}${c.price_per_m2 != null ? ` (${Number(c.price_per_m2).toFixed(3)}/م²)` : ''}${c.fixed_fee > 0 ? ` (+${c.fixed_fee} صبغ)` : ''}`).join('، ') || 'بدون اختيار لون'}</li>`;
                 }).join('') || '<li style="color:var(--danger)">لا توجد سماكات — لن يظهر للعميل</li>'}
             </ul>
             <button class="btn btn-outline btn-sm" onclick="editType(${t.id})">تعديل</button>
@@ -982,7 +982,7 @@ function renderGroups() {
             <div class="status-text">${esc(g.description || '')}</div>
             <ul>${g.options.map((o) => {
                 const p = products.find((x) => x.id === o.product_id);
-                return `<li style="${o.active ? '' : 'opacity:0.5'}"><strong>${esc(o.label)}</strong> — ${p ? p.unit_price.toFixed(2) + ' ر.ع/' + esc(UNIT_NAMES[p.unit] || p.unit) : '؟'} — ${esc(o.details || '')}</li>`;
+                return `<li style="${o.active ? '' : 'opacity:0.5'}"><strong>${esc(o.label)}</strong> — ${p ? p.unit_price.toFixed(3) + ' ر.ع/' + esc(UNIT_NAMES[p.unit] || p.unit) : '؟'} — ${esc(o.details || '')}</li>`;
             }).join('')}</ul>
             <button class="btn btn-outline btn-sm" onclick="editGroup(${g.id})">تعديل</button>
             <button class="btn btn-danger btn-sm" onclick="deleteGroup(${g.id})">حذف</button>
@@ -1073,17 +1073,17 @@ async function previewDoor() {
     try {
         const { range, compare } = await api('GET', '/api/admin/configurator/preview?' + qs);
         if (!range.available) { $id('pvResult').innerHTML = `<div class="range-box">${esc(range.message)}</div>`; return; }
-        const byType = range.by_type.map((t) => `<li>${esc(t.shutter_type)}: من ${t.from.toFixed(2)} إلى ${t.to.toFixed(2)} ر.ع</li>`).join('');
+        const byType = range.by_type.map((t) => `<li>${esc(t.shutter_type)}: من ${t.from.toFixed(3)} إلى ${t.to.toFixed(3)} ر.ع</li>`).join('');
         const details = compare ? `
             <div class="pkg-card" style="margin-top:10px;">
                 <h4>${esc(compare.shutter_type.name)} — تفاصيل الفروقات (شاملة الضريبة)</h4>
                 <ul>
-                    ${compare.thickness_options.map((v) => `<li>شرائح ${esc(v.label)}: ${v.colors.map((c) => `${esc(c.name)} ${c.slats_price_with_vat.toFixed(2)}`).join('، ')} ر.ع</li>`).join('')}
+                    ${compare.thickness_options.map((v) => `<li>شرائح ${esc(v.label)}: ${v.colors.map((c) => `${esc(c.name)} ${c.slats_price_with_vat.toFixed(3)}`).join('، ')} ر.ع</li>`).join('')}
                 </ul>
-                ${compare.accessories.map((g) => `<strong>${esc(g.group)}</strong><ul>${g.classes.map((c) => `<li>${esc(c.label)}: ${c.price_with_vat.toFixed(2)} ر.ع</li>`).join('')}${g.can_skip ? `<li>${esc(g.skip_label)}: 0.00</li>` : ''}</ul>`).join('')}
+                ${compare.accessories.map((g) => `<strong>${esc(g.group)}</strong><ul>${g.classes.map((c) => `<li>${esc(c.label)}: ${c.price_with_vat.toFixed(3)} ر.ع</li>`).join('')}${g.can_skip ? `<li>${esc(g.skip_label)}: 0.00</li>` : ''}</ul>`).join('')}
             </div>` : '';
         $id('pvResult').innerHTML = `
-            <div class="range-box">النطاق: <strong>من ${range.from.toFixed(2)} إلى ${range.to.toFixed(2)} ر.ع</strong>
+            <div class="range-box">النطاق: <strong>من ${range.from.toFixed(3)} إلى ${range.to.toFixed(3)} ر.ع</strong>
                 شامل الضريبة — المساحة ${range.area_m2} م² — ${esc(range.delivery_installation)}<ul style="margin-top:6px; padding-inline-start:20px">${byType}</ul></div>${details}`;
     } catch (err) {
         $id('pvResult').innerHTML = `<div class="range-box" style="color:var(--danger)">${esc(err.message)}</div>`;
@@ -1496,7 +1496,7 @@ function addMtRow(m = {}) {
         (motorsData.sees_cost === false ? '' : cell('i-cost', m.cost, 'number', 90)) +
         `<td><input class="i-profit" type="number" min="0" step="0.5" value="${esc(m.profit_percent ?? '')}" placeholder="${esc(motorsData.profit_percent)}" style="width:70px"></td>` +
         cell('i-price', m.price, 'number', 90) +
-        `<td class="i-sell" dir="ltr">${m.sell_price != null ? Number(m.sell_price).toFixed(2) : '—'}</td>
+        `<td class="i-sell" dir="ltr">${m.sell_price != null ? Number(m.sell_price).toFixed(3) : '—'}</td>
          <td><input class="i-active" type="checkbox" ${m.active === 0 ? '' : 'checked'}></td>` +
         cell('i-link', m.link, 'url', 160) +
         `<td><button class="btn btn-outline btn-sm" onclick="this.closest('tr').remove()">حذف</button></td>`;
@@ -1743,7 +1743,7 @@ async function sendChat() {
             if (e.type === 'quote_created') {
                 const a = document.createElement('a');
                 a.href = e.pdf_url; a.target = '_blank'; a.rel = 'noopener';
-                a.textContent = `📄 عرض سعر ${e.ref} — ${e.total.toFixed(2)} ر.ع (فتح PDF)`;
+                a.textContent = `📄 عرض سعر ${e.ref} — ${e.total.toFixed(3)} ر.ع (فتح PDF)`;
                 bubble('event', a);
             } else if (e.type === 'human_requested') {
                 bubble('event', '🙋 طلب تحويل لموظف: ' + e.summary);

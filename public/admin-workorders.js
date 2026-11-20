@@ -122,14 +122,14 @@ function serviceResult(r, again) {
     const link = location.origin + (r.invoice.track_url || r.invoice.pdf_url);
     const pdf = location.origin + r.invoice.pdf_url;
     const phone = String(r.invoice.customer_phone || '').replace(/\D/g, '');
-    const wa = `https://wa.me/${encodeURIComponent(phone)}?text=${encodeURIComponent(`فاتورة رقم ${r.invoice.number} — الإجمالي ${Number(r.invoice.total).toFixed(2)} ر.ع\nتتبع طلبك والفاتورة: ${link}`)}`;
+    const wa = `https://wa.me/${encodeURIComponent(phone)}?text=${encodeURIComponent(`فاتورة رقم ${r.invoice.number} — الإجمالي ${Number(r.invoice.total).toFixed(3)} ر.ع\nتتبع طلبك والفاتورة: ${link}`)}`;
     const added = (r.lines || [r.line]).reduce((s, l) => s + Number(l.line_total || 0), 0);
     return `
         <p class="status-text ok" style="font-weight:700">✓ أُضيفت الخدمة إلى الفاتورة ${esc(r.invoice.number)}</p>
         <div class="money-grid">
-            <div><small>الخدمة</small><strong>${added.toFixed(2)}</strong></div>
-            <div><small>إجمالي الفاتورة (شامل الضريبة)</small><strong>${Number(r.invoice.total).toFixed(2)}</strong></div>
-            <div><small>المتبقي على العميل</small><strong>${Number(r.invoice.balance).toFixed(2)}</strong></div>
+            <div><small>الخدمة</small><strong>${added.toFixed(3)}</strong></div>
+            <div><small>إجمالي الفاتورة (شامل الضريبة)</small><strong>${Number(r.invoice.total).toFixed(3)}</strong></div>
+            <div><small>المتبقي على العميل</small><strong>${Number(r.invoice.balance).toFixed(3)}</strong></div>
         </div>
         <div class="form-buttons stack-mobile">
             <a class="btn btn-primary" href="${esc(pdf)}" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> فتح الفاتورة PDF</a>
@@ -187,7 +187,7 @@ const svServices = () => [...$id('svLines').querySelectorAll('.sv-line')].map((b
 }));
 function svSum() {
     const t = svServices().reduce((s, l) => s + l.quantity * l.unit_price, 0);
-    $id('svTotal').textContent = t > 0 ? `المجموع ${t.toFixed(2)} ر.ع قبل الضريبة` : '';
+    $id('svTotal').textContent = t > 0 ? `المجموع ${t.toFixed(3)} ر.ع قبل الضريبة` : '';
 }
 function svLookupSoon() { clearTimeout(svTimer); svTimer = setTimeout(svLookup, 400); }
 async function svLookup() {
@@ -257,7 +257,7 @@ function woServiceWhere() {
 }
 function woServiceTotal() {
     const t = (Number($id('wsQty').value) || 0) * (Number($id('wsPrice').value) || 0);
-    $id('wsTotal').textContent = t > 0 ? `المجموع ${t.toFixed(2)} ر.ع قبل الضريبة` : '';
+    $id('wsTotal').textContent = t > 0 ? `المجموع ${t.toFixed(3)} ر.ع قبل الضريبة` : '';
 }
 async function submitWoService() {
     const body = { title: $id('wsTitle').value.trim(), description: $id('wsDesc').value.trim(), quantity: Number($id('wsQty').value), unit_price: Number($id('wsPrice').value), separate: woServiceSeparate() };

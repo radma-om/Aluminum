@@ -162,7 +162,7 @@ test('admin: sections with a description and an installation extra; profit % per
     assert.strictEqual(barrier.items.find((i) => i.name === 'التركيب').line_total, 80);
     assert.strictEqual(barrier.total, 525); // (420 + 80) × 1.05
     // Fees for all sections + the parking one, told but not added
-    assert.match(barrier.details.extra_fees_note, /التسليكات[^]*التأسيس[^]*قص وتمديد كيبل أرضي: 15\.00 ر\.ع/);
+    assert.match(barrier.details.extra_fees_note, /التسليكات[^]*التأسيس[^]*قص وتمديد كيبل أرضي: 15\.000 ر\.ع/);
     const swingQuote = await install(swing, saved.items[1]);
     assert.ok(!swingQuote.details.extra_fees_note.includes('كيبل'));
 

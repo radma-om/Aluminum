@@ -95,7 +95,7 @@ test('a WhatsApp conversation is kept for the follow-up: messages, quote, "talk 
     // A calculator request from the same number joins the same customer
     saveQuote(db, { customer_name: 'محمد', customer_phone: '99887897', source: 'web', priced: { items: [], subtotal: 100, vat_percent: 5, vat: 5, total: 105 } });
     assert.strictEqual(leads.list(db).length, 1);
-    assert.match(leads.detail(db, lead.id).messages.at(-1).text, /عرض سعر Q.* — 105\.00 ر\.ع/);
+    assert.match(leads.detail(db, lead.id).messages.at(-1).text, /عرض سعر Q.* — 105\.000 ر\.ع/);
     assert.strictEqual(leads.list(db)[0].quote_count, 1);
 });
 
