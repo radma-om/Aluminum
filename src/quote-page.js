@@ -77,7 +77,7 @@ function page(db, quote, settings, { just = null } = {}) {
     const s = state(db, quote);
     const d = quote.details || {};
     const range = d.range || {};
-    const company = settings.company_name || 'رادما';
+    const company = settings.company_name || 'ردما للبوابات الإلكترونية';
     const phone = String(settings.company_phone || '').replace(/\D/g, '');
     const intl = phone.length === 8 ? '968' + phone : phone;
     const first = String(quote.customer_name || '').trim().split(/\s+/)[0] || 'عميلنا العزيز';

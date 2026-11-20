@@ -176,9 +176,11 @@ test('«تتبع» finds the quotes not invoiced yet and the customer\'s second 
     assert.equal(out.action, 'track');
     const text = replies.at(-1).text;
     const v = db.prepare('SELECT ref, access_key FROM quotes WHERE id = ?').get(valid.id);
-    assert.ok(text.includes(`📄 عرض سعر ${v.ref} (363.960 ر.ع) — ساري حتى`), 'the valid quote');
-    assert.ok(text.includes(`${base}/q/${v.access_key}`), 'with its page (review and accept)');
-    assert.match(text, /454\.950 ر\.ع\) — انتهت صلاحيته، راسلونا لتحديث السعر/);
+    assert.ok(text.includes(`📄 عرض سعر ${v.ref}\nالمبلغ: 363.960 ر.ع — ساري حتى`), 'the valid quote: title, then the amount in a sentence');
+    assert.ok(text.includes(`\n${base}/q/${v.access_key}`), 'with its page (review and accept), on a line of its own');
+    assert.match(text, /المبلغ: 454\.950 ر\.ع — انتهت صلاحيته، راسلونا لتحديث السعر/);
+    assert.match(text, /^طلباتكم لدى ردما للبوابات الإلكترونية 👇\n\n📄/, 'an empty line after the heading');
+    assert.match(text, /\/q\/[0-9a-f]{32}\n\n📄 عرض سعر/, 'an empty line between two quotes');
     assert.ok(!text.includes(inv.number), 'nothing of another customer');
     // The quote's own page opens
     assert.equal((await fetch(`${base}/q/${v.access_key}`)).status, 200);
@@ -187,7 +189,8 @@ test('«تتبع» finds the quotes not invoiced yet and the customer\'s second 
     const row = db.prepare('SELECT * FROM quotes WHERE id = ?').get(valid.id);
     const inv2 = invoices.createFromQuote(db, { ...row, items: JSON.parse(row.items_json), details: JSON.parse(row.details_json) }, {}, 'سارة');
     out = await ask('96899887897');
-    assert.ok(replies.at(-1).text.includes(`🧾 فاتورة ${inv2.number}`));
+    assert.ok(replies.at(-1).text.includes(`🧾 فاتورة ${inv2.number}\nالمبلغ: `), 'the invoice: title, then the amount');
+    assert.match(replies.at(-1).text, /المتبقي: [\d.]+ ر\.ع|مدفوعة بالكامل/);
     assert.ok(!replies.at(-1).text.includes(`عرض سعر ${v.ref}`));
 
     // Written from the second number on their record
