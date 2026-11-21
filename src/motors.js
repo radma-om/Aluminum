@@ -13,7 +13,7 @@
      customer; they are not added to the total.
    ============================================================= */
 const { getSettings } = require('./db');
-const { round2 } = require('./pricing');
+const { round2, roundMoney } = require('./pricing');
 const promotions = require('./promotions');
 const { getRegion, locations } = require('./doors');
 
@@ -164,7 +164,7 @@ function findSection(db, ref) {
 
 const line = (name, type, unit, qty, price) => ({
     product_id: null, category: 'machine', name, type, unit, quantity: qty,
-    unit_price: round2(price), line_total: round2(price * qty)
+    unit_price: round2(price), line_total: roundMoney(price * qty)
 });
 
 /**
@@ -214,14 +214,14 @@ function motorPrice(db, { sectionId, kitId, kitCount = 1, parts = [], regionId, 
 
     const settings = getSettings(db);
     const vatPercent = Number(settings.vat_percent) || 0;
-    const subtotal = round2(lines.reduce((s, l) => s + l.line_total, 0));
-    const vat = round2(subtotal * vatPercent / 100);
+    const subtotal = roundMoney(lines.reduce((s, l) => s + l.line_total, 0));
+    const vat = roundMoney(subtotal * vatPercent / 100);
     const spec = [['نوع البوابة', section.name]];
     if (kit) spec.push(['المكينة', `${kit.name}${count > 1 ? ` × ${count}` : ''}`]);
     // Possible extra fees only concern an installation
     const extraFees = kit && installation ? sectionFees(loadExtraFees(db), section.id) : [];
     return promotions.apply(settings, {
-        items: lines, subtotal, vat_percent: vatPercent, vat, total: round2(subtotal + vat),
+        items: lines, subtotal, vat_percent: vatPercent, vat, total: roundMoney(subtotal + vat),
         spec, delivery_installation: installNote, region,
         extra_fees: extraFees, extra_fees_note: extraFeesNote(extraFees),
         order: {

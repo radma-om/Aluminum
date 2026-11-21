@@ -101,7 +101,8 @@ function page(db, inv, settings) {
     const phone = String(settings.company_phone || '').replace(/\D/g, '');
     const wa = phone ? `https://wa.me/${phone.length === 8 ? '968' + phone : phone}` : null;
     const pdf = `/invoices/${encodeURIComponent(inv.number)}.pdf?k=${inv.access_key}`;
-    const items = (inv.items || []).map((i) => `<tr><td>${esc(i.name)}${i.type ? `<small>${esc(i.type)}</small>` : ''}${i.description ? `<small>${esc(i.description)}</small>` : ''}</td>
+    const sizeOf = (i) => require('./doors').sizeText(i, inv.details || {});
+    const items = (inv.items || []).map((i) => `<tr><td>${esc(i.name)}${i.type ? `<small>${esc(i.type)}</small>` : ''}${sizeOf(i) ? `<small>${esc(sizeOf(i))}</small>` : ''}${i.description ? `<small>${esc(i.description)}</small>` : ''}</td>
         <td class="n">${esc(i.quantity)}</td><td class="n">${i.gift ? 'هدية' : money(i.line_total)}</td></tr>`).join('');
     const pays = (inv.payments || []).map((p) => `<li><span>${esc(p.paid_on)} — ${esc(invoices.METHODS[p.method] || p.method)}</span><b>${money(p.amount)}</b></li>`).join('');
     const dep = inv.deposit && !inv.deposit.paid && !v.cancelled ? `<p class="dep">${esc(inv.deposit.label)}: <b>${money(inv.deposit.amount)} ر.ع</b>${inv.paid > 0.0005 ? ` — المتبقي منه ${money(inv.deposit.remaining)} ر.ع` : ''}</p>` : '';

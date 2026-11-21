@@ -17,7 +17,7 @@ const costs = require('../src/costs');
 
 const OWNER = 'test-token-long-enough-1234';
 process.env.ADMIN_TOKEN = OWNER;
-const r2 = (n) => Math.round(n * 100) / 100;
+const r2 = (n) => Math.round((n + (n >= 0 ? 1 : -1) * 1e-9) * 10) / 10; // money: to the nearest 100 baisa (pricing.roundMoney)
 const door = { widthCm: 333, heightCm: 277, count: 2, shutterTypeId: 3, variantId: 4, colorId: 14, optionIds: [2, 5, 8, 11], regionId: 1 };
 
 async function start(t) {
@@ -111,4 +111,24 @@ test('6) a missing cost marks the profit as incomplete', () => {
     assert.ok(c.missing.length);
     const motorOnly = { items: [{ product_id: 8, quantity: 1 }] };
     assert.equal(costs.quoteCost(db, motorOnly, sq.price(db, motorOnly, settings), settings).complete, true);
+});
+
+test('money to the nearest 100 baisa: every line, the subtotal (their sum), the VAT and the total — in each calculator', async () => {
+    const db = openDatabase(':memory:');
+    const tenth = (n) => Math.abs(Math.round(n * 10) - n * 10) < 1e-6;
+    const check = (p, what) => {
+        for (const i of p.items) assert.ok(tenth(i.line_total), `${what}: ${i.name} ${i.line_total}`);
+        assert.ok(tenth(p.subtotal) && tenth(p.vat) && tenth(p.total), `${what}: ${p.subtotal} ${p.vat} ${p.total}`);
+        assert.equal(p.subtotal, Math.round(p.items.reduce((s, i) => s + i.line_total, 0) * 10) / 10, `${what}: the lines add up to the subtotal`);
+        assert.equal(p.total, Math.round((p.subtotal + p.vat) * 10) / 10, `${what}: subtotal + VAT = total`);
+    };
+    check(doors.finalPrice(db, door), 'roller shutter');
+    // With a promotion: its amount, the subtotal, VAT and total too
+    saveSettings(db, { promo_enabled: true, promo_percent: 7, promo_scope: ['rolling_shutter'], promo_parts: { rolling_shutter: ['slats', 'accessories'] } });
+    const cut = doors.finalPrice(db, door);
+    assert.ok(tenth(cut.promo.amount) && tenth(cut.subtotal) && tenth(cut.vat) && tenth(cut.total), JSON.stringify([cut.promo.amount, cut.subtotal, cut.vat, cut.total]));
+    assert.equal(cut.subtotal, Math.round((cut.promo.gross_subtotal - cut.promo.amount) * 10) / 10);
+    // The rule itself: 225.46 → 225.5, 225.44 → 225.4, 0.05 → 0.1
+    const { roundMoney } = require('../src/pricing');
+    assert.deepEqual([roundMoney(225.46), roundMoney(225.44), roundMoney(225.45), roundMoney(0.05), roundMoney(363.96)], [225.5, 225.4, 225.5, 0.1, 364]);
 });

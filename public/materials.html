@@ -173,6 +173,8 @@
     const CATEGORY_LABELS = { slat: 'الشرائح', accessory: 'الإكسسوارات', machine: 'المكائن' };
     const UNIT_LABELS = { meter: 'متر', piece: 'قطعة', m2: 'م²', set: 'طقم', kg: 'كجم' };
     const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+    // Money: to the nearest 100 baisa, like the server (pricing.roundMoney)
+    const roundMoney = (n) => Math.round((n + (n >= 0 ? 1 : -1) * 1e-9) * 10) / 10;
     const $ = (id) => document.getElementById(id);
 
     let catalog = null;
@@ -224,7 +226,7 @@
         $('dimsInputs').hidden = $('dimsInputs2').hidden = $('piecesInput').hidden = !byDims;
         $('qtyInput').hidden = byDims;
         $('qtyLabel').textContent = `الكمية (${UNIT_LABELS[p.unit] || p.unit})`;
-        $('unitPriceHint').textContent = `سعر الوحدة: ${p.unit_price.toFixed(2)} ر.ع / ${UNIT_LABELS[p.unit] || p.unit} (قبل الضريبة)` +
+        $('unitPriceHint').textContent = `سعر الوحدة: ${p.unit_price.toFixed(3)} ر.ع / ${UNIT_LABELS[p.unit] || p.unit} (قبل الضريبة)` +
             (byDims ? ` — كل 1 م² يحتاج ${catalog.sqm_to_linear} متر طولي من الشرائح` : '');
     }
 
@@ -257,18 +259,18 @@
             return `<tr>
                 <td class="name">${escapeHtml(productLabel(l.product))}${dims}</td>
                 <td>${round2(l.quantity)} ${unit}</td>
-                <td>${l.product.unit_price.toFixed(2)}</td>
-                <td>${round2(l.product.unit_price * l.quantity).toFixed(2)}</td>
+                <td>${l.product.unit_price.toFixed(3)}</td>
+                <td>${roundMoney(l.product.unit_price * l.quantity).toFixed(3)}</td>
                 <td><button class="btn btn-link" onclick="removeLine(${i})" aria-label="حذف">✕</button></td>
             </tr>`;
         }).join('');
         $('emptyLines').hidden = lines.length > 0;
         $('totals').hidden = lines.length === 0;
-        const subtotal = round2(lines.reduce((s, l) => s + round2(l.product.unit_price * l.quantity), 0));
-        const vat = round2(subtotal * (catalog ? catalog.vat_percent : 0) / 100);
-        $('subtotal').textContent = subtotal.toFixed(2);
-        $('vat').textContent = vat.toFixed(2);
-        $('total').textContent = round2(subtotal + vat).toFixed(2);
+        const subtotal = roundMoney(lines.reduce((s, l) => s + roundMoney(l.product.unit_price * l.quantity), 0));
+        const vat = roundMoney(subtotal * (catalog ? catalog.vat_percent : 0) / 100);
+        $('subtotal').textContent = subtotal.toFixed(3);
+        $('vat').textContent = vat.toFixed(3);
+        $('total').textContent = roundMoney(subtotal + vat).toFixed(3);
     }
 
     function showError(msg) { $('errorBox').textContent = msg; $('errorBox').style.display = 'block'; }
@@ -298,7 +300,7 @@
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'تعذر إرسال الطلب');
             $('quoteRef').textContent = data.ref;
-            $('quoteTotal').textContent = data.total.toFixed(2);
+            $('quoteTotal').textContent = data.total.toFixed(3);
             $('pdfLink').href = data.pdf_url;
             if (data.whatsapp_link) { $('waLink').href = data.whatsapp_link; $('waLink').hidden = false; }
             document.querySelectorAll('main > .card:not(#successCard)').forEach((c) => { c.hidden = true; });

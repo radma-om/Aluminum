@@ -87,7 +87,8 @@ function page(db, quote, settings, { just = null } = {}) {
     const intl = phone.length === 8 ? '968' + phone : phone;
     const first = String(quote.customer_name || '').trim().split(/\s+/)[0] || 'عميلنا العزيز';
     const amount = (from, to) => (to != null && Math.abs(to - from) > 0.0005 ? `${money(from)} – ${money(to)}` : money(from));
-    const items = (quote.items || []).map((i) => `<tr><td>${esc(i.name)}${i.type ? `<small>${esc(i.type)}</small>` : ''}${i.description ? `<small>${esc(i.description)}</small>` : ''}</td>
+    const sizeOf = (i) => require('./doors').sizeText(i, quote.details || {});
+    const items = (quote.items || []).map((i) => `<tr><td>${esc(i.name)}${i.type ? `<small>${esc(i.type)}</small>` : ''}${sizeOf(i) ? `<small>${esc(sizeOf(i))}</small>` : ''}${i.description ? `<small>${esc(i.description)}</small>` : ''}</td>
         <td class="n">${esc(i.quantity)}</td><td class="n">${i.gift ? 'هدية' : amount(i.line_total, i.line_total_to)}</td></tr>`).join('');
     const terms = String(settings.quote_terms || '').split('\n').map((t) => t.trim()).filter(Boolean);
     const pdf = `/quotes/${encodeURIComponent(quote.ref)}.pdf?k=${quote.access_key}`;

@@ -40,17 +40,18 @@ test('the calculation: catalog price (cannot be typed over), free lines, line an
         ],
         discount: { type: 'percent', value: 5 }
     }, settings);
-    const g1 = Math.round(unit * 2 * 100) / 100;
+    const r1 = (n) => Math.round((n + (n >= 0 ? 1 : -1) * 1e-9) * 10) / 10; // money: to the nearest 100 baisa
+    const g1 = r1(unit * 2);
     assert.equal(r.items[0].unit_price, unit);
     assert.equal(r.items[0].gross, g1);
-    assert.equal(r.items[0].line_total, Math.round(g1 * 0.9 * 100) / 100);
+    assert.equal(r.items[0].line_total, r1(g1 - r1(g1 * 0.1)));
     assert.equal(r.items[1].line_total, 80);
     const lines = r.items[0].line_total + 80;
-    assert.equal(r.subtotal, Math.round((lines - Math.round(lines * 0.05 * 100) / 100) * 100) / 100);
-    assert.equal(r.vat, Math.round(r.subtotal * 5) / 100);
-    assert.equal(r.total, Math.round((r.subtotal + r.vat) * 100) / 100);
-    assert.equal(r.pricing.gross_subtotal, Math.round((g1 + 100) * 100) / 100);
-    assert.equal(r.pricing.discount_total, Math.round((r.pricing.gross_subtotal - r.subtotal) * 100) / 100);
+    assert.equal(r.subtotal, r1(lines - r1(lines * 0.05)));
+    assert.equal(r.vat, r1(r.subtotal * 0.05));
+    assert.equal(r.total, r1(r.subtotal + r.vat));
+    assert.equal(r.pricing.gross_subtotal, r1(g1 + 100));
+    assert.equal(r.pricing.discount_total, r1(r.pricing.gross_subtotal - r.subtotal));
     assert.ok(r.pricing.discount_percent > 0);
     for (const bad of [
         { items: [] },
@@ -197,7 +198,8 @@ test('gates and motors by section: priced like the customer calculators, with th
 
     const engineGate = overhead.overheadPrice(db, { gateType: gate.gate_type, heightCm: gate.height_cm, widthCm: gate.width_cm, motorId: gate.motor_id, regionId: nizwa.id });
     const engineKit = motors.motorPrice(db, { sectionId: kit.section_id, kitId: kit.kit_id, kitCount: 1, parts: [], regionId: nizwa.id, installation: true });
-    const sum = (items, k = 'line_total') => Math.round(items.reduce((s, i) => s + (i[k] ?? i.line_total), 0) * 100) / 100;
+    const r1 = (n) => Math.round((n + (n >= 0 ? 1 : -1) * 1e-9) * 10) / 10;
+    const sum = (items, k = 'line_total') => r1(items.reduce((s, i) => s + (i[k] ?? i.line_total), 0));
 
     const items = [
         { calc: 'overhead', params: gate },
@@ -211,7 +213,7 @@ test('gates and motors by section: priced like the customer calculators, with th
     assert.equal(p.groups[1].gross, sum(engineGate.items, 'line_total_to'));
     assert.ok(p.groups[1].gross > p.groups[0].gross, 'the upper end of the overhead range');
     assert.equal(p.groups[2].gross, sum(engineKit.items));
-    assert.equal(p.groups[2].total, Math.round(p.groups[2].gross * 0.95 * 100) / 100);
+    assert.equal(p.groups[2].total, r1(p.groups[2].gross - r1(p.groups[2].gross * 0.05)));
     // The installation line of the wilayah is in each gate
     assert.ok(p.items.filter((i) => i.group === 0).some((i) => /تركيب/.test(i.name)));
     assert.equal(p.items.at(-1).group, undefined);

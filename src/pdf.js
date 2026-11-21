@@ -265,7 +265,9 @@ function renderQuotePdf(quote, settings, out, opts = {}) {
     const DESC_LINE = 12;
     quote.items.forEach((item, i) => {
         // The product's description: smaller and lighter under the line's name; the row grows to hold it
-        const desc = item.description ? w.wrap(item.description, nameCol.w - 8, DESC) : [];
+        // The gate's size (a roller shutter's slats line), then the line's description
+        const descText = [require('./doors').sizeText(item, details), item.description].filter(Boolean).join(' — ');
+        const desc = descText ? w.wrap(descText, nameCol.w - 8, DESC) : [];
         const rowH = 24 + (desc.length ? desc.length * DESC_LINE + 2 : 0);
         if (y + rowH > doc.page.height - 166) { doc.addPage(); y = 40; header(); }
         if (item.group !== undefined && item.group !== lastGroup && groups[item.group]) {

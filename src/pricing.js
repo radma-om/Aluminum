@@ -3,6 +3,10 @@
    ============================================================= */
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+/* Money on quotes and invoices: to the nearest 100 baisa (225.460 → 225.500). Each line, the discounts,
+   the subtotal (the sum of the lines), the VAT and the total — so every figure adds up exactly.
+   Unit prices stay as the manager set them. */
+const roundMoney = (n) => Math.round((Number(n) + (Number(n) >= 0 ? 1 : -1) * 1e-9) * 10) / 10;
 
 /* Same formula as the in-house pricing calculator (public/index.html) */
 function slatCostPerMeter(product, settings) {
@@ -70,7 +74,7 @@ function priceQuote(lines, products, settings) {
             quantity: Math.round(quantity * 1000) / 1000,
             unit_price: unitPrice,
             // the quantity shown × the unit price
-            line_total: round2(unitPrice * (Math.round(quantity * 1000) / 1000))
+            line_total: roundMoney(unitPrice * (Math.round(quantity * 1000) / 1000))
         };
         if (product.category === 'slat' && line.width && line.height) {
             item.dimensions = { width: Number(line.width), height: Number(line.height), pieces: Number(line.pieces) || 1 };
@@ -82,9 +86,9 @@ function priceQuote(lines, products, settings) {
 }
 
 function withTotals(items, settings) {
-    const subtotal = round2(items.reduce((s, i) => s + i.line_total, 0));
-    const vat = round2(subtotal * settings.vat_percent / 100);
-    return { items, subtotal, vat_percent: settings.vat_percent, vat, total: round2(subtotal + vat) };
+    const subtotal = roundMoney(items.reduce((s, i) => s + i.line_total, 0));
+    const vat = roundMoney(subtotal * settings.vat_percent / 100);
+    return { items, subtotal, vat_percent: settings.vat_percent, vat, total: roundMoney(subtotal + vat) };
 }
 
 /* =============================================================
@@ -102,5 +106,5 @@ function validateDoorSize(widthCm, heightCm, count) {
 }
 
 module.exports = {
-    round2, slatCostPerMeter, unitCost, unitSellPrice, priceQuote, withTotals, validateDoorSize, BASIS_LABELS
+    round2, roundMoney, slatCostPerMeter, unitCost, unitSellPrice, priceQuote, withTotals, validateDoorSize, BASIS_LABELS
 };

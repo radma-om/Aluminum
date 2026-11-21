@@ -25,6 +25,7 @@ const DEPOSIT_TYPES = { percent: 'نسبة', amount: 'مبلغ' };
 
 const err = (status, message) => Object.assign(new Error(message), { status });
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+const { roundMoney } = require('./pricing');
 const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) && !Number.isNaN(Date.parse(d + 'T00:00:00Z'));
 
 function tx(db, fn) {
@@ -82,7 +83,7 @@ function cleanDeposit(input, total) {
     const value = round2(input.value);
     if (!Number.isFinite(value) || value <= 0) throw err(400, 'قيمة المقدم غير صالحة');
     if (type === 'percent' && value > 100) throw err(400, 'نسبة المقدم لا تتجاوز 100%');
-    const amount = round2(type === 'percent' ? total * value / 100 : value);
+    const amount = roundMoney(type === 'percent' ? total * value / 100 : value);
     if (amount > total + EPS) throw err(400, 'المقدم المطلوب أكبر من إجمالي الفاتورة');
     return { type, value, amount };
 }
@@ -113,11 +114,11 @@ function createFromQuote(db, quote, input = {}, author = null) {
     if (range && !hasFinal) {
         throw err(400, 'سعر هذا العرض نطاق (من – إلى): اكتب المبلغ النهائي قبل الضريبة بعد الاتفاق مع العميل');
     }
-    const subtotal = hasFinal ? round2(input.final_subtotal) : round2(quote.subtotal);
+    const subtotal = hasFinal ? roundMoney(input.final_subtotal) : round2(quote.subtotal);
     if (!Number.isFinite(subtotal) || subtotal <= 0) throw err(400, 'المبلغ النهائي قبل الضريبة غير صالح');
     const vatPercent = Number(quote.vat_percent) || 0;
-    const vat = hasFinal ? round2(subtotal * vatPercent / 100) : round2(quote.vat);
-    const total = hasFinal ? round2(subtotal + vat) : round2(quote.total);
+    const vat = hasFinal ? roundMoney(subtotal * vatPercent / 100) : round2(quote.vat);
+    const total = hasFinal ? roundMoney(subtotal + vat) : round2(quote.total);
 
     const issueDate = String(input.issue_date || leads.localToday()).slice(0, 10);
     if (!isDate(issueDate)) throw err(400, 'تاريخ الفاتورة غير صالح');
@@ -236,10 +237,10 @@ function addLines(db, invoiceId, lines, reason, author = null) {
         const inv = get(db, invoiceId);
         if (!inv) throw err(404, 'الفاتورة غير موجودة');
         if (inv.status === 'cancelled') throw err(400, 'الفاتورة ملغاة — لا تُضاف إليها بنود');
-        const added = round2(lines.reduce((s, l) => s + Number(l.line_total || 0), 0));
-        const subtotal = round2(inv.subtotal + added);
-        const vat = round2(subtotal * (Number(inv.vat_percent) || 0) / 100);
-        const total = round2(subtotal + vat);
+        const added = roundMoney(lines.reduce((s, l) => s + Number(l.line_total || 0), 0));
+        const subtotal = roundMoney(inv.subtotal + added);
+        const vat = roundMoney(subtotal * (Number(inv.vat_percent) || 0) / 100);
+        const total = roundMoney(subtotal + vat);
         db.prepare(`INSERT INTO invoice_revisions (invoice_id, items_json, details_json, subtotal, vat, total, new_total, reason, edited_by)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
             .run(inv.id, JSON.stringify(inv.items), inv.details ? JSON.stringify(inv.details) : null, inv.subtotal, inv.vat, inv.total, total, String(reason || '').slice(0, 300), author);

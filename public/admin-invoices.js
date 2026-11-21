@@ -182,6 +182,7 @@ function showInvoice(inv) {
         ${(inv.items || []).length ? `<details class="inv-items"><summary>البنود (${inv.items.length})</summary><ol>
             ${inv.items.map((i) => `<li><b>${esc(i.name)}</b>${i.type ? ' — ' + esc(i.type) : ''}
                 <span class="status-text">${esc(i.quantity)} × ${money2(i.unit_price)} = ${money2(i.line_total)}${i.gift ? ' (هدية)' : ''}</span>
+                ${itemSizeText(i, inv.details) ? `<span class="item-desc">${esc(itemSizeText(i, inv.details))}</span>` : ''}
                 ${i.description ? `<span class="item-desc">${esc(i.description)}</span>` : ''}</li>`).join('')}
         </ol></details>` : ''}
         ${(inv.revisions || []).length ? `<details class="inv-items"><summary>سجل التعديلات (${inv.revisions.length})</summary><ol>
