@@ -65,7 +65,12 @@ function accept(db, quote) {
     if (lead) require('./leads').addMessage(db, lead, 'system', `✅ وافق العميل على عرض السعر ${quote.ref} (${money(quote.total)} ر.ع) من صفحة العرض — أصدر الفاتورة`);
     const owner = (quote.details && quote.details.created_by) || null;
     const push = require('./push');
-    push.send(db, push.accountsOf(db, (u) => u.role === 'manager' || (owner && u.display_name === owner)), {
+    const staff = require('./staff');
+    // Who is told: the managers, the quote's owner, and every employee who issues invoices and may see this
+    // customer — the first to call the customer and issue the invoice gets the sale
+    const told = (u) => u.role === 'manager' || (owner && u.display_name === owner)
+        || (u.permissions.includes('invoices') && staff.seesQuote(db, u, quote));
+    push.send(db, push.accountsOf(db, told), {
         title: `✅ وافق ${quote.customer_name || 'العميل'} على عرض السعر ${quote.ref}`,
         body: `${money(quote.total)} ر.ع — أصدر الفاتورة من «عروض الأسعار»`,
         url: '/admin#tab=quotes', tag: `quote-accepted-${quote.id}`

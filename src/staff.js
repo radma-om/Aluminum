@@ -312,6 +312,8 @@ function sectionsFor(method, path) {
         // The quote on screen: wherever its PDF may be opened (a customer's file shows it to follow-up staff too)
         [/^\/quotes\/\d+$/, method === 'GET' ? ['quotes', 'leads'] : ['quotes']],
         [/^\/quotes\/\d+\/invoice$/, ['invoices']],
+        // «وافق العميل»: whoever handles quotes or issues the invoices
+        [/^\/quotes\/accepted$/, ['quotes', 'invoices']],
         // Deleting a payment or cancelling an invoice: managers only
         [/^\/invoices\/\d+\/(payments\/\d+|cancel)$/, method === 'GET' ? ['invoices'] : 'manager'],
         [/^\/invoices(\/|$)/, ['invoices']],
