@@ -462,9 +462,32 @@ async function deletePurchase(id) {
 
 let quotesCache = [];
 
+/* A stored time (UTC, «2026-11-21 09:03:00») as Muscat time «2026-11-21 13:03» */
+const muscatTime = (at) => { const t = Date.parse(String(at || '').replace(' ', 'T') + 'Z'); return Number.isNaN(t) ? String(at || '') : new Date(t + 4 * 3600_000).toISOString().slice(0, 16).replace('T', ' '); };
+
+/* «وافق العميل»: who accepted from their page, waiting for the invoice first, then the invoiced ones and who issued them */
+async function loadAcceptedQuotes() {
+    let rows = [];
+    try { rows = await api('GET', '/api/admin/quotes/accepted'); } catch { return; }
+    $id('acceptedCard').hidden = !rows.length;
+    const waiting = rows.filter((q) => !q.invoice && q.status === 'accepted');
+    $id('acceptedSummary').textContent = waiting.length ? `— ${waiting.length} بانتظار الفاتورة` : '— كلها صدرت فواتيرها';
+    const order = [...waiting, ...rows.filter((q) => !waiting.includes(q))];
+    $id('acceptedRows').innerHTML = order.map((q) => `<tr${!q.invoice && q.status === 'accepted' ? ' style="background:#f2fdf6"' : ''}>
+        <td data-label="العميل">${esc(q.customer_name || '')}<br><a href="https://wa.me/${esc(q.customer_phone)}" target="_blank" rel="noopener" dir="ltr"><small>${esc(q.customer_phone)}</small></a></td>
+        <td data-label="عرض السعر"><button class="link-btn" style="margin:0;font-weight:700" onclick="viewQuote(${Number(q.id)})">${esc(q.ref)}</button></td>
+        <td data-label="الإجمالي">${money2(q.total)} ر.ع</td>
+        <td data-label="وقت الموافقة">${esc(muscatTime(q.accepted_at))}</td>
+        <td data-label="الفاتورة">${q.invoice
+            ? `<button class="btn btn-outline btn-sm" onclick="openInvoice(${Number(q.invoice.id)})">${esc(q.invoice.number)}</button><br><small>أصدرها ${esc(q.invoice.by || '—')}</small>`
+            : q.status !== 'accepted' ? `<small>${esc(STATUS_NAMES[q.status] || q.status)}</small>`
+                : canSee('invoices') ? `<button class="btn btn-primary btn-sm" onclick="newInvoice(${Number(q.id)})">إصدار فاتورة</button>` : '<small>بانتظار الفاتورة</small>'}</td></tr>`).join('');
+}
+
 async function loadQuotes() {
     if ($id('qbCostBtn')) $id('qbCostBtn').hidden = !canSee('purchases');
     if (!online) return;
+    loadAcceptedQuotes();
     const params = new URLSearchParams();
     if ($id('quoteFilter').value) params.set('status', $id('quoteFilter').value);
     if ($id('quoteSearch').value.trim()) params.set('q', $id('quoteSearch').value.trim());
