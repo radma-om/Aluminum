@@ -30,7 +30,7 @@ async function start(t) {
 const SERVICES = ['installation', 'delivery'];
 const goods = (priced) => priced.items.filter((i) => !SERVICES.includes(i.part)).reduce((a, i) => a + i.line_total, 0);
 const goodsTo = (priced) => priced.items.filter((i) => !SERVICES.includes(i.part)).reduce((a, i) => a + (i.line_total_to ?? i.line_total), 0);
-const r2 = (n) => Math.round(n * 100) / 100;
+const r2 = (n) => Math.round((n + (n >= 0 ? 1 : -1) * 1e-9) * 10) / 10; // money: to the nearest 100 baisa (pricing.roundMoney)
 
 async function doorRequest(call) {
     const conf = (await call('GET', '/api/public/configurator', null, null)).body;
@@ -58,8 +58,8 @@ test('when it runs: switched on, a valid %, the chosen calculators, until its la
     ];
     const p = promotions.apply(s, { items, subtotal: 1000, vat_percent: 5, vat: 50, total: 1050, range: { subtotal_to: 1200, vat_to: 60, total_to: 1260 } }, 'overhead');
     // No parts chosen: the goods (gate 800 – 1000, motor 150), not the installation (50)
-    assert.deepEqual([p.subtotal, p.vat, p.total], [905, 45.25, 950.25]);
-    assert.deepEqual(p.range, { subtotal_to: 1085, vat_to: 54.25, total_to: 1139.25 });
+    assert.deepEqual([p.subtotal, p.vat, p.total], [905, 45.3, 950.3]); // VAT 45.25 → nearest 100 baisa
+    assert.deepEqual(p.range, { subtotal_to: 1085, vat_to: 54.3, total_to: 1139.3 });
     assert.equal(p.promo.amount, 95);
     assert.equal(p.promo.amount_to, 115);
     // The installation is discounted only when the manager ticks it

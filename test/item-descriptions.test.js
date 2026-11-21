@@ -40,6 +40,8 @@ test('roller shutters: the type, thickness and accessory class descriptions unde
         option_ids: conf.accessory_groups.map((g) => g.options[0].id), region_id: region };
     const p = (await call('POST', '/api/public/door-price', door)).body;
     assert.equal(p.items.find((i) => i.part === 'slats').description, 'شرائح ألمنيوم معزولة بالفوم — سماكة 1.1 ملم');
+    // The gate's size goes with the slats line, on its own (the area alone says nothing of width and height)
+    assert.deepEqual(p.items.find((i) => i.part === 'slats').size, { width_cm: 300, height_cm: 250, count: 1 });
     assert.equal(p.items.find((i) => i.name === conf.accessory_groups[0].name).description, 'مجاري ألمنيوم مع فرشاة عازلة');
     assert.ok(!p.items.find((i) => i.part === 'installation').description);
 
@@ -109,4 +111,19 @@ test('the employee: rewords or removes a gate line description; a free line has 
     const long = await call('POST', '/api/admin/quotes', { ...body, items: [{ name: 'بند', unit: 'piece', unit_price: 10, quantity: 1, description: 'كلمة '.repeat(110) }] });
     assert.equal(long.status, 201);
     assert.equal((await call('GET', `/api/admin/quotes/${long.body.id}/pdf`)).body.subarray(0, 4).toString(), '%PDF');
+});
+
+test('the roller shutter size goes with the slats line: on the line, in older quotes from their size, never on other lines', () => {
+    const doors = require('../src/doors');
+    const slats = { name: 'شرائح الإيراني', part: 'slats', size: { width_cm: 420, height_cm: 310, count: 2 } };
+    assert.equal(doors.sizeText(slats), 'المقاس: العرض 420 سم × الارتفاع 310 سم — عدد 2 بوابات');
+    assert.equal(doors.sizeText({ ...slats, size: { width_cm: 300, height_cm: 250, count: 1 } }), 'المقاس: العرض 300 سم × الارتفاع 250 سم');
+    // Older quotes: a calculator quote's own size; a quote-builder gate's
+    assert.equal(doors.sizeText({ name: 'شرائح', part: 'slats' }, { width_cm: 500, height_cm: 400, count: 1 }), 'المقاس: العرض 500 سم × الارتفاع 400 سم');
+    const groups = { calc_groups: [{ calc: 'overhead', params: { width_cm: 250, height_cm: 220 } }, { calc: 'rolling_shutter', params: { width_cm: 350, height_cm: 300, count: 3 } }] };
+    assert.equal(doors.sizeText({ name: 'شرائح', part: 'slats', group: 1 }, groups), 'المقاس: العرض 350 سم × الارتفاع 300 سم — عدد 3 بوابات');
+    // Not on the colour surcharge, the paint fee, an accessory, or a line with no size at all
+    assert.equal(doors.sizeText({ name: 'إضافة لون', part: 'slats', size: slats.size }), null);
+    assert.equal(doors.sizeText({ name: 'المحرك', part: 'motor' }, { width_cm: 300, height_cm: 250 }), null);
+    assert.equal(doors.sizeText({ name: 'شرائح', part: 'slats' }), null);
 });

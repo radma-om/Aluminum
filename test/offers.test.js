@@ -14,7 +14,7 @@ const staff = require('../src/staff');
 
 const OWNER = 'test-token-long-enough-1234';
 process.env.ADMIN_TOKEN = OWNER;
-const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+const r2 = (n) => Math.round((n + (n >= 0 ? 1 : -1) * 1e-9) * 10) / 10; // money: to the nearest 100 baisa (pricing.roundMoney)
 const PROMO = { promo_enabled: true, promo_percent: 15, promo_label: 'اليوم الوطني', promo_until: '', promo_scope: ['rolling_shutter', 'overhead'] };
 const GIFT = { gift_enabled: true, gift_name: 'جهاز GSM opener', gift_price: 15, gift_until: '', gift_scope: ['rolling_shutter', 'overhead', 'motors'] };
 

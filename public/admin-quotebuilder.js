@@ -671,6 +671,7 @@ function renderQbGroupItems(box, l, lines) {
         const d = disc[k] || { type: 'percent', value: '' };
         const off = round2q((it.promo || 0) + (it.discount ? it.discount.amount : 0));
         return `<div class="row"><span>${esc(it.name)}${it.type ? ' — ' + esc(it.type) : ''}${it.quantity !== 1 ? ` × ${esc(it.quantity)}` : ''}
+                ${it.size ? `<br><small class="muted">${esc(itemSizeText(it, {}))}</small>` : ''}
                 ${it.promo ? `<small class="pos"> 🎉 -${qbMoney(it.promo)}</small>` : ''}
                 <span class="qb-item-disc" title="خصم على هذا البند فقط">
                     <select data-idisc="${k}" data-f="type"><option value="percent" ${d.type === 'percent' ? 'selected' : ''}>%</option><option value="amount" ${d.type === 'amount' ? 'selected' : ''}>ر.ع</option></select>

@@ -5,7 +5,7 @@
    Shared by the public calculator, the AI agent and the admin preview.
    ============================================================= */
 const { getSettings } = require('./db');
-const { unitSellPrice, validateDoorSize, withTotals, round2 } = require('./pricing');
+const { unitSellPrice, validateDoorSize, withTotals, round2, roundMoney } = require('./pricing');
 const promotions = require('./promotions');
 
 const err400 = (message) => Object.assign(new Error(message), { status: 400 });
@@ -77,14 +77,14 @@ const lineItem = (product, quantity, settings, overrides = {}) => {
     const unitPrice = unitSellPrice(product, settings);
     return {
         product_id: product.id, category: product.category, name: product.name, type: product.type, unit: product.unit,
-        quantity: round3(quantity), unit_price: unitPrice, line_total: round2(unitPrice * round3(quantity)),
+        quantity: round3(quantity), unit_price: unitPrice, line_total: roundMoney(unitPrice * round3(quantity)),
         ...overrides
     };
 };
 
 const serviceItem = (name, type, quantity, price) => ({
     product_id: null, category: 'service', name, type, unit: 'service',
-    quantity, unit_price: round2(price), line_total: round2(price * quantity)
+    quantity, unit_price: round2(price), line_total: roundMoney(price * quantity)
 });
 
 function getRegion(db, id) {
@@ -128,6 +128,17 @@ function resolveChoice(catalog, { shutterTypeId, variantId, colorId, optionIds =
 }
 
 /* The product's description, shown under its line in a quote / invoice / PDF */
+/* «المقاس: العرض 300 سم × الارتفاع 250 سم — عدد 2 بوابات» for a roller shutter's slats line (null: any other line).
+   Its own size; for a quote saved before lines kept it: the quote's size (a calculator quote) or its gate's
+   in the quote builder (details.calc_groups). */
+function sizeText(item, details = {}) {
+    if (!item || item.part !== 'slats' || /إضافة لون|رسوم الصبغ/.test(item.name || '')) return null;
+    const d = details || {};
+    const g = Array.isArray(d.calc_groups) && item.group !== undefined ? d.calc_groups[item.group] : null;
+    const z = item.size || (g && g.calc === 'rolling_shutter' ? g.params : null) || (!g && d.width_cm ? d : null);
+    if (!z || !(Number(z.width_cm) > 0) || !(Number(z.height_cm) > 0)) return null;
+    return `المقاس: العرض ${Number(z.width_cm)} سم × الارتفاع ${Number(z.height_cm)} سم${Number(z.count) > 1 ? ` — عدد ${Number(z.count)} بوابات` : ''}`;
+}
 const described = (text) => (text && String(text).trim() ? { description: String(text).trim().slice(0, 600) } : {});
 
 function priceChoice({ widthCm, heightCm, count = 1 }, choice, catalog, region) {
@@ -137,13 +148,16 @@ function priceChoice({ widthCm, heightCm, count = 1 }, choice, catalog, region) 
 
     const slat = products.get(variant.product_id);
     const line = slatLine(slat, variant, color, size, settings);
+    // The gate's size goes with the slats line, on its own (the PDF, the quote page, the panel and the quote builder
+    // show it; the quantity alone is the area, and the description may be reworded by an employee)
     const items = [{
         product_id: slat.id, category: 'slat', part: 'slats', name: `شرائح ${type.name}`,
         type: [variant.label, color && color.name].filter(Boolean).join(' — '),
+        size: { width_cm: Number(widthCm), height_cm: Number(heightCm), count: size.count },
         ...described([type.description, variant.description].filter((t) => t && String(t).trim()).join(' — ')),
         // The amount is the quantity shown × the unit price (a customer checking it gets the same figure)
         unit: line.unit, quantity: round3(line.quantity),
-        unit_price: line.unitPrice, line_total: round2(line.unitPrice * round3(line.quantity))
+        unit_price: line.unitPrice, line_total: roundMoney(line.unitPrice * round3(line.quantity))
     }];
     if (color && color.surcharge_per_m2 > 0) {
         const area = round2(slatArea(variant, size));
@@ -341,5 +355,5 @@ function publicCatalog(db) {
 
 module.exports = {
     loadCatalog, resolveChoice, priceChoice, finalPrice, priceRange, compareOptions,
-    findRegions, getRegion, locations, publicCatalog, normalizeArabic
+    findRegions, getRegion, locations, publicCatalog, normalizeArabic, sizeText
 };

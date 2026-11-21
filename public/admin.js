@@ -462,6 +462,17 @@ async function deletePurchase(id) {
 
 let quotesCache = [];
 
+/* «المقاس: العرض … × الارتفاع …» for a roller shutter's slats line — like doors.sizeText on the server:
+   its own size, or (an older quote) the quote's size / its gate's in the quote builder */
+function itemSizeText(item, details) {
+    if (!item || item.part !== 'slats' || /إضافة لون|رسوم الصبغ/.test(item.name || '')) return '';
+    const d = details || {};
+    const g = Array.isArray(d.calc_groups) && item.group !== undefined ? d.calc_groups[item.group] : null;
+    const z = item.size || (g && g.calc === 'rolling_shutter' ? g.params : null) || (!g && d.width_cm ? d : null);
+    if (!z || !(Number(z.width_cm) > 0) || !(Number(z.height_cm) > 0)) return '';
+    return `المقاس: العرض ${Number(z.width_cm)} سم × الارتفاع ${Number(z.height_cm)} سم${Number(z.count) > 1 ? ` — عدد ${Number(z.count)} بوابات` : ''}`;
+}
+
 /* A stored time (UTC, «2026-11-21 09:03:00») as Muscat time «2026-11-21 13:03» */
 const muscatTime = (at) => { const t = Date.parse(String(at || '').replace(' ', 'T') + 'Z'); return Number.isNaN(t) ? String(at || '') : new Date(t + 4 * 3600_000).toISOString().slice(0, 16).replace('T', ' '); };
 
@@ -499,7 +510,7 @@ async function loadQuotes() {
             <td>${esc(q.customer_name)}${q.customer_city ? '<br><small>' + esc(q.customer_city) + '</small>' : ''}
                 ${q.notes ? '<br><small style="color:var(--text-light)">' + esc(q.notes) + '</small>' : ''}</td>
             <td><a href="https://wa.me/${esc(q.customer_phone)}" target="_blank" rel="noopener">${esc(q.customer_phone)}</a></td>
-            <td class="quote-items">${q.items.map((i) => `${esc(i.name)}${i.type ? ' — ' + esc(i.type) : ''}: ${i.quantity} × ${i.unit_price.toFixed(3)}${i.unit_price_to != null ? ' – ' + i.unit_price_to.toFixed(3) : ''}${i.description ? `<span class="item-desc">${esc(i.description)}</span>` : ''}`).join('<br>')}</td>
+            <td class="quote-items">${q.items.map((i) => `${esc(i.name)}${i.type ? ' — ' + esc(i.type) : ''}: ${i.quantity} × ${i.unit_price.toFixed(3)}${i.unit_price_to != null ? ' – ' + i.unit_price_to.toFixed(3) : ''}${itemSizeText(i, q.details) ? `<span class="item-desc">${esc(itemSizeText(i, q.details))}</span>` : ''}${i.description ? `<span class="item-desc">${esc(i.description)}</span>` : ''}`).join('<br>')}</td>
             <td><strong>${q.total.toFixed(3)}${q.details && q.details.range ? ' – ' + q.details.range.total_to.toFixed(3) : ''}</strong>
                 ${q.details && q.details.free_lines && ME && ME.role === 'manager' ? `<br><span class="badge" style="background:#fdf2e1;color:#8a5a00" title="أسعار كتبها الموظف يدوياً — لا يراها حد الخصم">بند حر × ${esc(q.details.free_lines)}</span>` : ''}</td>
             <td>${esc(SOURCE_NAMES[q.source] || q.source)}</td>
@@ -605,7 +616,7 @@ async function viewQuote(id) {
             <thead><tr><th>#</th><th>البند</th><th>الكمية</th><th>سعر الوحدة</th><th>المجموع</th></tr></thead>
             <tbody>${q.items.map((i, n) => `<tr>
                 <td data-label="#" class="qv-n">${n + 1}</td>
-                <td data-label="" class="qv-item"><div><strong>${esc(i.name)}</strong>${i.type ? ' — ' + esc(i.type) : ''}${i.description ? `<span class="item-desc no-i18n">${esc(i.description)}</span>` : ''}</div></td>
+                <td data-label="" class="qv-item"><div><strong>${esc(i.name)}</strong>${i.type ? ' — ' + esc(i.type) : ''}${itemSizeText(i, d) ? `<span class="item-desc no-i18n">${esc(itemSizeText(i, d))}</span>` : ''}${i.description ? `<span class="item-desc no-i18n">${esc(i.description)}</span>` : ''}</div></td>
                 <td data-label="الكمية"><span>${esc(i.quantity)}</span></td>
                 <td data-label="سعر الوحدة"><span>${unit(i)}</span></td>
                 <td data-label="المجموع"><strong>${lineTotal(i)}</strong></td></tr>`).join('')}</tbody>

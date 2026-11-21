@@ -15,7 +15,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const compression = require('compression');
 const { openDatabase, getSettings, saveSettings } = require('./db');
-const { unitCost, unitSellPrice, priceQuote, round2 } = require('./pricing');
+const { unitCost, unitSellPrice, priceQuote, round2, roundMoney } = require('./pricing');
 const webhooks = require('./webhooks');
 const whatsapp = require('./whatsapp');
 const doors = require('./doors');
@@ -1578,7 +1578,7 @@ function createApp(db, { agentClient } = {}) {
         if (!(unitPrice > 0 && unitPrice <= 100000)) throw httpError(400, 'اكتب سعر الخدمة (أكبر من صفر)');
         return {
             product_id: null, category: 'service', part: 'service', name: clip(b.title, 120) || 'خدمة', type: null, description,
-            unit: 'service', quantity, unit_price: unitPrice, line_total: Math.round(quantity * unitPrice * 100) / 100,
+            unit: 'service', quantity, unit_price: unitPrice, line_total: roundMoney(quantity * unitPrice),
             work_order_id: order.id, added_by: who
         };
     };

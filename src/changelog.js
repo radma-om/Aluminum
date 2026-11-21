@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.55.0', date: '2026-11-21',
+        ar: ['المبالغ لأقرب 100 بيسة في العروض والفواتير والحاسبات: كل بند، والخصومات، والمجموع (مجموع البنود)، والضريبة، والإجمالي — مثل 225.500 — وأسعار الوحدات كما ضبطها المدير', 'عروض بوابات الشتر: المقاس (العرض × الارتفاع وعدد البوابات) يظهر مع بند الشرائح في ملف PDF وصفحة العرض وقائمة العروض ونافذة العرض والفاتورة ومنشئ العروض، لا المساحة وحدها — والعروض السابقة أيضاً', 'حاسبات العملاء تعرض المبالغ بثلاث خانات (225.500)'],
+        en: ['Amounts to the nearest 100 baisa in quotes, invoices and calculators: each line, the discounts, the subtotal (the sum of the lines), VAT and the total — e.g. 225.500 — with unit prices as the manager set them', 'Roller-shutter quotes: the size (width × height and number of gates) shows with the slats line in the PDF, the quote page, the quotes list, the quote and invoice windows and the quote builder, not the area alone — older quotes too', 'Customer calculators show amounts with three digits (225.500)']
+    },
+    {
         version: '3.54.0', date: '2026-11-21',
         ar: ['عند موافقة العميل على عرضه من صفحة العرض يصل إشعار لكل موظف لديه صلاحية «الفواتير» (ويرى هذا العميل)، إضافة للمديرين وصاحب العرض — أول من يتصل ويُصدر الفاتورة تُحتسب له العمولة', '«طلبات العروض» ← نافذة «وافق العميل على العرض»: من وافق ومتى (بتوقيت مسقط)، ومن ينتظر الفاتورة أولاً مع زر «إصدار فاتورة»، ومن صدرت فاتورته ومن أصدرها'],
         en: ['When a customer accepts their quote from its page, every employee with «Invoices» (who may see this customer) is told too, besides the managers and the quote\'s owner — the first to call and issue the invoice gets the commission', '«Quotes» → «The customer accepted the quote»: who accepted and when (Muscat time), those waiting for the invoice first with «Issue invoice», and those invoiced with who issued it']
