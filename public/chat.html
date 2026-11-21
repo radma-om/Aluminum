@@ -113,7 +113,7 @@
         if (item.type === 'quote') {
             el.className = 'quote';
             const total = item.total_to != null && item.total_to !== item.total
-                ? `${item.total.toFixed(2)} - ${item.total_to.toFixed(2)}` : Number(item.total).toFixed(2);
+                ? `${item.total.toFixed(3)} - ${item.total_to.toFixed(3)}` : Number(item.total).toFixed(3);
             el.innerHTML = `📄 عرض السعر رقم <strong dir="ltr">${esc(item.ref)}</strong><br>الإجمالي: ${esc(total)} ر.ع<br>
                 <a href="${esc(item.pdf_url)}" target="_blank" rel="noopener">تحميل عرض السعر PDF</a>`;
         } else {

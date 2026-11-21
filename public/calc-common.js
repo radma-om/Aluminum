@@ -2,7 +2,7 @@
    status messages and embedding in the company site (iframe via embed.js). */
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const money = (n) => Number(n).toFixed(2);
+const money = (n) => Number(n).toFixed(3);
 // Isolate each part so mixed Arabic/Latin labels ("العماني Napco" — "1.5 ملم") keep their order
 const parts = (...list) => list.filter(Boolean).map((p) => `<bdi>${esc(p)}</bdi>`).join(' — ');
 const NOTE_ICONS = ['fa-info-circle', 'fa-exclamation-triangle', 'fa-shield-alt', 'fa-check-circle'];
@@ -68,7 +68,7 @@ function showPromoBanner(conf, kind) {
     const gift = p.gift && p.gift.applies_to.some((a) => a.key === kind) ? p.gift : null;
     const lines = [];
     if (mine && p.percent) lines.push(`🎉 ${p.label}: خصم ${p.percent}%${mine.parts ? ` على ${mine.parts.join(' و')}` : ''}${p.until ? ` حتى ${p.until}` : ''} — يظهر في السعر تلقائياً`);
-    if (gift) lines.push(`🎁 هدية مع كل بوابة: ${gift.name} (قيمتها ${Number(gift.price).toFixed(2)} ر.ع)${gift.until ? ` حتى ${gift.until}` : ''}`);
+    if (gift) lines.push(`🎁 هدية مع كل بوابة: ${gift.name} (قيمتها ${Number(gift.price).toFixed(3)} ر.ع)${gift.until ? ` حتى ${gift.until}` : ''}`);
     if (!lines.length) return;
     const div = document.createElement('div');
     div.id = 'promoBanner';

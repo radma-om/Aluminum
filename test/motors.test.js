@@ -75,7 +75,7 @@ test('kit price = cost + profit, installation per kit by wilayah, delivery once,
         ['التوصيل', 1, 10, 10]
     ]);
     assert.strictEqual(p.subtotal, 338.3);
-    assert.strictEqual(p.total, 355.22);
+    assert.strictEqual(p.total, 355.2); // 338.3 + VAT 16.9 (16.915 → nearest 100 baisa)
     assert.strictEqual(p.details.calculator, 'motors');
     assert.deepStrictEqual(p.details.parts, ['مسننات (Rail rack) × 3']);
     assert.strictEqual(p.details.fees_note, 'شامل التركيب');
@@ -95,7 +95,7 @@ test('kit price = cost + profit, installation per kit by wilayah, delivery once,
     db.prepare('UPDATE regions SET motor_installation_fee = NULL, delivery_fee = 0 WHERE id = ?').run(ibri.id);
     // Old pages may still send the section key ('sliding')
     const visit = await call('POST', '/api/public/motor-quotes', { ...customer, section: 'sliding', kit_id: kit.id, kit_count: 1, region_id: ibri.id }, '');
-    assert.strictEqual(visit.body.total, 138.86); // 132.25 + 5% VAT
+    assert.strictEqual(visit.body.total, 138.9); // kit line 132.3 + VAT 6.6 (6.615 → nearest 100 baisa)
     assert.match(visit.body.details.fees_note, /بعد المعاينة/);
 
     // Nothing chosen, or a section without items
@@ -236,7 +236,7 @@ test('the AI agent lists, prices and quotes gate motors', async (t) => {
 
     const input = { section_id: options.sections[0].section_id, kit_id: kit.kit_id, kit_count: 1, parts: [], installation: true, region_id: nizwa };
     const price = await executeTool('calculate_motor_price', input, ctx);
-    assert.strictEqual(price.total_with_vat, 159.86); // (132.25 + 20) × 1.05
+    assert.strictEqual(price.total_with_vat, 159.9); // kit line 132.3 + 20 = 152.3, VAT 7.6
     assert.strictEqual(price.note, 'شامل التركيب');
     assert.strictEqual(price.extra_fees.length, 2);
     assert.strictEqual(price.extra_fees[0].amount, 'تُحدد بعد المعاينة');

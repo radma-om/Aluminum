@@ -47,12 +47,12 @@ test('slat price follows the company site: size allowance, per-color price and p
     // (300 + 20) × (250 + 60) cm = 9.92 m² — the site's area rule for Omani slats
     const w = doors.finalPrice(db, { ...size, shutterTypeId: type.id, variantId: v11.id, colorId: white.id, optionIds: classA, regionId: nizwa.id });
     assert.strictEqual(w.items[0].quantity, 9.92);
-    assert.strictEqual(w.items[0].line_total, 213.28); // 9.92 × 21.5
+    assert.strictEqual(w.items[0].line_total, 213.3); // 9.92 × 21.5 = 213.28 → to the nearest 100 baisa
     assert.ok(w.items.some((i) => i.name === 'التركيب' && i.line_total === 60));
 
     // Colored 1.1 mm: 19.5 per m² plus a fixed 60 paint fee
     const c = doors.finalPrice(db, { ...size, shutterTypeId: type.id, variantId: v11.id, colorId: colored.id, optionIds: classA, regionId: nizwa.id });
-    assert.strictEqual(c.items[0].line_total, 193.44);
+    assert.strictEqual(c.items[0].line_total, 193.4); // 9.92 × 19.5 = 193.44 → nearest 100 baisa
     assert.ok(c.items.some((i) => i.name === 'رسوم الصبغ' && i.line_total === 60));
     assert.ok(c.spec.some(([k, val]) => k === 'اللون' && val === colored.name));
 });
@@ -82,7 +82,7 @@ test('accessory class and skippable groups', () => {
     const classB = cmp.accessories.map((g) => g.classes[1].option_id);
     const diff = doors.finalPrice(db, { ...base, optionIds: classB }).total - doors.finalPrice(db, { ...base, optionIds: classA }).total;
     const expected = cmp.accessories.reduce((s, g) => s + g.classes[1].price_with_vat - g.classes[0].price_with_vat, 0);
-    assert.ok(Math.abs(diff - expected) < 0.05);
+    assert.ok(Math.abs(diff - expected) < 0.2, `${diff} vs ${expected}`); // totals are to the nearest 100 baisa
     assert.throws(() => doors.finalPrice(db, { ...base, optionIds: classB.slice(1) }), /اختر نوع/); // channels are required
     assert.ok(doors.finalPrice(db, { ...base, optionIds: classB.slice(0, -1) }).total > 0);   // motor can be skipped
 });

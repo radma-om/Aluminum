@@ -12,7 +12,7 @@
      one); managers have no limit. The same limit applies when an invoice
      lowers the amount.
    ============================================================= */
-const { unitSellPrice, round2 } = require('./pricing');
+const { unitSellPrice, round2, roundMoney } = require('./pricing');
 const promotions = require('./promotions');
 
 const UNITS = ['meter', 'piece', 'm2', 'set', 'kg', 'service'];
@@ -28,7 +28,7 @@ function discountOf(d, base, what) {
     const value = num(d.value);
     if (!Number.isFinite(value) || value < 0) throw err(400, `قيمة الخصم غير صالحة (${what})`);
     if (type === 'percent' && value > 100) throw err(400, `نسبة الخصم لا تتجاوز 100% (${what})`);
-    const amount = round2(type === 'percent' ? base * value / 100 : value);
+    const amount = roundMoney(type === 'percent' ? base * value / 100 : value);
     if (amount > base + 0.0005) throw err(400, `الخصم أكبر من المبلغ (${what})`);
     return { type, value: round2(value), amount };
 }
@@ -75,14 +75,14 @@ function calcLines(db, line, regionId, where) {
 
 /* An amount on a whole gate / kit, spread over its lines by their price (the last line takes the rounding) */
 function spread(lines, amount, set) {
-    const base = round2(lines.reduce((s, l) => s + l.line_total, 0));
+    const base = roundMoney(lines.reduce((s, l) => s + l.line_total, 0));
     if (!amount || !base) return;
     let left = amount;
     lines.forEach((l, i) => {
-        const part = i === lines.length - 1 ? round2(left) : round2(amount * l.line_total / base);
-        left = round2(left - part);
+        const part = i === lines.length - 1 ? roundMoney(left) : roundMoney(amount * l.line_total / base);
+        left = roundMoney(left - part);
         set(l, part);
-        l.line_total = round2(l.line_total - part);
+        l.line_total = roundMoney(l.line_total - part);
     });
 }
 
@@ -104,8 +104,8 @@ function price(db, input, settings) {
         if (line && line.calc) {
             const { label, items: calc, units } = calcLines(db, line, input.region_id, where);
             const g = groups.length;
-            const priced = calc.map((it) => ({ ...it, gross: round2(it.line_total), group: g }));
-            const gross = round2(priced.reduce((s, l) => s + l.gross, 0));
+            const priced = calc.map((it) => ({ ...it, gross: roundMoney(it.line_total), group: g }));
+            const gross = roundMoney(priced.reduce((s, l) => s + l.gross, 0));
             // 1) The manager's promotion, on the parts it covers (the same amount as the customer calculator)
             const promo = promotions.active(settings, line.calc);
             let promoAmount = 0;
@@ -122,7 +122,7 @@ function price(db, input, settings) {
                 const d = discountOf(v, l.line_total, `${where} — ${l.name}`);
                 if (!d.amount) continue;
                 l.discount = d;
-                l.line_total = round2(l.line_total - d.amount);
+                l.line_total = roundMoney(l.line_total - d.amount);
                 itemDiscounts[k] = { type: d.type, value: d.value };
             }
             // The employee's own wording of a line's description (empty = no description on that line)
@@ -136,8 +136,8 @@ function price(db, input, settings) {
                 itemNotes[k] = text;
             }
             // 3) The employee's discount on the whole gate, spread over its lines
-            const d = discountOf(line.discount, round2(priced.reduce((s, l) => s + l.line_total, 0)), where);
-            spread(priced, d.amount, (l, part) => { l.group_discount = round2((l.group_discount || 0) + part); });
+            const d = discountOf(line.discount, roundMoney(priced.reduce((s, l) => s + l.line_total, 0)), where);
+            spread(priced, d.amount, (l, part) => { l.group_discount = roundMoney((l.group_discount || 0) + part); });
             // 4) The manager's gift, one per gate: its price, given in full
             const gift = units > 0 ? promotions.activeGift(settings, line.calc) : null;
             let giftAmount = 0;
@@ -154,7 +154,7 @@ function price(db, input, settings) {
                 ...(Object.keys(itemNotes).length ? { item_notes: itemNotes } : {}),
                 ...(promoAmount ? { promo: promoAmount } : {}),
                 ...(giftAmount ? { gift: giftAmount } : {}),
-                gross: round2(gross + giftAmount), total: round2(priced.reduce((s, l) => s + l.line_total, 0)) });
+                gross: roundMoney(gross + giftAmount), total: roundMoney(priced.reduce((s, l) => s + l.line_total, 0)) });
             return priced;
         }
         const quantity = Math.round(num(line.quantity) * 1000) / 1000;
@@ -175,7 +175,7 @@ function price(db, input, settings) {
                 // A service (خدمة) is a «service» line, and keeps the work order it was added on (the technician's commission)
                 ...(part === 'service' ? { category: 'service', ...(Number(line.work_order_id) > 0 ? { work_order_id: Number(line.work_order_id) } : {}) } : {}) };
         }
-        const gross = round2(item.unit_price * quantity);
+        const gross = roundMoney(item.unit_price * quantity);
         const d = discountOf(line.discount, gross, where);
         const description = clip(line.description, 600);
         return [{
@@ -183,30 +183,30 @@ function price(db, input, settings) {
             ...(description ? { description } : {}),
             gross,
             ...(d.amount ? { discount: d } : {}),
-            line_total: round2(gross - d.amount)
+            line_total: roundMoney(gross - d.amount)
         }];
     });
-    const grossSubtotal = round2(items.reduce((s, i) => s + i.gross, 0));
+    const grossSubtotal = roundMoney(items.reduce((s, i) => s + i.gross, 0));
     // The manager's offers (promotion and gift) are not the employee's discount
-    const giftAmount = round2(items.filter((i) => i.gift).reduce((s, i) => s + (i.promo || 0), 0));
-    const promoAmount = round2(items.filter((i) => !i.gift).reduce((s, i) => s + (i.promo || 0), 0));
-    const afterPromo = round2(grossSubtotal - promoAmount - giftAmount);
-    const linesTotal = round2(items.reduce((s, i) => s + i.line_total, 0));
+    const giftAmount = roundMoney(items.filter((i) => i.gift).reduce((s, i) => s + (i.promo || 0), 0));
+    const promoAmount = roundMoney(items.filter((i) => !i.gift).reduce((s, i) => s + (i.promo || 0), 0));
+    const afterPromo = roundMoney(grossSubtotal - promoAmount - giftAmount);
+    const linesTotal = roundMoney(items.reduce((s, i) => s + i.line_total, 0));
     const quoteDiscount = discountOf(input.discount, linesTotal, 'خصم الإجمالي');
-    const subtotal = round2(linesTotal - quoteDiscount.amount);
+    const subtotal = roundMoney(linesTotal - quoteDiscount.amount);
     const vatPercent = Number(settings.vat_percent) || 0;
-    const vat = round2(subtotal * vatPercent / 100);
-    const staffDiscount = round2(afterPromo - subtotal);
+    const vat = roundMoney(subtotal * vatPercent / 100);
+    const staffDiscount = roundMoney(afterPromo - subtotal);
     return {
-        items, subtotal, vat_percent: vatPercent, vat, total: round2(subtotal + vat),
+        items, subtotal, vat_percent: vatPercent, vat, total: roundMoney(subtotal + vat),
         groups,
         pricing: {
             gross_subtotal: grossSubtotal,
             ...(promoAmount ? { promo_label: promoUsed.label, promo_percent: promoUsed.percent, promo_amount: promoAmount } : {}),
             ...(giftAmount ? { gift_name: giftUsed.name, gift_amount: giftAmount } : {}),
-            lines_discount: round2(afterPromo - linesTotal),
+            lines_discount: roundMoney(afterPromo - linesTotal),
             quote_discount: quoteDiscount.amount ? quoteDiscount : null,
-            discount_total: round2(grossSubtotal - subtotal),
+            discount_total: roundMoney(grossSubtotal - subtotal),
             staff_discount: staffDiscount,
             // The employee's own discount, from the price after the promotion: this is what the limit checks
             discount_percent: afterPromo > 0 ? Math.round((staffDiscount / afterPromo) * 10000) / 100 : 0,
@@ -240,7 +240,7 @@ function checkFreeLines(user, settings, input) {
 function limitBase(quote) {
     const d = quote.details || {};
     const gross = Number(d.gross_subtotal ?? quote.subtotal);
-    if (d.staff_quote) return round2(gross - Number(d.promo_amount || 0) - Number(d.gift_amount || 0)); // employee quote: after the manager's offers
+    if (d.staff_quote) return roundMoney(gross - Number(d.promo_amount || 0) - Number(d.gift_amount || 0)); // employee quote: after the manager's offers
     if (d.promo_label || d.gift_amount) return Number(quote.subtotal);                                 // customer calculator: the offers are its only discounts
     return gross;
 }

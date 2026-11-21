@@ -8,7 +8,7 @@
    Site prices exclude VAT, so VAT is added on top (as for the shutters).
    ============================================================= */
 const { getSettings } = require('./db');
-const { round2 } = require('./pricing');
+const { round2, roundMoney } = require('./pricing');
 const promotions = require('./promotions');
 const { getRegion, locations } = require('./doors');
 
@@ -62,8 +62,8 @@ const described = (text) => (text && String(text).trim() ? { description: String
 
 const service = (name, type, from, to = from) => ({
     product_id: null, category: 'service', name, type, unit: 'service', quantity: 1,
-    unit_price: round2(from), line_total: round2(from),
-    ...(to !== from ? { unit_price_to: round2(to), line_total_to: round2(to) } : {})
+    unit_price: roundMoney(from), line_total: roundMoney(from),
+    ...(to !== from ? { unit_price_to: roundMoney(to), line_total_to: roundMoney(to) } : {})
 });
 
 function overheadPrice(db, { gateType, heightCm, widthCm, motorId, regionId }) {
@@ -84,16 +84,16 @@ function overheadPrice(db, { gateType, heightCm, widthCm, motorId, regionId }) {
         { ...service('المحرك', motor.name, motor.price), part: 'motor', ...described(motor.description) },
         { ...service('التركيب', region.name, install), part: 'installation' }
     ];
-    const subtotal = round2(items.reduce((sum, i) => sum + i.line_total, 0));
-    const subtotalTo = round2(items.reduce((sum, i) => sum + (i.line_total_to ?? i.line_total), 0));
-    const vat = round2(subtotal * vatPercent / 100);
-    const vatTo = round2(subtotalTo * vatPercent / 100);
+    const subtotal = roundMoney(items.reduce((sum, i) => sum + i.line_total, 0));
+    const subtotalTo = roundMoney(items.reduce((sum, i) => sum + (i.line_total_to ?? i.line_total), 0));
+    const vat = roundMoney(subtotal * vatPercent / 100);
+    const vatTo = roundMoney(subtotalTo * vatPercent / 100);
 
     return promotions.apply(getSettings(db), {
         items,
-        subtotal, vat_percent: vatPercent, vat, total: round2(subtotal + vat),
+        subtotal, vat_percent: vatPercent, vat, total: roundMoney(subtotal + vat),
         // The upper end of the range (the price depends on the color)
-        range: { subtotal_to: subtotalTo, vat_to: vatTo, total_to: round2(subtotalTo + vatTo) },
+        range: { subtotal_to: subtotalTo, vat_to: vatTo, total_to: roundMoney(subtotalTo + vatTo) },
         spec: [
             ['نوع البوابة', `أوفرهيد ${size.gate_type}`],
             ['المقاس', `العرض ${size.width_cm} سم — الارتفاع ${size.height_cm} سم`],

@@ -12,7 +12,7 @@
    employee's quote applies them per gate (staffquotes.js), and neither
    counts towards the employee's own discount limit.
    ============================================================= */
-const { round2 } = require('./pricing');
+const { round2, roundMoney } = require('./pricing');
 
 const KINDS = { rolling_shutter: 'بوابات الرول شتر', overhead: 'بوابات الأوفرهيد', motors: 'مكائن البوابات' };
 /* What each calculator's lines are made of (engines tag every line with one of these) */
@@ -67,14 +67,14 @@ function activeGift(settings, kind, today = localToday()) {
 const giftLine = (gift, units) => ({
     product_id: null, category: 'gift', part: 'gift', gift: true,
     name: `🎁 هدية: ${gift.name}`, type: 'مجاناً مع الطلب', unit: 'piece', quantity: units,
-    unit_price: gift.price, line_total: round2(gift.price * units)
+    unit_price: gift.price, line_total: roundMoney(gift.price * units)
 });
 
 /* The promotion's amount on a set of lines: the % of the lines in its parts (key: line_total or line_total_to) */
 function promoCut(promo, items, key = 'line_total') {
     if (!promo) return 0;
     const base = items.filter((i) => !i.gift && promo.parts.includes(i.part)).reduce((s, i) => s + Number(i[key] ?? i.line_total), 0);
-    return round2(base * promo.percent / 100);
+    return roundMoney(base * promo.percent / 100);
 }
 
 /**
@@ -88,15 +88,15 @@ function apply(settings, priced, kind, { units = 1 } = {}) {
     if (!promo && !gift) return priced;
     const vatPercent = Number(priced.vat_percent) || 0;
     const items = gift ? [...priced.items, giftLine(gift, units)] : priced.items;
-    const giftAmount = gift ? round2(gift.price * units) : 0;
+    const giftAmount = gift ? roundMoney(gift.price * units) : 0;
     const totals = (gross, cut) => {
-        const subtotal = round2(gross - cut);
-        const vat = round2(subtotal * vatPercent / 100);
-        return { subtotal, vat, total: round2(subtotal + vat) };
+        const subtotal = roundMoney(gross - cut);
+        const vat = roundMoney(subtotal * vatPercent / 100);
+        return { subtotal, vat, total: roundMoney(subtotal + vat) };
     };
     const percentAmount = promoCut(promo, priced.items);
-    const gross = round2(priced.subtotal + giftAmount);
-    const amount = round2(percentAmount + giftAmount);
+    const gross = roundMoney(priced.subtotal + giftAmount);
+    const amount = roundMoney(percentAmount + giftAmount);
     const main = totals(gross, amount);
     const out = {
         ...priced, items, subtotal: main.subtotal, vat: main.vat, total: main.total,
@@ -110,11 +110,11 @@ function apply(settings, priced, kind, { units = 1 } = {}) {
     };
     if (priced.range && priced.range.subtotal_to != null) {
         const pctTo = promoCut(promo, priced.items, 'line_total_to');
-        const grossTo = round2(priced.range.subtotal_to + giftAmount);
+        const grossTo = roundMoney(priced.range.subtotal_to + giftAmount);
         const to = totals(grossTo, pctTo + giftAmount);
         out.range = { subtotal_to: to.subtotal, vat_to: to.vat, total_to: to.total };
         out.promo.gross_subtotal_to = grossTo;
-        out.promo.amount_to = round2(pctTo + giftAmount);
+        out.promo.amount_to = roundMoney(pctTo + giftAmount);
         out.promo.percent_amount_to = pctTo;
     }
     return out;
