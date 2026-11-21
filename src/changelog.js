@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.54.0', date: '2026-11-21',
+        ar: ['عند موافقة العميل على عرضه من صفحة العرض يصل إشعار لكل موظف لديه صلاحية «الفواتير» (ويرى هذا العميل)، إضافة للمديرين وصاحب العرض — أول من يتصل ويُصدر الفاتورة تُحتسب له العمولة', '«طلبات العروض» ← نافذة «وافق العميل على العرض»: من وافق ومتى (بتوقيت مسقط)، ومن ينتظر الفاتورة أولاً مع زر «إصدار فاتورة»، ومن صدرت فاتورته ومن أصدرها'],
+        en: ['When a customer accepts their quote from its page, every employee with «Invoices» (who may see this customer) is told too, besides the managers and the quote\'s owner — the first to call and issue the invoice gets the commission', '«Quotes» → «The customer accepted the quote»: who accepted and when (Muscat time), those waiting for the invoice first with «Issue invoice», and those invoiced with who issued it']
+    },
+    {
         version: '3.53.1', date: '2026-11-21',
         ar: ['تذكير العملاء بانتهاء العرض: زر «إرسال» لكل عميل في القائمة، مع تأكيد يذكر اسمه ورقمه، وتتحدث حالة صفه فوراً — لتجربة الرسالة أو للإرسال لعملاء مختارين', 'نفس القواعد: مرة واحدة لكل رقم في كل عرض، ولا تذكير لعرض صدرت له فاتورة أو من عرض آخر'],
         en: ['Offer-ending reminder: a «Send» button on each customer of the list, with a confirmation naming them and their number, and their row updated at once — to try the message or send to chosen customers', 'The same rules: once per number per offer, never for an invoiced quote or another offer']

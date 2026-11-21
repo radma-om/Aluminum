@@ -1217,6 +1217,23 @@ function createApp(db, { agentClient } = {}) {
         }));
     });
 
+    /* «وافق العميل»: the quotes customers accepted from their page — waiting for the invoice, and the last
+       30 days' already invoiced (with who issued it); only the customers this account may see */
+    admin.get('/quotes/accepted', (req, res) => {
+        quotePage.ensureColumns(db);
+        const rows = db.prepare(`SELECT * FROM quotes WHERE accepted_via = 'customer_page' AND accepted_at >= datetime('now', '-30 days')
+                                 ORDER BY accepted_at DESC LIMIT 100`).all().filter((r) => staff.seesQuote(db, req.user, r));
+        res.json(rows.map((r) => {
+            const inv = invoices.activeForQuote(db, r.id);
+            const issued = inv ? db.prepare('SELECT number, created_by, created_at FROM invoices WHERE id = ?').get(inv.id) : null;
+            return {
+                id: r.id, ref: r.ref, customer_name: r.customer_name, customer_phone: r.customer_phone, total: r.total,
+                status: r.status, accepted_at: r.accepted_at, valid_until: r.valid_until,
+                invoice: issued ? { id: inv.id, number: issued.number, by: issued.created_by, at: issued.created_at } : null
+            };
+        }));
+    });
+
     /* A quote the signed-in user may see (the customer scope applies to quotes too); 404 otherwise,
        so the answer is the same whether the quote exists or belongs to someone else */
     const quoteFor = (req, id) => {

@@ -1890,6 +1890,14 @@
 
         <div id="tab-quotes" class="tab-content">
             <div id="myBonus" class="my-bonus" hidden></div>
+            <div class="card" id="acceptedCard" hidden>
+                <div class="card-title"><span class="icon"><i class="fas fa-circle-check"></i></span> وافق العميل على العرض <span class="muted" id="acceptedSummary" style="font-weight:400;font-size:.9rem"></span></div>
+                <p class="status-text" style="margin:0 0 8px">عملاء ضغطوا «أوافق على العرض» من صفحة عرضهم (آخر 30 يوماً). من يُصدر الفاتورة تُحتسب له العمولة.</p>
+                <div class="table-wrapper"><table class="stack-table">
+                    <thead><tr><th>العميل</th><th>عرض السعر</th><th>الإجمالي</th><th>وقت الموافقة</th><th>الفاتورة</th></tr></thead>
+                    <tbody id="acceptedRows"></tbody>
+                </table></div>
+            </div>
             <div class="card">
                 <div class="card-title">
                     <span class="icon">Q</span>
