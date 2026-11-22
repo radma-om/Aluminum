@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.56.0', date: '2026-11-22',
+        ar: ['«العروض والهدايا» ← تهنئة العملاء في الحاسبات: رسالة تهنئة مع ألعاب نارية بألوان العلم (مثل «كل عام وعُمان بخير»)، يكتب المدير عنوانها ونصها وآخر يوم لها، مع زر «معاينة»', 'تظهر لكل زائر مرة واحدة، وتُغلق بلمسة أو وحدها بعد ثوانٍ، ولا تظهر داخل إطار الموقع، وبلا حركة لمن طلب تقليل الحركة في جهازه'],
+        en: ['«Offers & gifts» → greeting customers in the calculators: a greeting with fireworks in the flag\'s colours (e.g. «Happy National Day, Oman»); the manager writes its title, text and last day, with a «Preview» button', 'Shown once per visitor, closed by a tap or by itself after a few seconds, not inside the company site\'s frame, and without motion for those who asked their device for less']
+    },
+    {
         version: '3.55.0', date: '2026-11-21',
         ar: ['المبالغ لأقرب 100 بيسة في العروض والفواتير والحاسبات: كل بند، والخصومات، والمجموع (مجموع البنود)، والضريبة، والإجمالي — مثل 225.500 — وأسعار الوحدات كما ضبطها المدير', 'عروض بوابات الشتر: المقاس (العرض × الارتفاع وعدد البوابات) يظهر مع بند الشرائح في ملف PDF وصفحة العرض وقائمة العروض ونافذة العرض والفاتورة ومنشئ العروض، لا المساحة وحدها — والعروض السابقة أيضاً', 'حاسبات العملاء تعرض المبالغ بثلاث خانات (225.500)'],
         en: ['Amounts to the nearest 100 baisa in quotes, invoices and calculators: each line, the discounts, the subtotal (the sum of the lines), VAT and the total — e.g. 225.500 — with unit prices as the manager set them', 'Roller-shutter quotes: the size (width × height and number of gates) shows with the slats line in the PDF, the quote page, the quotes list, the quote and invoice windows and the quote builder, not the area alone — older quotes too', 'Customer calculators show amounts with three digits (225.500)']

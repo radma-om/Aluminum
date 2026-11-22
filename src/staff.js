@@ -348,7 +348,8 @@ const SETTING_SECTIONS = {
     company_whatsapp: 'manager', mazbot_recipients: 'manager', public_base_url: 'manager', wo_customer_notices: 'manager', wo_rating_requests: 'manager', google_review_url: 'manager', calculator_verify_phone: 'manager',
     follow_up_stale_days: 'manager', follow_up_emails: 'manager', quote_validity_days: 'manager', staff_max_discount_percent: 'manager', staff_free_lines: 'manager', wallet_min_default: 'manager', wallet_categories: 'manager',
     promo_enabled: 'manager', promo_percent: 'manager', promo_label: 'manager', promo_until: 'manager', promo_scope: 'manager', promo_parts: 'manager',
-    gift_enabled: 'manager', gift_name: 'manager', gift_price: 'manager', gift_until: 'manager', gift_scope: 'manager'
+    gift_enabled: 'manager', gift_name: 'manager', gift_price: 'manager', gift_until: 'manager', gift_scope: 'manager',
+    greeting_enabled: 'manager', greeting_title: 'manager', greeting_text: 'manager', greeting_until: 'manager'
 };
 function allowedSettings(user, body) {
     const out = {};
