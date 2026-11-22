@@ -707,8 +707,24 @@ function offersSummary(st) {
 }
 
 async function loadOffers() {
-    try { fillPromo(await api('GET', '/api/admin/settings')); } catch (err) { setStatus('promoStatus', err.message, 'err'); }
+    try { const st = await api('GET', '/api/admin/settings'); fillPromo(st); fillGreeting(st); } catch (err) { setStatus('promoStatus', err.message, 'err'); }
     loadPromoReminders();
+}
+
+/* «تهنئة العملاء في الحاسبات»: the wording, on/off and its last day (save first, then «معاينة» shows the saved one) */
+function fillGreeting(st) {
+    $id('greetingEnabled').checked = Boolean(st.greeting_enabled);
+    $id('greetingTitle').value = st.greeting_title || '';
+    $id('greetingText').value = st.greeting_text || '';
+    $id('greetingUntil').value = st.greeting_until || '';
+    const ended = st.greeting_until && st.greeting_until < new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
+    setStatus('greetingStatus', !st.greeting_enabled ? 'متوقفة' : ended ? 'انتهت (مرّ آخر يوم)' : `تظهر الآن لزوار الحاسبات${st.greeting_until ? ` حتى ${st.greeting_until}` : ''}`, st.greeting_enabled && !ended ? 'ok' : '');
+}
+async function saveGreeting() {
+    const body = { greeting_enabled: $id('greetingEnabled').checked, greeting_title: $id('greetingTitle').value.trim(),
+        greeting_text: $id('greetingText').value.trim(), greeting_until: $id('greetingUntil').value };
+    if (body.greeting_enabled && !body.greeting_title) return setStatus('greetingStatus', 'اكتب عنوان التهنئة', 'err');
+    try { fillGreeting(await api('PUT', '/api/admin/settings', body)); } catch (err) { setStatus('greetingStatus', err.message, 'err'); }
 }
 
 /* «تذكير العملاء بانتهاء العرض»: who will get it (and who got it), and the button that sends it */

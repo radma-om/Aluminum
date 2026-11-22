@@ -206,3 +206,159 @@ async function calcSendQuote(url, body) {
     }
     return res;
 }
+
+/* ---------- The company's greeting (e.g. the National Day), with fireworks ----------
+   Switched on and worded by the manager in «العروض والهدايا». Like a news site's National Day greeting:
+   the page stays visible behind a dark veil, gold-and-white fireworks with long falling trails burst over the
+   top of the screen, and a gold title with a thin gold rule and the text appear in the middle. Shown by itself
+   once per visitor per greeting (a new wording is a new greeting), closed by a tap, Escape or after a few
+   seconds; a small round flag button in the corner shows it again while the greeting runs. Not inside the
+   company site's frame; no fireworks for visitors who asked their device for less motion.
+   ?greeting=preview always shows it. */
+(function greeting() {
+    const preview = new URLSearchParams(location.search).get('greeting') === 'preview';
+    if (embedded && !preview) return;
+    const KEY = 'radmaGreetingSeen';
+    const seen = (id) => { try { return localStorage.getItem(KEY) === id; } catch { return false; } };
+    const remember = (id) => { try { localStorage.setItem(KEY, id); } catch { /* private mode */ } };
+    const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    async function start() {
+        let g;
+        try { g = (await (await fetch('/api/public/greeting' + (preview ? '?preview=1' : ''))).json()).greeting; } catch { return; }
+        if (!g) return;
+        badge(g);
+        if (!preview && seen(g.id)) return;
+        remember(g.id);
+        show(g);
+    }
+
+    /* The small round flag button (bottom corner): shows the greeting again */
+    function badge(g) {
+        if (document.getElementById('greetingBadge')) return;
+        const b = document.createElement('button');
+        b.id = 'greetingBadge';
+        b.type = 'button';
+        b.title = g.title;
+        b.setAttribute('aria-label', g.title);
+        b.textContent = '🇴🇲';
+        b.style.cssText = 'all:unset;position:fixed;left:14px;bottom:14px;z-index:9998;width:52px;height:52px;border-radius:50%;display:flex;'
+            + 'align-items:center;justify-content:center;font-size:26px;cursor:pointer;background:rgba(17,24,39,.88);'
+            + 'box-shadow:0 0 0 3px rgba(232,184,74,.55),0 6px 18px rgba(0,0,0,.3)';
+        b.addEventListener('click', () => show(g));
+        document.body.appendChild(b);
+    }
+
+    function show(g) {
+        if (document.getElementById('greetingOverlay')) return;
+        const box = document.createElement('div');
+        box.id = 'greetingOverlay';
+        box.setAttribute('role', 'dialog');
+        box.setAttribute('aria-label', g.title);
+        // The page stays visible, dimmed, behind the veil
+        box.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;'
+            + 'background:radial-gradient(ellipse 75% 45% at 50% 52%, rgba(10,14,26,.97), rgba(10,14,26,.9) 70%), rgba(10,14,26,.88);'
+            + 'cursor:pointer;opacity:0;transition:opacity .6s;padding:24px';
+        const canvas = document.createElement('canvas');
+        canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+        const card = document.createElement('div');
+        card.style.cssText = 'position:relative;text-align:center;max-width:560px;color:#fff;font-family:inherit;'
+            + 'transform:translateY(14px) scale(.96);opacity:0;transition:transform .9s cubic-bezier(.2,.8,.2,1) .25s, opacity .9s .25s';
+        card.innerHTML = `
+            <div class="g-title" style="font-size:clamp(2.1rem,10vw,3.6rem);font-weight:800;line-height:1.35;
+                background:linear-gradient(180deg,#fff6d6 0%,#f0c75e 45%,#c9952e 75%,#f3d27a 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+                filter:drop-shadow(0 2px 10px rgba(232,184,74,.35))"></div>
+            <div style="width:68%;height:1px;margin:16px auto;background:linear-gradient(90deg,transparent,#d9b25a,transparent)"></div>
+            <div class="g-text" style="font-size:clamp(1.05rem,4.6vw,1.35rem);line-height:1.8;color:#f6f2e6;text-shadow:0 1px 8px rgba(0,0,0,.6)"></div>
+            <div style="margin-top:20px;font-size:2.4rem" aria-hidden="true">🇴🇲</div>
+            <button type="button" style="all:unset;margin-top:18px;padding:8px 24px;border:1px solid rgba(217,178,90,.6);border-radius:999px;color:#f6f2e6;font-size:.95rem;cursor:pointer">إغلاق</button>`;
+        card.querySelector('.g-title').textContent = g.title;
+        card.querySelector('.g-text').textContent = g.text;
+        box.append(canvas, card);
+        document.body.appendChild(box);
+        requestAnimationFrame(() => {
+            box.style.opacity = '1';
+            card.style.opacity = '1';
+            card.style.transform = 'none';
+        });
+
+        const stop = still ? () => {} : fireworks(canvas);
+        let closed = false;
+        const close = () => {
+            if (closed) return;
+            closed = true;
+            box.style.opacity = '0';
+            setTimeout(() => { stop(); box.remove(); }, 600);
+        };
+        box.addEventListener('click', close);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); }, { once: true });
+        setTimeout(close, 10000);
+    }
+
+    /* Gold and white bursts over the top of the screen; each spark leaves a long trail and falls slowly
+       (a «willow» firework), with a few red and green ones; returns a stop function */
+    function fireworks(canvas) {
+        const ctx = canvas.getContext('2d');
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const fit = () => { canvas.width = canvas.clientWidth * dpr; canvas.height = canvas.clientHeight * dpr; };
+        fit();
+        window.addEventListener('resize', fit);
+        const GOLD = ['#f5d06b', '#e8b84a', '#ffe9a8', '#ffffff', '#f7dd8f'];
+        const ACCENT = ['#d52b1e', '#2e8b3a'];
+        const sparks = [];
+        let frame = 0;
+        let raf;
+        const burst = () => {
+            const x = canvas.width * (0.12 + Math.random() * 0.76);
+            const y = canvas.height * (0.1 + Math.random() * 0.28);
+            const palette = Math.random() < 0.18 ? ACCENT : GOLD;
+            const n = 60 + Math.floor(Math.random() * 30);
+            const speed = (2.2 + Math.random() * 1.6) * dpr;
+            for (let i = 0; i < n; i++) {
+                const a = (Math.PI * 2 * i) / n + (Math.random() - 0.5) * 0.12;
+                const v = speed * (0.55 + Math.random() * 0.45);
+                sparks.push({ x, y, px: x, py: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1,
+                    fade: 0.006 + Math.random() * 0.006, color: palette[Math.floor(Math.random() * palette.length)] });
+            }
+        };
+        const tick = () => {
+            frame++;
+            if ((frame === 8 || frame % 46 === 0) && frame < 60 * 9) burst();
+            if (frame % 46 === 23 && frame < 60 * 9 && Math.random() < 0.6) burst();
+            // A soft fade leaves the trails behind each spark
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = 'rgba(0,0,0,0.12)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.lineCap = 'round';
+            for (let i = sparks.length - 1; i >= 0; i--) {
+                const p = sparks[i];
+                p.px = p.x;
+                p.py = p.y;
+                p.vx *= 0.975;
+                p.vy = p.vy * 0.975 + 0.03 * dpr;   // slow fall: the willow trails
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= p.fade;
+                if (p.life <= 0) { sparks.splice(i, 1); continue; }
+                ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 1.2));
+                ctx.strokeStyle = p.color;
+                ctx.lineWidth = 1.5 * dpr;
+                ctx.beginPath();
+                ctx.moveTo(p.px, p.py);
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+                if (Math.random() < 0.05) {   // a twinkle
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(p.x, p.y, 1.6 * dpr, 1.6 * dpr);
+                }
+            }
+            ctx.globalAlpha = 1;
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', fit); };
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();

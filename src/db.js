@@ -31,6 +31,10 @@ const DEFAULT_SETTINGS = {
     gift_price: 0,
     gift_until: '',
     gift_scope: ['rolling_shutter', 'overhead', 'motors'],
+    greeting_enabled: false,        // تهنئة للعملاء في الحاسبات (مثل اليوم الوطني) مع ألعاب نارية — مرة لكل زائر
+    greeting_title: 'كل عام وعُمان بخير',
+    greeting_text: 'ردما للبوابات الإلكترونية تهنئكم باليوم الوطني المجيد',
+    greeting_until: '',             // آخر يوم تظهر فيه (فارغ: حتى تُوقف)
     follow_up_stale_days: 3,     // عميل مفتوح بلا متابعة من موظف لهذه المدة يظهر في «بحاجة متابعة»
     follow_up_emails: true,      // بريد يومي لكل موظف بعملائه المستحقين + تقرير أسبوعي للمديرين
     // Slat thicknesses of the in-house calculators (pricing and weight tabs): details, mm, kg per meter
@@ -939,6 +943,11 @@ function saveSettings(db, patch) {
             throw badValue('تاريخ نهاية العرض غير صالح');
         }
         if (key === 'promo_label' && String(value).length > 60) throw badValue('اسم العرض طويل (60 حرفاً كحد أقصى)');
+        if (key === 'greeting_title' && String(value).trim().length > 60) throw badValue('عنوان التهنئة طويل (60 حرفاً كحد أقصى)');
+        if (key === 'greeting_text' && String(value).trim().length > 160) throw badValue('نص التهنئة طويل (160 حرفاً كحد أقصى)');
+        if (key === 'greeting_until' && value && !(/^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z')))) {
+            throw badValue('تاريخ نهاية التهنئة غير صالح');
+        }
         if (key === 'gift_name' && String(value).trim().length > 60) throw badValue('اسم الهدية طويل (60 حرفاً كحد أقصى)');
         if (key === 'gift_price' && !(value >= 0 && value <= 1000)) throw badValue('سعر الهدية بين 0 و1000 ر.ع');
         if (key === 'gift_until' && value && !(/^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z')))) {

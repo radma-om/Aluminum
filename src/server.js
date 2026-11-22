@@ -525,6 +525,20 @@ function createApp(db, { agentClient } = {}) {
     // pricing catalog and can be sent repeatedly by an unauthenticated client.
     const publicReadLimit = rateLimit({ windowMs: 10 * 60_000, max: 120 });
 
+    /* The greeting on the customer calculators (e.g. the National Day), when the manager switched it on and
+       its last day has not passed; ?preview=1 shows the saved wording even when off (the «معاينة» button) */
+    app.get('/api/public/greeting', publicReadLimit, (req, res) => {
+        const s = getSettings(db);
+        const today = leads.localToday();
+        const title = String(s.greeting_title || '').trim();
+        const on = (s.greeting_enabled && !(s.greeting_until && s.greeting_until < today)) || req.query.preview === '1';
+        if (!on || !title) return res.json({ greeting: null });
+        const text = String(s.greeting_text || '').trim();
+        // Each wording is shown once per visitor: a new wording (or last day) is a new greeting
+        const id = crypto.createHash('sha256').update(`${title}|${text}|${s.greeting_until || ''}`).digest('hex').slice(0, 12);
+        res.json({ greeting: { id, title, text, company: s.company_name || '' } });
+    });
+
     app.get('/api/public/catalog', publicReadLimit, (req, res) => {
         const settings = getSettings(db);
         const products = db.prepare(`SELECT * FROM products WHERE active = 1 AND is_public = 1
