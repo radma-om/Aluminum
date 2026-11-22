@@ -1876,6 +1876,19 @@
                 <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="saveGift()">حفظ</button><span id="giftStatus" class="status-text"></span></div>
             </div>
             <div class="card">
+                <div class="card-title"><span class="icon"><i class="fas fa-gift"></i></span> تهنئة العملاء في الحاسبات</div>
+                <p class="status-text" style="margin:0 0 10px">رسالة تهنئة مع ألعاب نارية تظهر لزوار حاسبات العملاء (مثل اليوم الوطني)، مرة واحدة لكل زائر، وتُغلق بلمسة أو وحدها بعد ثوانٍ.</p>
+                <div class="form-grid">
+                    <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="greetingEnabled"> تفعيل التهنئة</label></div>
+                    <div class="form-group"><label>العنوان</label><input type="text" id="greetingTitle" maxlength="60" placeholder="كل عام وعُمان بخير"></div>
+                    <div class="form-group" style="grid-column: span 2"><label>النص</label><input type="text" id="greetingText" maxlength="160" placeholder="ردما للبوابات الإلكترونية تهنئكم باليوم الوطني المجيد"></div>
+                    <div class="form-group"><label>آخر يوم <span class="unit">(اختياري)</span></label><input type="date" id="greetingUntil"></div>
+                </div>
+                <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="saveGreeting()">حفظ</button>
+                    <button class="btn btn-outline btn-sm" onclick="window.open('/?greeting=preview', '_blank', 'noopener')"><i class="fas fa-eye"></i> معاينة</button>
+                    <span id="greetingStatus" class="status-text"></span></div>
+            </div>
+            <div class="card">
                 <div class="card-title"><span class="icon"><i class="fas fa-bell"></i></span> تذكير العملاء بانتهاء العرض</div>
                 <p class="status-text" style="margin:0 0 10px">رسالة واتساب لمن حصل على عرض سعر بالخصم أو الهدية الحالية ولم يُصدر له فاتورة: كم يوفّر، وآخر يوم للعرض، ورابط عرضه للموافقة. مرة واحدة لكل رقم في كل عرض، وتُمدَّد صلاحية عرض السعر حتى آخر يوم.</p>
                 <p class="status-text" id="promoReminderStatus"></p>
