@@ -2,6 +2,7 @@
    Used by admin-i18n.js only when the user chose English. To add a text, add
    its exact Arabic (spaces collapsed) and the English. */
 window.I18N_EN = {
+    "وجهتي": "My destination",
     "تتبع الفريق": "Team tracking",
     "تسجيل زيارة عميل": "Record a customer visit",
     "ملاحظة الزيارة": "Visit note",
