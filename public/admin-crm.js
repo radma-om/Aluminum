@@ -54,6 +54,7 @@ function renderDashboard() {
     renderKpis();
     renderOrigins();
     renderAttention();
+    renderOccasionAlert();
     renderDashboardNotifications();
     renderStaffPerformance();
     renderTrend();
@@ -189,6 +190,24 @@ function renderAttention() {
         b.addEventListener('click', () => openLeadsWith(it.filter));
         $id('attention').appendChild(b);
     }
+}
+
+/* ⚠️ An occasion within a week (managers): what is ready for it, and a way to «العروض والهدايا» */
+function renderOccasionAlert() {
+    const box = $id('occasionAlert');
+    const list = (dash && dash.occasions) || [];
+    if (!box) return;
+    if (!list.length) { box.hidden = true; box.innerHTML = ''; return; }
+    const when = (n) => n === 0 ? 'اليوم' : n === 1 ? 'غداً' : n === 2 ? 'بعد يومين' : `بعد ${n} أيام`;
+    const day = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString(APP_LOCALE, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+    box.hidden = false;
+    box.innerHTML = `<div class="occ-head"><b>⚠️ مناسبة قريبة</b>
+            <button type="button" class="btn btn-outline btn-sm" onclick="switchTab('offers')"><i class="fas fa-tags"></i> العروض والهدايا</button></div>`
+        + list.map((o) => {
+            const ready = [o.promo && `✓ خصم «${esc(o.promo)}»`, o.gift && `✓ هدية ${esc(o.gift)}`, o.greeting && '✓ تهنئة'].filter(Boolean);
+            return `<div class="occ-row"><span class="occ-when">${when(o.days_left)}</span> <b>${esc(o.name)}</b> <small class="muted">${esc(day(o.date))}</small>
+                <div class="occ-ready ${ready.length ? 'ok' : ''}">${ready.length ? ready.join(' · ') : 'لم يُجهَّز لها عرض ولا تهنئة بعد'}</div></div>`;
+        }).join('');
 }
 
 function renderDashboardNotifications() {

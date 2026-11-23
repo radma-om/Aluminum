@@ -774,3 +774,17 @@ body.sb-collapsed .sb-version { justify-content: center; padding: 8px 0; }
 #waWebhookUrl { word-break: break-all; }
 /* A field spanning 2 columns on a one-column phone grid made an extra column (wider than the screen) */
 @media (max-width: 700px) { .form-grid > [style*="span 2"] { grid-column: 1 / -1 !important; } }
+
+/* ⚠️ An occasion within a week (dashboard) and the occasions calendar (offers) */
+.occasion-alert:not([hidden]) { display: block; margin-bottom: 14px; border: 2px solid #f0b429; background: #fffaeb; border-radius: 14px; padding: 12px 14px; }
+.occasion-alert .occ-head { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; margin-bottom: 6px; color: #8a5a00; font-size: 1.05rem; }
+.occasion-alert .occ-row { padding: 6px 0; border-top: 1px dashed #f3d48a; }
+.occasion-alert .occ-when { display: inline-block; background: #f0b429; color: #3d2a00; border-radius: 999px; padding: 1px 10px; font-weight: 700; font-size: 0.85rem; }
+.occasion-alert .occ-ready { font-size: 0.88rem; color: #a85d00; margin-top: 2px; }
+.occasion-alert .occ-ready.ok { color: #1e7b3c; }
+.occasions-table input { width: 100%; min-width: 0; }
+.occasions-table tr.past { opacity: 0.55; }
+.occasions-table .occ-actions { white-space: nowrap; }
+.occasions-table .occ-actions .btn { margin: 2px; }
+.badge.warn { background: #fff1c2; color: #8a5a00; }
+@media (max-width: 640px) { .occasions-table .occ-actions { white-space: normal; } }
