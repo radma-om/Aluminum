@@ -967,7 +967,22 @@ function createApp(db, { agentClient } = {}) {
     /* ---- «تتبع الفريق»: the technician's / marketer's own sharing, and the map for those allowed ---- */
     admin.get('/me/location', (req, res) => res.json(fieldtrack.mine(db, req.user)));
     admin.post('/me/shift', (req, res) => res.json(fieldtrack.shift(db, req.user, req.body || {})));
-    admin.post('/me/location', locationLimit, (req, res) => res.json(fieldtrack.record(db, req.user, req.body || {})));
+    admin.post('/me/location', locationLimit, asyncRoute(async (req, res) => {
+        const out = fieldtrack.record(db, req.user, req.body || {});
+        // On a trip: the time and distance left from here (Google at most every 2 minutes)
+        const trip = await fieldtrack.refreshTrip(db, req.user, req.body || {}).catch(() => null);
+        res.json({ ...out, trip });
+    }));
+    /* «وجهتي»: a trip to a place (a marketer's visit, or a technician without a work order): a map link */
+    admin.post('/me/trip', asyncRoute(async (req, res) => {
+        const b = req.body || {};
+        const place = await require('./routing').resolve(b.map_url);
+        if (!place) throw httpError(400, 'لم أستطع قراءة الموقع من الرابط — انسخ رابط الموقع من خرائط Google (مشاركة ← نسخ الرابط) أو من موقع واتساب');
+        let from = null;
+        try { from = fieldtrack.coords(b.from || {}); } catch { from = null; }
+        res.json({ trip: await fieldtrack.startTrip(db, req.user, { ...place, label: b.label || 'وجهتي' }, from) });
+    }));
+    admin.delete('/me/trip', (req, res) => { fieldtrack.endTrip(db, { userId: req.user.id }); res.json({ trip: null }); });
     admin.post('/me/visit', (req, res) => res.status(201).json(fieldtrack.visit(db, req.user, req.body || {})));
     admin.get('/tracking', (req, res) => res.json(fieldtrack.overview(db)));
     admin.get('/tracking/:userId', (req, res) => res.json(fieldtrack.day(db, req.params.userId, String(req.query.date || ''))));
@@ -1586,6 +1601,8 @@ function createApp(db, { agentClient } = {}) {
         }
         const order = workorders.create(db, b, staffName(req), { source });
         webhooks.emit(db, 'work_order.created', order);
+        // The customer's place from the map link (for the time and distance left on the way)
+        await fieldtrack.orderPlace(db, order).catch(() => null);
         // «إبلاغ العميل»: the appointment, as soon as it is set
         const notice = b.notify_customer && order.scheduled_date
             ? await orderNotify.notify(db, order, 'scheduled', { origin: systemOrigin(req, db), by: staffName(req) }) : null;
@@ -1596,6 +1613,7 @@ function createApp(db, { agentClient } = {}) {
         officeOnly(req);
         const before = orderFor(req, req.params.id);
         const order = workorders.update(db, req.params.id, req.body || {}, staffName(req));
+        if (order.map_url !== before.map_url) await fieldtrack.replaceOrderPlace(db, order.id).catch(() => null);
         let notice = null;
         const moved = order.scheduled_date !== before.scheduled_date || order.scheduled_time !== before.scheduled_time
             || order.technician_id !== before.technician_id;
@@ -1847,6 +1865,8 @@ function createApp(db, { agentClient } = {}) {
         const b = req.body || {};
         const order = workorders.setStatus(db, req.params.id, String(b.status || ''), b.note, req.user);
         webhooks.emit(db, 'work_order.status_changed', order);
+        // Arrived and started (or closed, or back to «new»): the trip to this order ends
+        fieldtrack.endTrip(db, { orderId: order.id });
         // The customer hears it (in the background: the technician does not wait for WhatsApp).
         // A visit opened and finished on the spot already sent its invoice: no «done» notice too.
         const quick = Date.now() - Date.parse(String(order.created_at).replace(' ', 'T') + 'Z') < 10 * 60_000;
@@ -1860,8 +1880,37 @@ function createApp(db, { agentClient } = {}) {
         if (!['new', 'scheduled', 'in_progress'].includes(order.status)) throw httpError(400, 'أمر العمل مغلق');
         db.prepare('INSERT INTO work_order_events (order_id, author, text, by_technician) VALUES (?, ?, ?, ?)')
             .run(order.id, staffName(req), '🚚 الفني في الطريق إلى العميل', req.user.role === 'technician' ? 1 : 0);
+        // The trip: from the phone's place now to the customer's — the time and distance left (when the place is known)
+        let trip = null;
+        let place = null;
+        if (req.user.role === 'technician' || req.user.role === 'marketer') {
+            place = await fieldtrack.orderPlace(db, order).catch(() => null);
+            let from = null;
+            try { from = fieldtrack.coords(req.body || {}); } catch { from = null; }
+            if (place) trip = await fieldtrack.startTrip(db, req.user, { ...place, label: `${order.number} — ${order.customer_name || ''}`, order_id: order.id }, from).catch(() => null);
+        }
         const notice = await orderNotify.notify(db, order, 'on_the_way', { origin: systemOrigin(req, db), by: staffName(req) });
-        res.json({ ...workorders.get(db, order.id), notice: { ok: notice.sent, error: notice.error || null, skipped: notice.skipped || null } });
+        res.json({ ...workorders.get(db, order.id), trip, need_place: Boolean(req.user.role === 'technician' && !place),
+            notice: { ok: notice.sent, error: notice.error || null, skipped: notice.skipped || null } });
+    }));
+    /* Where the customer is: a Google Maps / WhatsApp link, or the technician's place now («أنا عند العميل») */
+    admin.post('/work-orders/:id/place', asyncRoute(async (req, res) => {
+        const order = orderFor(req, req.params.id);
+        if (['done', 'cancelled'].includes(order.status)) throw httpError(400, 'أمر العمل مغلق');
+        const place = await fieldtrack.setOrderPlace(db, order.id, req.body || {});
+        db.prepare('INSERT INTO work_order_events (order_id, author, text, by_technician) VALUES (?, ?, ?, ?)')
+            .run(order.id, staffName(req), '📍 حُدّد موقع العميل على الخريطة', req.user.role === 'technician' ? 1 : 0);
+        res.json({ ...workorders.get(db, order.id), place });
+    }));
+    /* The trip to this order (after its place was set on the way): no message to the customer again */
+    admin.post('/work-orders/:id/trip', asyncRoute(async (req, res) => {
+        const order = orderFor(req, req.params.id);
+        if (!['new', 'scheduled', 'in_progress'].includes(order.status)) throw httpError(400, 'أمر العمل مغلق');
+        const place = await fieldtrack.orderPlace(db, order);
+        if (!place) throw httpError(400, 'حدّد موقع العميل أولاً');
+        let from = null;
+        try { from = fieldtrack.coords(req.body || {}); } catch { from = null; }
+        res.json({ trip: await fieldtrack.startTrip(db, req.user, { ...place, label: `${order.number} — ${order.customer_name || ''}`, order_id: order.id }, from) });
     }));
     admin.post('/work-orders/:id/notes', (req, res) => {
         orderFor(req, req.params.id);
@@ -1872,6 +1921,7 @@ function createApp(db, { agentClient } = {}) {
         orderFor(req, req.params.id);
         const order = workorders.cancel(db, req.params.id, (req.body || {}).reason, staffName(req));
         webhooks.emit(db, 'work_order.status_changed', order);
+        fieldtrack.endTrip(db, { orderId: order.id });
         const notice = (req.body || {}).notify_customer ? await servicerequests.notifyCancelled(db, order, (req.body || {}).reason) : null;
         res.json({ ...order, notice });
     }));

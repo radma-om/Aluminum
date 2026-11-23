@@ -48,6 +48,7 @@ async function initShift() {
     $id('shiftBar').hidden = false;
     $id('visitBtn').hidden = ME.role !== 'marketer';
     renderShift();
+    renderTrip();
     if (myShift.on_shift_since) startWatch();
 }
 
@@ -58,6 +59,37 @@ function renderShift(note) {
         ? `<span class="live-dot"></span> في الدوام — موقعك يُشارك مع الإدارة${note ? ` <small class="muted">(${esc(note)})</small>` : ''}`
         : '<i class="fas fa-location-dot"></i> خارج الدوام — لا يُشارك موقعك';
     $id('shiftBtn').innerHTML = on ? '<i class="fas fa-circle-pause"></i> إنهاء الدوام' : '<i class="fas fa-play"></i> بدء الدوام';
+    $id('tripBtn').hidden = !on;
+}
+
+/* The trip under way: where to, the time and distance left, and the navigation */
+const tripText = (t) => t.arrived_at ? `✅ وصلت إلى ${t.label}`
+    : `🚚 إلى ${t.label}${t.eta_text ? ` — يصل بعد ${t.eta_text} · ${t.distance_text}${t.estimate ? ' (تقريبي)' : ''}` : ' — يُحسب الوقت عند وصول موقعك'}`;
+function renderTrip() {
+    const t = myShift.trip;
+    const box = $id('shiftTrip');
+    box.hidden = !t || !myShift.on_shift_since;
+    if (box.hidden) { box.innerHTML = ''; return; }
+    box.innerHTML = `<span>${esc(tripText(t))}</span>
+        ${t.arrived_at ? '' : `<a class="btn btn-primary btn-sm" href="${esc(t.nav_url)}" target="_blank" rel="noopener"><i class="fas fa-route"></i> ابدأ الملاحة</a>`}
+        <button type="button" class="btn btn-outline btn-sm" onclick="endMyTrip()">${t.arrived_at ? 'إخفاء' : 'إلغاء الوجهة'}</button>`;
+}
+function showTrip(trip) {
+    myShift.trip = trip;
+    renderTrip();
+}
+/* «وجهتي»: a place to go to (a marketer's visit, or anywhere): a Google Maps / WhatsApp location link */
+async function setMyTrip() {
+    const link = await askText('الصق رابط الوجهة من خرائط Google أو موقع واتساب:', '', { okLabel: 'ابدأ' });
+    if (!link || !link.trim()) return;
+    const label = await askText('اسم الوجهة (مثلاً اسم العميل):', '', { okLabel: 'حفظ' });
+    if (label === null) return;
+    const from = await currentPlace(8000);
+    try { showTrip((await api('POST', '/api/admin/me/trip', { map_url: link.trim(), label: label.trim(), from })).trip); } catch (err) { tell(err.message); }
+}
+async function endMyTrip() {
+    try { await api('DELETE', '/api/admin/me/trip'); } catch { /* ignore */ }
+    showTrip(null);
 }
 
 async function toggleShift() {
@@ -77,6 +109,7 @@ async function toggleShift() {
         myShift = await api('POST', '/api/admin/me/shift', { on, consent: on ? true : undefined, ...(place || {}) });
         if (place) lastSentAt = Date.now();
         renderShift();
+        renderTrip();
         if (on) startWatch(); else stopWatch();
     } catch (err) { tell(err.message); }
     btn.disabled = false;
@@ -100,6 +133,7 @@ async function sendLive() {
     try {
         const r = await api('POST', '/api/admin/me/location', { ...lastPos, kind: 'live' });
         if (r.reason === 'off_shift') { myShift.on_shift_since = null; stopWatch(); }
+        if (r.trip !== undefined) showTrip(r.trip);
         renderShift(r.kept ? `آخر إرسال ${tkTime(new Date().toISOString())}` : '');
     } catch { /* no signal: the next one will go */ }
 }
@@ -184,6 +218,7 @@ async function loadTracking() {
         const last = p.last ? `${esc(p.last.kind_label)}${p.last.label ? `: ${esc(p.last.label)}` : ''} — ${esc(agoText(p.last.at))}` : 'لا موقع بعد';
         return `<div class="tp-row"><div class="tp-head"><b>${esc(p.name)}</b> <span class="pill">${esc(p.role_label)}</span> <span class="badge ${cls}">${label}</span></div>
             <div class="muted tp-last">${last}${!p.consent ? ' — لم يوافق على المشاركة بعد' : ''}</div>
+            ${p.trip ? `<div class="tp-trip">${esc(tripText(p.trip).replace('وصلت', 'وصل'))}</div>` : ''}
             <div class="tp-actions">${p.last ? `<button class="btn btn-outline btn-sm" onclick="focusPerson(${p.id})"><i class="fas fa-location-crosshairs"></i> على الخريطة</button>
                 <a class="btn btn-outline btn-sm" href="${gmapsLink(p.last.lat, p.last.lng)}" target="_blank" rel="noopener"><i class="fas fa-location-dot"></i> خرائط Google</a>` : ''}
                 <button class="btn btn-outline btn-sm" onclick="openTrackingDay(${p.id})"><i class="fas fa-route"></i> مسار اليوم</button></div></div>`;
@@ -209,9 +244,40 @@ async function showTrackingTeam() {
         marker.addListener('click', () => info.open({ anchor: marker, map: gmap }));
         gmapLayers.push(marker);
         bounds.extend(pos);
+        // On the way: the road left and the destination
+        if (p.trip && !p.trip.arrived_at) {
+            const to = { lat: p.trip.lat, lng: p.trip.lng };
+            const path = p.trip.polyline ? decodePolyline(p.trip.polyline) : [pos, to];
+            gmapLayers.push(new google.maps.Polyline({ path, map: gmap, strokeColor: '#d35400', strokeOpacity: 0.9, strokeWeight: 4, ...(p.trip.polyline ? {} : { strokeOpacity: 0, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.9, scale: 3 }, offset: '0', repeat: '14px' }] }) }));
+            const dest = new google.maps.Marker({ position: to, map: gmap, title: p.trip.label, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#d35400', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 } });
+            const dInfo = new google.maps.InfoWindow({ content: `<div dir="rtl"><b>${esc(p.trip.label)}</b><br>${esc(p.name)}${p.trip.eta_text ? ` — ${esc(p.trip.eta_text)} · ${esc(p.trip.distance_text)}` : ''}</div>` });
+            dest.addListener('click', () => dInfo.open({ anchor: dest, map: gmap }));
+            gmapLayers.push(dest);
+            bounds.extend(to);
+        }
     }
     if (gmapLayers.length > 1) gmap.fitBounds(bounds, 60);
     else if (gmapLayers.length === 1) { gmap.setCenter(bounds.getCenter()); gmap.setZoom(14); }
+}
+
+/* Google's encoded polyline (the road from Routes) → points */
+function decodePolyline(str) {
+    const points = [];
+    let i = 0;
+    let lat = 0;
+    let lng = 0;
+    while (i < str.length) {
+        for (const axis of [0, 1]) {
+            let shift = 0;
+            let result = 0;
+            let b;
+            do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+            const d = result & 1 ? ~(result >> 1) : result >> 1;
+            if (axis === 0) lat += d; else lng += d;
+        }
+        points.push({ lat: lat / 1e5, lng: lng / 1e5 });
+    }
+    return points;
 }
 
 function focusPerson(id) {

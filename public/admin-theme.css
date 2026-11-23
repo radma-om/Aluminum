@@ -806,3 +806,5 @@ body.sb-collapsed .sb-version { justify-content: center; padding: 8px 0; }
 .tracking-stops { margin: 10px 0 0; padding-inline-start: 22px; font-size: 0.9rem; line-height: 1.9; }
 .tracking-stops a { margin-inline-start: 6px; font-size: 0.82rem; }
 @media (max-width: 860px) { .tracking-grid { grid-template-columns: 1fr; } .tracking-map { height: 360px; } }
+.shift-bar .shift-trip:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #c9e6d3; font-weight: 600; color: #8a4a00; }
+.tracking-people .tp-trip { font-size: 0.88rem; color: #8a4a00; font-weight: 600; margin: -2px 0 6px; }

@@ -12,6 +12,17 @@
    ============================================================= */
 const invoices = require('./invoices');
 const workorders = require('./workorders');
+const fieldtrack = require('./fieldtrack');
+
+/* The technician on the way (time and distance left; never their place), or arrived */
+function onWayCard(trip) {
+    if (!trip) return '';
+    if (trip.arrived) return '<section class="card way"><b>✅ وصل الفني إلى موقعكم</b></section>';
+    return `<section class="card way"><b>🚚 الفني في الطريق إليكم</b>${trip.eta_text
+        ? `<p class="eta">يصل خلال <b>${esc(trip.eta_text)}</b> تقريباً — المسافة ${esc(trip.distance_text)}</p>` : '<p class="mut">سيصلكم قريباً</p>'}
+<p class="mut">تتحدث هذه الصفحة كل دقيقة.</p></section>`;
+}
+const refreshMeta = (trip) => (trip && !trip.arrived ? '<meta http-equiv="refresh" content="60">' : '');
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = (n) => Number(n || 0).toFixed(3);
@@ -38,7 +49,7 @@ th{color:var(--mut);font-weight:400;font-size:.82rem}td.n,th.n{text-align:left;w
 .tot .bal{color:#a93226;font-weight:700}.tot .paid{color:var(--ok)}.dep{background:#fff8ec;border-radius:10px;padding:8px 10px;margin:8px 0 0;font-size:.9rem}
 ul.pays{list-style:none;margin:0;padding:0}ul.pays li{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--bd);font-size:.9rem}
 .btns{display:grid;gap:8px}.btn{display:block;text-align:center;text-decoration:none;border-radius:12px;padding:12px;font-weight:700;background:var(--p);color:#fff}
-.btn.wa{background:#1e8449}.btn.out{background:#fff;color:var(--p);border:1px solid var(--p)}
+.way{border-color:#f5cba7;background:#fff8f1}.way .eta{margin:6px 0 0;font-size:1.05rem}.btn.wa{background:#1e8449}.btn.out{background:#fff;color:var(--p);border:1px solid var(--p)}
 footer{text-align:center;color:var(--mut);font-size:.8rem;margin-top:16px}
 `;
 
@@ -55,7 +66,7 @@ function find(db, key) {
 /* What the customer may see of the invoice and its work orders */
 function view(db, inv) {
     const quote = inv.quote_id ? db.prepare('SELECT ref, created_at FROM quotes WHERE id = ?').get(inv.quote_id) : null;
-    const orders = db.prepare(`SELECT w.kind, w.status, w.scheduled_date, w.scheduled_time, w.completed_at, u.display_name AS technician
+    const orders = db.prepare(`SELECT w.id, w.kind, w.status, w.scheduled_date, w.scheduled_time, w.completed_at, u.display_name AS technician
                                FROM work_orders w LEFT JOIN staff_users u ON u.id = w.technician_id
                                WHERE w.invoice_id = ? AND w.status != 'cancelled' ORDER BY w.id`).all(inv.id);
     const cancelled = inv.state === 'cancelled';
@@ -65,6 +76,8 @@ function view(db, inv) {
     const working = orders.some((o) => o.status === 'in_progress');
     const scheduled = orders.find((o) => o.scheduled_date && o.status !== 'done') || null;
     const when = (o) => `${dayName(o.scheduled_date)} ${o.scheduled_date}${o.scheduled_time ? ` — ${o.scheduled_time}` : ''}`;
+    // A technician on the way to one of the open orders
+    const onWay = cancelled ? null : orders.filter((o) => ['new', 'scheduled'].includes(o.status)).map((o) => fieldtrack.orderTrip(db, o.id)).find(Boolean) || null;
 
     // done / now / later for each step
     const steps = [
@@ -90,7 +103,7 @@ function view(db, inv) {
     if (!steps.some((s) => s.state === 'now')) { const first = steps.find((s) => s.state === 'later'); if (first) first.state = 'now'; }
 
     return {
-        cancelled, steps, quote, orders: orders.map((o) => ({ kind: workorders.KINDS[o.kind] || o.kind, status: workorders.STATUSES[o.status] || o.status, when: o.scheduled_date ? when(o) : null, technician: o.technician })),
+        cancelled, steps, quote, on_way: onWay, orders: orders.map((o) => ({ kind: workorders.KINDS[o.kind] || o.kind, status: workorders.STATUSES[o.status] || o.status, when: o.scheduled_date ? when(o) : null, technician: o.technician })),
         status: cancelled ? 'الفاتورة ملغاة' : allDone ? 'اكتمل العمل ✅' : working ? 'جاري التنفيذ 🔧' : scheduled ? 'تم تحديد موعد التركيب 📅' : next ? 'بانتظار تحديد الموعد' : paidAll ? 'تم الدفع ✅' : 'صدرت الفاتورة 🧾'
     };
 }
@@ -109,13 +122,14 @@ function page(db, inv, settings) {
     const first = String(inv.customer_name || '').trim().split(/\s+/)[0] || 'عميلنا العزيز';
     return `<!doctype html>
 <html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow"><link rel="icon" href="/icons/icon-192.png"><title>تتبع طلبك — ${esc(inv.number)}</title>
+<meta name="robots" content="noindex, nofollow">${refreshMeta(v.on_way)}<link rel="icon" href="/icons/icon-192.png"><title>تتبع طلبك — ${esc(inv.number)}</title>
 <style>${STYLE}</style></head><body>
 <header><img src="/images/logo.png" alt=""><b>${esc(company)}</b></header>
 <main>
 <section class="card"><h1>مرحباً ${esc(first)} 👋</h1>
 <span class="status${v.cancelled ? ' off' : ''}">${esc(v.status)}</span>
 <p class="mut">فاتورة ${esc(inv.number)} — صدرت ${esc(inv.issue_date)}</p></section>
+${onWayCard(v.on_way)}
 ${v.cancelled ? '<section class="card"><b>هذه الفاتورة ملغاة.</b><p class="mut">للاستفسار تواصلوا معنا.</p></section>' : `
 <section class="card"><ol class="steps">${v.steps.map((s) => `<li class="${s.state}"><b>${esc(s.title)}</b>${s.note ? `<small>${esc(s.note)}</small>` : ''}</li>`).join('')}</ol></section>`}
 <section class="card"><table><thead><tr><th>البند</th><th class="n">الكمية</th><th class="n">المبلغ</th></tr></thead><tbody>${items}</tbody></table>
@@ -145,7 +159,8 @@ function findOrder(db, key) {
 }
 
 /* The page of an order alone: the appointment, the technician, how far it is */
-function orderPage(order, settings) {
+function orderPage(order, settings, db = null) {
+    const onWay = db && ['new', 'scheduled'].includes(order.status) ? fieldtrack.orderTrip(db, order.id) : null;
     const company = settings.company_name || 'ردما للبوابات الإلكترونية';
     const phone = String(settings.company_phone || '').replace(/\D/g, '');
     const intl = phone.length === 8 ? '968' + phone : phone;
@@ -160,12 +175,13 @@ function orderPage(order, settings) {
     ];
     return `<!doctype html>
 <html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow"><link rel="icon" href="/icons/icon-192.png"><title>تتبع طلبك — ${esc(order.number)}</title>
+<meta name="robots" content="noindex, nofollow">${refreshMeta(onWay)}<link rel="icon" href="/icons/icon-192.png"><title>تتبع طلبك — ${esc(order.number)}</title>
 <style>${STYLE}</style></head><body>
 <header><img src="/images/logo.png" alt=""><b>${esc(company)}</b></header>
 <main>
 <section class="card"><h1>مرحباً ${esc(first)} 👋</h1><span class="status">${esc(done ? 'اكتمل العمل ✅' : working ? 'جاري التنفيذ 🔧' : order.scheduled_date ? 'تم تحديد الموعد 📅' : 'بانتظار تحديد الموعد')}</span>
 <p class="mut">طلب ${esc(order.number)}</p></section>
+${onWayCard(onWay)}
 <section class="card"><ol class="steps">${steps.map((s) => `<li class="${s.state}"><b>${esc(s.title)}</b>${s.note ? `<small>${esc(s.note)}</small>` : ''}</li>`).join('')}</ol></section>
 <section class="card btns">
 ${intl ? `<a class="btn wa" href="https://wa.me/${esc(intl)}">💬 تواصل معنا على واتساب</a><a class="btn out" href="tel:+${esc(intl)}">📞 اتصال</a>` : ''}
@@ -184,7 +200,7 @@ function route(db, getSettings) {
         const inv = find(db, req.params.key);
         if (!inv) {
             const order = findOrder(db, req.params.key);
-            if (order) return res.type('html').send(orderPage(order, getSettings(db)));
+            if (order) return res.type('html').send(orderPage(order, getSettings(db), db));
         }
         if (!inv) return res.status(404).type('html').send('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>غير موجود</title><p style="font-family:Tahoma;padding:24px">الرابط غير صحيح أو انتهى.</p></html>');
         res.type('html').send(page(db, inv, getSettings(db)));
