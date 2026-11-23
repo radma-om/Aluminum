@@ -28,9 +28,12 @@ const SECTIONS = {
     overhead: 'بوابات الأوفرهيد',
     motors: 'مكائن البوابات',
     agent: 'المساعد الذكي',
-    integrations: 'الربط والإعدادات'
+    integrations: 'الربط والإعدادات',
+    tracking: 'تتبع الفريق (مواقع الفنيين والمسوقين)'
 };
-const ROLES = { staff: 'موظف', manager: 'مدير', technician: 'فني تركيب وصيانة' };
+/* A marketer works like an employee (the sections the manager gives, commission on their sales), records
+   customer visits, and shares their place during the working day like a technician (fieldtrack.js) */
+const ROLES = { staff: 'موظف', manager: 'مدير', technician: 'فني تركيب وصيانة', marketer: 'مسوق' };
 const SCOPES = { all: 'كل العملاء', mine: 'عملاؤه فقط (وغير المُسندين)' };
 const SESSION_DAYS = 14;
 const OWNER = { id: null, username: '', display_name: 'المدير العام', role: 'manager', permissions: Object.keys(SECTIONS), leads_scope: 'all', owner: true };
@@ -88,7 +91,7 @@ function clean(db, input, { existing = null } = {}) {
     const role = ROLES[input.role] ? input.role : existing?.role || 'staff';
     const permissions = Array.isArray(input.permissions) ? [...new Set(input.permissions.filter((s) => SECTIONS[s]))]
         : existing ? JSON.parse(existing.permissions_json || '[]') : [];
-    if (role === 'staff' && !permissions.length) throw err(400, 'اختر قسماً واحداً على الأقل يعمل فيه الموظف');
+    if ((role === 'staff' || role === 'marketer') && !permissions.length) throw err(400, 'اختر قسماً واحداً على الأقل يعمل فيه الموظف');
     if (role === 'technician') permissions.length = 0; // fixed: their own work orders
     const leadsScope = SCOPES[input.leads_scope] ? input.leads_scope : existing?.leads_scope || 'all';
     const active = input.active === undefined ? (existing ? existing.active : 1) : (input.active ? 1 : 0);
@@ -305,6 +308,8 @@ function sectionsFor(method, path) {
         [/^\/wallet(\/|$)/, 'any'],
         [/^\/settings$/, method === 'GET' ? 'any' : 'settings'],
         [/^\/dashboard$/, ['dashboard']],
+        // Where the technicians and marketers are: whoever was given «تتبع الفريق»
+        [/^\/tracking(\/|$)/, ['tracking']],
         [/^\/leads(\/|$)/, ['leads']],
         // The quote builder also edits an invoice's lines
         [/^\/quotes\/(catalog|preview)$/, ['quotes', 'invoices']],

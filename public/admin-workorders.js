@@ -113,6 +113,9 @@ async function woMove(id, status) {
     }
     try {
         await api('POST', `/api/admin/work-orders/${id}/status`, { status, note: note.trim() });
+        // «تتبع الفريق»: where this step happened (the technician's / marketer's phone, when it gives it)
+        const step = { in_progress: 'بدأ العمل', done: 'تم العمل' }[status];
+        if (step) { const o = woOrders.find((x) => x.id === id); trackEvent(`${step} — ${o ? `${o.number} ${o.customer_name || ''}` : `أمر ${id}`}`.trim()); }
         await loadWorkOrders();
     } catch (err) { alert(err.message); }
 }
@@ -313,6 +316,8 @@ async function woOnTheWay(id, btn) {
     btn.disabled = true;
     try {
         const r = await api('POST', `/api/admin/work-orders/${id}/on-the-way`, {});
+        const o = woOrders.find((x) => x.id === id);
+        trackEvent(`في الطريق — ${o ? `${o.number} ${o.customer_name || ''}` : `أمر ${id}`}`.trim());
         btn.innerHTML = r.notice && r.notice.ok ? '<i class="fas fa-truck"></i> أُبلغ العميل ✓' : '<i class="fas fa-truck"></i> سُجّل ✓';
         if (r.notice && !r.notice.ok && !r.notice.skipped) await tell(`سُجّل أنك في الطريق، لكن لم تصل رسالة للعميل: ${r.notice.error}`);
     } catch (err) { btn.disabled = false; tell(err.message); }
