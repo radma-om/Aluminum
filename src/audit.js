@@ -79,13 +79,15 @@ const LABELS = [
     ['POST', /^\/offsite-backup$/, 'إرسال نسخة احتياطية بالبريد'],
     ['POST', /^\/alerts\/test$/, 'إرسال تنبيه أعطال تجريبي'],
     ['POST', /^\/follow-up\/send$/, 'إرسال تذكيرات المتابعة / التقرير الأسبوعي'],
+    ['GET', /^\/tracking\/\d+$/, 'عرض مسار فني أو مسوق على الخريطة'], ['POST', /^\/me\/shift$/, 'بدء أو إنهاء الدوام (مشاركة الموقع)'],
     ['GET', /^\/backup\.xlsx$/, 'تنزيل نسخة احتياطية'], ['GET', /^\/backups\/[^/]+\.xlsx$/, 'تنزيل نسخة احتياطية محفوظة'],
     ['POST', /^\/me\/password$/, 'تغيير كلمة المرور'],
     ['POST', /^\/me\/2fa\/enable$/, 'تفعيل التحقق بخطوتين'], ['POST', /^\/me\/2fa\/disable$/, 'إيقاف التحقق بخطوتين']
 ];
 
 /* Not changes: tests and previews that write nothing that matters */
-const SKIP = [/^\/quotes\/preview$/, /^\/agent\/chat$/, /^\/mazbot\/diagnose\/simulate$/, /^\/me\/2fa\/setup$/];
+// /me/location: a place every minute during a shift (kept 30 days in its own table, never here)
+const SKIP = [/^\/me\/location$/, /^\/quotes\/preview$/, /^\/agent\/chat$/, /^\/mazbot\/diagnose\/simulate$/, /^\/me\/2fa\/setup$/];
 
 const labelFor = (method, path) => (LABELS.find(([m, re]) => m === method && re.test(path)) || [])[2] || null;
 

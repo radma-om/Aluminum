@@ -19,7 +19,7 @@ const STATUSES = {
 };
 const OPEN_STATUSES = ['new', 'needs_staff', 'following', 'waiting'];
 const NOTE_KINDS = { report: 'تقرير متابعة', recommendation: 'توصية', handover: 'تسليم لموظف آخر', note: 'ملاحظة' };
-const CHANNELS = { whatsapp: 'واتساب', website: 'الموقع', calculator: 'الحاسبة' };
+const CHANNELS = { whatsapp: 'واتساب', website: 'الموقع', calculator: 'الحاسبة', field: 'زيارة ميدانية' };
 const MAX_MESSAGES = 400; // per lead; older ones are dropped
 
 const err = (status, message) => Object.assign(new Error(message), { status });

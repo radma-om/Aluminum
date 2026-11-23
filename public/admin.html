@@ -729,6 +729,7 @@
             <div class="nav-group">الرئيسية</div>
             <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')" title="لوحة المؤشرات"><i class="fas fa-chart-line"></i><span class="t-label">لوحة المؤشرات</span></button>
             <button class="tab-btn" data-tab="team" onclick="switchTab('team')" title="أداء الموظفين" hidden><i class="fas fa-ranking-star"></i><span class="t-label">أداء الموظفين</span></button>
+            <button class="tab-btn" data-tab="tracking" onclick="switchTab('tracking')" title="تتبع الفريق" hidden><i class="fas fa-location-dot"></i><span class="t-label">تتبع الفريق</span></button>
             <button class="tab-btn" data-tab="bonuses" onclick="switchTab('bonuses')" title="المكافآت والعمولات" hidden><i class="fas fa-sack-dollar"></i><span class="t-label">المكافآت والعمولات</span></button>
             <button class="tab-btn" data-tab="leads" onclick="switchTab('leads')" title="متابعة العملاء"><i class="fas fa-headset"></i><span class="t-label">متابعة العملاء</span><span class="count" id="leadsBadge" hidden></span></button>
             <button class="tab-btn" data-tab="customers" onclick="switchTab('customers')" title="العملاء"><i class="fas fa-address-book"></i><span class="t-label">العملاء</span></button>
@@ -782,6 +783,24 @@
     <div class="main-container">
         <div id="appNotices" hidden></div>
         <div id="systemWarnings" hidden></div>
+        <!-- The technician's / marketer's working day: sharing their place while on shift -->
+        <section id="shiftBar" class="shift-bar" hidden aria-label="الدوام ومشاركة الموقع">
+            <div class="shift-row">
+                <span class="shift-state" id="shiftState"></span>
+                <button type="button" class="btn btn-primary btn-sm" id="shiftBtn" onclick="toggleShift()"></button>
+                <button type="button" class="btn btn-outline btn-sm" id="visitBtn" onclick="openVisitForm()" hidden><i class="fas fa-user-tag"></i> تسجيل زيارة عميل</button>
+            </div>
+            <div class="visit-form" id="visitForm" hidden>
+                <div class="form-grid">
+                    <div class="form-group"><label>اسم العميل</label><input type="text" id="visitName" maxlength="120"></div>
+                    <div class="form-group"><label>رقم الجوال</label><input type="tel" id="visitPhone" dir="ltr" maxlength="20" placeholder="9XXXXXXX"></div>
+                    <div class="form-group" style="grid-column: 1 / -1"><label>ملاحظة الزيارة</label><input type="text" id="visitNote" maxlength="1000" placeholder="مثلاً: يريد بوابة شتر لكراج 3×2.5 م، يتصل بعد أسبوع"></div>
+                </div>
+                <div class="form-buttons"><button type="button" class="btn btn-primary btn-sm" onclick="saveVisit()">حفظ الزيارة مع موقعي</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="$id('visitForm').hidden = true">إلغاء</button>
+                    <span id="visitStatus" class="status-text"></span></div>
+            </div>
+        </section>
 
         <!-- ==================== TAB 1: Pricing Calculator ==================== -->
         <!-- ==================== Dashboard ==================== -->
@@ -883,6 +902,7 @@
                                 <option value="whatsapp">واتساب</option>
                                 <option value="website">الموقع</option>
                                 <option value="calculator">الحاسبات</option>
+                                <option value="field">زيارة ميدانية</option>
                             </select>
                         </div>
                     </div>
@@ -965,6 +985,25 @@
             </div>
         </div>
 
+        <div id="tab-tracking" class="tab-content">
+            <div class="dash-toolbar"><h2>تتبع الفريق</h2>
+                <button class="btn btn-outline btn-sm" onclick="loadTracking()"><i class="fas fa-rotate"></i> تحديث</button>
+                <span class="muted" id="trackingUpdated"></span></div>
+            <p class="status-text" id="trackingNote">مواقع الفنيين والمسوقين أثناء الدوام فقط: يرسل جواله موقعه كل دقيقة والنظام مفتوح على شاشته، ولقطة عند كل خطوة في أمر العمل وعند كل زيارة عميل. تُحذف المواقع تلقائياً بعد 30 يوماً.</p>
+            <div class="tracking-grid">
+                <div class="card tracking-people"><div class="card-title"><span class="icon"><i class="fas fa-users"></i></span> الفريق الآن</div>
+                    <div id="trackingPeople"></div></div>
+                <div class="card tracking-map-card">
+                    <div class="chart-head"><h3 id="trackingMapTitle">الخريطة</h3>
+                        <div class="tracking-day" id="trackingDayBox" hidden><input type="date" id="trackingDate" onchange="loadTrackingDay()">
+                            <button class="btn btn-outline btn-sm" onclick="showTrackingTeam()"><i class="fas fa-users"></i> كل الفريق</button></div></div>
+                    <div id="trackingMap" class="tracking-map"></div>
+                    <div id="trackingNoMap" class="status-text" hidden>لعرض الخريطة هنا أضف مفتاح Google Maps في متغيرات الخادم باسم GOOGLE_MAPS_API_KEY. وحتى ذلك يفتح زر «خرائط Google» موقع كل شخص.</div>
+                    <ol class="tracking-stops" id="trackingStops"></ol>
+                </div>
+            </div>
+        </div>
+
         <div id="tab-team" class="tab-content">
             <div class="dash-toolbar">
                 <h2>أداء الموظفين</h2>
@@ -1009,7 +1048,7 @@
                     <div class="form-group"><label>البريد الإلكتروني <span class="unit">(لاستعادة كلمة المرور — اختياري)</span></label><input type="email" id="uEmail" dir="ltr" placeholder="salem@radma.co" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
                     <div class="form-group"><label id="uPasswordLabel">كلمة المرور (8 أحرف على الأقل)</label><input type="text" id="uPassword" dir="ltr" autocomplete="new-password" placeholder="••••••••"></div>
                     <div class="form-group"><label>الدور</label>
-                        <select id="uRole" onchange="userRoleChanged()"><option value="staff">موظف — أقسام محددة</option><option value="manager">مدير — كل الأقسام وإدارة الحسابات</option><option value="technician">فني تركيب وصيانة — أوامره فقط</option></select></div>
+                        <select id="uRole" onchange="userRoleChanged()"><option value="staff">موظف — أقسام محددة</option><option value="manager">مدير — كل الأقسام وإدارة الحسابات</option><option value="technician">فني تركيب وصيانة — أوامره فقط</option><option value="marketer">مسوق — أقسام محددة وزيارات العملاء ومشاركة موقعه</option></select></div>
                 </div>
                 <div id="uPermsBox">
                     <p class="sub-heading">الأقسام التي يعمل فيها</p>
@@ -1022,7 +1061,8 @@
                 </div>
                 <div class="check-row"><label><input type="checkbox" id="uActive" checked> الحساب مفعّل</label>
                     <label id="uReset2faRow" hidden><input type="checkbox" id="uReset2fa"> إعادة ضبط التحقق بخطوتين (فقد جواله) — يضبطه من جديد عند الدخول</label></div>
-                <p class="status-text" id="uTechNote" hidden>حساب «فني» يرى قسم «أوامر العمل» فقط، وفيه الأوامر المسندة إليه فقط (بدون أسعار): يبدأ العمل ويكتب ما تم ويغلقه. أضف بريده ليصله كل أمر جديد وقائمة أعماله كل صباح.</p>
+                <p class="status-text" id="uTechNote" hidden>حساب «فني» يرى قسم «أوامر العمل» فقط، وفيه الأوامر المسندة إليه فقط (بدون أسعار): يبدأ العمل ويكتب ما تم ويغلقه. أضف بريده ليصله كل أمر جديد وقائمة أعماله كل صباح. ويشارك موقعه أثناء الدوام في «تتبع الفريق» بعد موافقته.</p>
+                <p class="status-text" id="uMarketerNote" hidden>حساب «مسوق» يعمل في الأقسام التي تختارها مثل الموظف (عملاء، عروض أسعار، وعمولة على مبيعاته)، ويسجل زيارات العملاء بموقعها، ويشارك موقعه أثناء الدوام في «تتبع الفريق» بعد موافقته.</p>
                 <p class="status-text" id="uManagerNote" hidden>حساب «مدير» يُطلب منه تفعيل التحقق بخطوتين (رمز من تطبيق على الجوال) عند أول دخول، ولا يستطيع استخدام اللوحة قبل ذلك.</p>
                 <div class="form-buttons">
                     <button class="btn btn-primary" id="uSave" onclick="saveUser()">إضافة الموظف</button>
@@ -3231,5 +3271,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-sheets.js"></script>
     <script src="admin-updates.js"></script>
     <script src="admin-wallet.js"></script>
+    <script src="admin-tracking.js"></script>
 </body>
 </html>
