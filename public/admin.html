@@ -800,6 +800,7 @@
             <div id="dashBody">
                 <section id="pulse" class="pulse" hidden aria-label="نبض اليوم"></section>
                 <section id="bonusPulse" class="my-bonus" hidden aria-label="العمولات هذا الشهر"></section>
+                <section id="occasionAlert" class="occasion-alert" hidden aria-label="مناسبات قريبة"></section>
                 <div class="kpi-grid" id="kpiGrid"></div>
                 <div class="origin-grid" id="originGrid"></div>
                 <div class="attention" id="attention"></div>
@@ -1847,13 +1848,24 @@
         <!-- ==================== Offers: the customer promotion and the gift (managers) ==================== -->
         <div id="tab-offers" class="tab-content">
             <div class="dash-toolbar"><h2>العروض والهدايا</h2><span class="muted" id="offersSummary"></span></div>
-            <div class="card">
+            <div class="card" id="occasionsCard">
+                <div class="card-title"><span class="icon"><i class="fas fa-calendar-days"></i></span> تقويم المناسبات</div>
+                <p class="status-text" style="margin:0 0 10px">تنبيه ⚠️ في لوحة المؤشرات قبل كل مناسبة بأسبوع، ليُجهَّز عرض أو تهنئة في وقتها. «جهّز عرضاً» و«تهنئة» يملآن البطاقة المناسبة بالاسم والتاريخ، فتعدّل النسبة والأيام ثم تحفظ، فيبدأ العرض وينتهي وحده. التواريخ الهجرية تقديرية وقد تتغير يوماً حسب رؤية الهلال.</p>
+                <div class="table-wrapper"><table class="stack-table occasions-table">
+                    <thead><tr><th>المناسبة</th><th>التاريخ</th><th>متى</th><th></th></tr></thead>
+                    <tbody id="occasionRows"></tbody>
+                </table></div>
+                <div class="form-buttons"><button class="btn btn-outline btn-sm" onclick="addOccasion()"><i class="fas fa-plus"></i> إضافة مناسبة</button>
+                    <button class="btn btn-primary btn-sm" onclick="saveOccasions()">حفظ التقويم</button><span id="occasionStatus" class="status-text"></span></div>
+            </div>
+            <div class="card" id="promoCard">
                 <div class="card-title"><span class="icon"><i class="fas fa-percent"></i></span> خصم العملاء (عرض موسمي)</div>
-                <p class="status-text" style="margin:0 0 10px">نسبة تُخصم من السعر قبل الضريبة في الحاسبات المختارة، وعلى الأجزاء المختارة فقط من كل بوابة (مثلاً الشرائح وحدها، أو بوابة الأوفرهيد بدون المحرك والتركيب). يراها العميل في الحاسبة، وتظهر في عرض السعر وملف PDF، ويذكرها المساعد الذكي، وتُطبَّق تلقائياً في عروض الموظفين ولا تُحسب من حد خصمهم. ينتهي العرض تلقائياً بعد آخر يوم.</p>
+                <p class="status-text" style="margin:0 0 10px">نسبة تُخصم من السعر قبل الضريبة في الحاسبات المختارة، وعلى الأجزاء المختارة فقط من كل بوابة (مثلاً الشرائح وحدها، أو بوابة الأوفرهيد بدون المحرك والتركيب). يراها العميل في الحاسبة، وتظهر في عرض السعر وملف PDF، ويذكرها المساعد الذكي، وتُطبَّق تلقائياً في عروض الموظفين ولا تُحسب من حد خصمهم. يبدأ العرض تلقائياً في أول يوم، وينتهي تلقائياً بعد آخر يوم.</p>
                 <div class="form-grid">
                     <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="promoEnabled"> تفعيل الخصم</label></div>
                     <div class="form-group"><label>اسم العرض</label><input type="text" id="promoLabel" maxlength="60" placeholder="مثلاً: عرض الشتاء"></div>
                     <div class="form-group"><label>النسبة <span class="unit">(% حتى 50)</span></label><input type="number" id="promoPercent" min="0" max="50" step="0.5"></div>
+                    <div class="form-group"><label>أول يوم <span class="unit">(اختياري)</span></label><input type="date" id="promoFrom"></div>
                     <div class="form-group"><label>آخر يوم <span class="unit">(اختياري)</span></label><input type="date" id="promoUntil"></div>
                 </div>
                 <div class="promo-scope" id="promoScope"></div>
@@ -1866,6 +1878,7 @@
                     <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="giftEnabled"> تفعيل الهدية</label></div>
                     <div class="form-group"><label>اسم الهدية</label><input type="text" id="giftName" maxlength="60" placeholder="مثلاً: جهاز GSM opener"></div>
                     <div class="form-group"><label>سعرها <span class="unit">(ر.ع)</span></label><input type="number" id="giftPrice" min="0" max="1000" step="0.5"></div>
+                    <div class="form-group"><label>أول يوم <span class="unit">(اختياري)</span></label><input type="date" id="giftFrom"></div>
                     <div class="form-group"><label>آخر يوم <span class="unit">(اختياري)</span></label><input type="date" id="giftUntil"></div>
                 </div>
                 <div class="check-row" id="giftScope">
@@ -1875,13 +1888,14 @@
                 </div>
                 <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="saveGift()">حفظ</button><span id="giftStatus" class="status-text"></span></div>
             </div>
-            <div class="card">
+            <div class="card" id="greetingCard">
                 <div class="card-title"><span class="icon"><i class="fas fa-gift"></i></span> تهنئة العملاء في الحاسبات</div>
                 <p class="status-text" style="margin:0 0 10px">رسالة تهنئة مع ألعاب نارية تظهر لزوار حاسبات العملاء (مثل اليوم الوطني)، مرة واحدة لكل زائر، وتُغلق بلمسة أو وحدها بعد ثوانٍ.</p>
                 <div class="form-grid">
                     <div class="form-group" style="justify-content:flex-end"><label class="check-row" style="margin:0"><input type="checkbox" id="greetingEnabled"> تفعيل التهنئة</label></div>
                     <div class="form-group"><label>العنوان</label><input type="text" id="greetingTitle" maxlength="60" placeholder="كل عام وعُمان بخير"></div>
                     <div class="form-group" style="grid-column: span 2"><label>النص</label><input type="text" id="greetingText" maxlength="160" placeholder="ردما للبوابات الإلكترونية تهنئكم باليوم الوطني المجيد"></div>
+                    <div class="form-group"><label>أول يوم <span class="unit">(اختياري)</span></label><input type="date" id="greetingFrom"></div>
                     <div class="form-group"><label>آخر يوم <span class="unit">(اختياري)</span></label><input type="date" id="greetingUntil"></div>
                 </div>
                 <div class="form-buttons"><button class="btn btn-primary btn-sm" onclick="saveGreeting()">حفظ</button>

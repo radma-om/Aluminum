@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.57.0', date: '2026-11-23',
+        ar: ['«العروض والهدايا» ← تقويم المناسبات: مناسبات 2027 جاهزة (الإسراء والمعراج، يوم تولّي السلطان، رمضان، يوم المعلم، العيدان، رأس السنة الهجرية، المولد النبوي، يوم المرأة العُمانية، اليوم الوطني) ويضيف المدير ويعدّل ويحذف', 'تنبيه ⚠️ في لوحة المؤشرات للمديرين قبل كل مناسبة بأسبوع وفي يومها، مع ما جُهّز لها (خصم، هدية، تهنئة) أو «لم يُجهَّز لها عرض بعد»', 'الخصم والهدية والتهنئة لها «أول يوم» مع «آخر يوم»: تُحفظ مسبقاً فتبدأ وحدها في أول يوم وتنتهي وحدها بعد آخر يوم — وزرّا «جهّز عرضاً» و«تهنئة» في التقويم يملآن البطاقة باسم المناسبة وتاريخها'],
+        en: ['«Offers & gifts» → occasions calendar: the 2027 occasions ready (Isra & Mi\'raj, the Sultan\'s accession, Ramadan, Teacher\'s Day, both Eids, the Hijri new year, the Prophet\'s birthday, Omani Women\'s Day, the National Day); the manager adds, edits and removes', 'A ⚠️ alert on the managers\' dashboard a week before each occasion and on the day, with what is ready for it (discount, gift, greeting) or «nothing ready yet»', 'The discount, the gift and the greeting have a «first day» besides the «last day»: saved ahead, they start by themselves on the first day and end by themselves after the last — «Prepare an offer» and «Greeting» in the calendar fill the card with the occasion\'s name and date']
+    },
+    {
         version: '3.56.0', date: '2026-11-22',
         ar: ['«العروض والهدايا» ← تهنئة العملاء في الحاسبات: رسالة تهنئة مع ألعاب نارية بألوان العلم (مثل «كل عام وعُمان بخير»)، يكتب المدير عنوانها ونصها وآخر يوم لها، مع زر «معاينة»', 'تظهر لكل زائر مرة واحدة، وتُغلق بلمسة أو وحدها بعد ثوانٍ، ولا تظهر داخل إطار الموقع، وبلا حركة لمن طلب تقليل الحركة في جهازه'],
         en: ['«Offers & gifts» → greeting customers in the calculators: a greeting with fireworks in the flag\'s colours (e.g. «Happy National Day, Oman»); the manager writes its title, text and last day, with a «Preview» button', 'Shown once per visitor, closed by a tap or by itself after a few seconds, not inside the company site\'s frame, and without motion for those who asked their device for less']
