@@ -83,7 +83,10 @@ function renderWorkOrders() {
                 — <a href="tel:+${esc(phone)}" dir="ltr">+${esc(phone)}</a>
                 — <a href="https://wa.me/${esc(phone)}" target="_blank" rel="noopener">واتساب</a></div>
             <div class="wo-line"><i class="fas fa-location-dot"></i> ${esc([o.location, o.address].filter(Boolean).join(' — ') || '—')}
-                ${o.map_url ? ` — <a href="${esc(o.map_url)}" target="_blank" rel="noopener">فتح الخريطة</a>` : ''}</div>
+                ${o.map_url ? ` — <a href="${esc(o.map_url)}" target="_blank" rel="noopener">فتح الخريطة</a>` : ''}
+                ${o.dest_lat !== null && o.dest_lat !== undefined ? ` — <a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(o.dest_lat + ',' + o.dest_lng)}&travelmode=driving" target="_blank" rel="noopener"><i class="fas fa-route"></i> ملاحة</a>`
+                    : open ? ` — <span style="color:#8a5a00">موقع العميل غير محدد</span>` : ''}
+                ${open ? ` <button class="link-btn" onclick="woSetPlace(${o.id})">${o.dest_lat !== null && o.dest_lat !== undefined ? 'تغيير الموقع' : 'تحديد موقع العميل'}</button>` : ''}</div>
             <div class="wo-line"><i class="fas fa-calendar"></i> ${o.scheduled_date ? esc(o.scheduled_date + (o.scheduled_time ? ' — ' + o.scheduled_time : '')) : '<span style="color:#8a5a00">لم يُحدد موعد</span>'}
                 ${!isTech() ? ` — <i class="fas fa-helmet-safety"></i> ${esc(o.technician_name || 'بدون فني')}` : ''}</div>
             <div class="wo-desc">${esc(o.description)}</div>
@@ -311,16 +314,44 @@ async function woCancel(id) {
     } catch (err) { alert(err.message); }
 }
 
-/* «في الطريق»: the customer is told on WhatsApp (when its template is set) */
+/* «في الطريق»: the customer is told on WhatsApp (when its template is set); from the phone's place now to the
+   customer's, the time and distance left (the office, the technician and the customer's page see them) */
 async function woOnTheWay(id, btn) {
     btn.disabled = true;
     try {
-        const r = await api('POST', `/api/admin/work-orders/${id}/on-the-way`, {});
+        const here = typeof currentPlace === 'function' ? await currentPlace(8000) : null;
+        const r = await api('POST', `/api/admin/work-orders/${id}/on-the-way`, here || {});
         const o = woOrders.find((x) => x.id === id);
         trackEvent(`في الطريق — ${o ? `${o.number} ${o.customer_name || ''}` : `أمر ${id}`}`.trim());
         btn.innerHTML = r.notice && r.notice.ok ? '<i class="fas fa-truck"></i> أُبلغ العميل ✓' : '<i class="fas fa-truck"></i> سُجّل ✓';
         if (r.notice && !r.notice.ok && !r.notice.skipped) await tell(`سُجّل أنك في الطريق، لكن لم تصل رسالة للعميل: ${r.notice.error}`);
+        if (r.trip && typeof showTrip === 'function') showTrip(r.trip);
+        if (r.need_place && await askYes('موقع العميل غير محدد، فلا يُحسب وقت الوصول.\nتحديده الآن من رابط خرائط Google أو موقع واتساب؟', { okLabel: 'تحديد الموقع' })) {
+            await woSetPlace(id, { thenOnTheWay: true });
+        }
     } catch (err) { btn.disabled = false; tell(err.message); }
+}
+
+/* Where the customer is: a Google Maps / WhatsApp location link, or «أنا عند العميل الآن» (the phone's place) */
+async function woSetPlace(id, { thenOnTheWay = false } = {}) {
+    const link = await askText('الصق رابط موقع العميل من خرائط Google أو من موقع واتساب.\nأو اتركه فارغاً واضغط «موافق» إن كنت عند العميل الآن، فيُحفظ موقعك الحالي.', '', { okLabel: 'حفظ الموقع' });
+    if (link === null) return;
+    let body = { map_url: link.trim() };
+    if (!body.map_url) {
+        const here = typeof currentPlace === 'function' ? await currentPlace() : null;
+        if (!here) return tell('لم يصل موقع جوالك — اسمح للمتصفح بالوصول إلى الموقع أو الصق رابطاً.');
+        body = here;
+    }
+    try {
+        await api('POST', `/api/admin/work-orders/${id}/place`, body);
+        if (thenOnTheWay) {
+            // The trip starts again with the place known (the customer was already told)
+            const here = typeof currentPlace === 'function' ? await currentPlace(8000) : null;
+            const r = await api('POST', `/api/admin/work-orders/${id}/trip`, here || {});
+            if (r.trip && typeof showTrip === 'function') showTrip(r.trip);
+        }
+        await loadWorkOrders();
+    } catch (err) { tell(err.message); }
 }
 
 /* What happened to the WhatsApp message to the customer (the change itself is saved either way) */

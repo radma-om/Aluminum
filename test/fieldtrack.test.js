@@ -36,7 +36,7 @@ test('field tracking: shift, consent, places, visits, the map and who may see it
     const here = { lat: 23.588, lng: 58.3829, accuracy: 15 };
 
     // The technician: tracked, agrees once, then on shift
-    assert.deepEqual((await call('GET', '/api/admin/me/location', null, T)).body, { tracked: true, consent: false, on_shift_since: null, every_seconds: 60 });
+    assert.deepEqual((await call('GET', '/api/admin/me/location', null, T)).body, { tracked: true, consent: false, on_shift_since: null, every_seconds: 60, trip: null });
     assert.equal((await call('POST', '/api/admin/me/location', here, T)).body.kept, false, 'off shift: not kept');
     const noConsent = await call('POST', '/api/admin/me/shift', { on: true, ...here }, T);
     assert.equal(noConsent.status, 400);
@@ -44,7 +44,7 @@ test('field tracking: shift, consent, places, visits, the map and who may see it
     const on = await call('POST', '/api/admin/me/shift', { on: true, consent: true, ...here }, T);
     assert.ok(on.body.consent && on.body.on_shift_since);
     assert.equal((await call('POST', '/api/admin/me/location', { lat: 23.6, lng: 58.4 }, T)).body.kept, true);
-    assert.deepEqual((await call('POST', '/api/admin/me/location', { lat: 23.61, lng: 58.41 }, T)).body, { kept: false, reason: 'too_soon' });
+    assert.deepEqual((await call('POST', '/api/admin/me/location', { lat: 23.61, lng: 58.41 }, T)).body, { kept: false, reason: 'too_soon', trip: null });
     assert.equal((await call('POST', '/api/admin/me/location', { lat: 23.62, lng: 58.42, kind: 'event', label: 'في الطريق — WO-1' }, T)).body.kept, true);
     assert.equal((await call('POST', '/api/admin/me/location', { lat: 200, lng: 58 }, T)).status, 400, 'a bad place');
 

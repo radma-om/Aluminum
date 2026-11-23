@@ -789,7 +789,9 @@
                 <span class="shift-state" id="shiftState"></span>
                 <button type="button" class="btn btn-primary btn-sm" id="shiftBtn" onclick="toggleShift()"></button>
                 <button type="button" class="btn btn-outline btn-sm" id="visitBtn" onclick="openVisitForm()" hidden><i class="fas fa-user-tag"></i> تسجيل زيارة عميل</button>
+                <button type="button" class="btn btn-outline btn-sm" id="tripBtn" onclick="setMyTrip()" hidden><i class="fas fa-route"></i> وجهتي</button>
             </div>
+            <div class="shift-trip" id="shiftTrip" hidden></div>
             <div class="visit-form" id="visitForm" hidden>
                 <div class="form-grid">
                     <div class="form-group"><label>اسم العميل</label><input type="text" id="visitName" maxlength="120"></div>

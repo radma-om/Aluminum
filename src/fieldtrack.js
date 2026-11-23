@@ -11,6 +11,7 @@
    - Kept 30 days, then deleted by itself (personal data: no longer than needed).
    ============================================================= */
 const leads = require('./leads');
+const routing = require('./routing');
 
 const TRACKED_ROLES = { technician: 'فني', marketer: 'مسوق' };
 const KINDS = { live: 'موقع مباشر', shift_start: 'بدء الدوام', shift_end: 'إنهاء الدوام', event: 'خطوة عمل', visit: 'زيارة عميل' };
@@ -43,6 +44,12 @@ function ensureTable(db) {
     const cols = db.prepare('PRAGMA table_info(staff_users)').all().map((c) => c.name);
     if (!cols.includes('location_consent_at')) db.exec('ALTER TABLE staff_users ADD COLUMN location_consent_at TEXT');
     if (!cols.includes('on_shift_since')) db.exec('ALTER TABLE staff_users ADD COLUMN on_shift_since TEXT');
+    // The trip under way: where to, and the time / distance left (JSON; see startTrip)
+    if (!cols.includes('trip_json')) db.exec('ALTER TABLE staff_users ADD COLUMN trip_json TEXT');
+    // A work order's place, read from its map link (or set by the technician on site)
+    const wo = db.prepare('PRAGMA table_info(work_orders)').all().map((c) => c.name);
+    if (!wo.includes('dest_lat')) db.exec('ALTER TABLE work_orders ADD COLUMN dest_lat REAL');
+    if (!wo.includes('dest_lng')) db.exec('ALTER TABLE work_orders ADD COLUMN dest_lng REAL');
 }
 
 /* A place from the phone: real coordinates, and how sure the phone is (metres) */
@@ -61,14 +68,30 @@ function insert(db, userId, c, kind, label = null) {
         .run(userId, c.lat, c.lng, c.accuracy, kind, label ? clip(label, 120) : null);
 }
 
-const row = (db, id) => db.prepare('SELECT id, display_name, role, active, location_consent_at, on_shift_since FROM staff_users WHERE id = ?').get(Number(id));
+const row = (db, id) => db.prepare('SELECT id, display_name, role, active, location_consent_at, on_shift_since, trip_json FROM staff_users WHERE id = ?').get(Number(id));
+const tripOf = (u) => { try { return u && u.trip_json ? JSON.parse(u.trip_json) : null; } catch { return null; } };
+const saveTrip = (db, userId, trip) => db.prepare('UPDATE staff_users SET trip_json = ? WHERE id = ?').run(trip ? JSON.stringify(trip) : null, userId);
+
+/* What a screen shows of a trip: where to, the time and distance left, and the navigation link */
+function tripView(trip) {
+    if (!trip) return null;
+    const left = trip.seconds !== undefined && trip.seconds !== null;
+    return {
+        order_id: trip.order_id || null, label: trip.label, lat: trip.lat, lng: trip.lng, started_at: trip.started_at,
+        arrived_at: trip.arrived_at || null, computed_at: trip.computed_at || null, estimate: Boolean(trip.estimate),
+        seconds: left ? trip.seconds : null, meters: left ? trip.meters : null, polyline: trip.polyline || null,
+        eta_text: left && !trip.arrived_at ? routing.durationText(trip.seconds) : null,
+        distance_text: left && !trip.arrived_at ? routing.distanceText(trip.meters) : null,
+        nav_url: routing.navUrl(trip)
+    };
+}
 
 /* This account's sharing: whether it shares at all, agreed, and is on shift now */
 function mine(db, user) {
     ensureTable(db);
     if (!tracked(user) || !user.id) return { tracked: false };
     const u = row(db, user.id);
-    return { tracked: true, consent: Boolean(u && u.location_consent_at), on_shift_since: (u && u.on_shift_since) || null, every_seconds: 60 };
+    return { tracked: true, consent: Boolean(u && u.location_consent_at), on_shift_since: (u && u.on_shift_since) || null, every_seconds: 60, trip: tripView(tripOf(u)) };
 }
 
 /**
@@ -85,7 +108,7 @@ function shift(db, user, b = {}) {
         if (!u.location_consent_at) db.prepare('UPDATE staff_users SET location_consent_at = ? WHERE id = ?').run(sqlNow(), u.id);
         if (!u.on_shift_since) db.prepare('UPDATE staff_users SET on_shift_since = ? WHERE id = ?').run(sqlNow(), u.id);
     } else {
-        db.prepare('UPDATE staff_users SET on_shift_since = NULL WHERE id = ?').run(u.id);
+        db.prepare('UPDATE staff_users SET on_shift_since = NULL, trip_json = NULL WHERE id = ?').run(u.id); // the trip ends with the day
     }
     if (b.lat !== undefined) {
         try { insert(db, u.id, coords(b), on ? 'shift_start' : 'shift_end'); } catch { /* the shift changes even without a place */ }
@@ -139,7 +162,7 @@ function visit(db, user, b = {}) {
 /* The team now: each active technician / marketer, their last place and whether it is live */
 function overview(db) {
     ensureTable(db);
-    const users = db.prepare(`SELECT id, display_name, role, location_consent_at, on_shift_since FROM staff_users
+    const users = db.prepare(`SELECT id, display_name, role, location_consent_at, on_shift_since, trip_json FROM staff_users
                               WHERE active = 1 AND role IN (${Object.keys(TRACKED_ROLES).map(() => '?').join(', ')}) ORDER BY role, display_name`).all(...Object.keys(TRACKED_ROLES));
     const lastOf = db.prepare('SELECT lat, lng, accuracy, kind, label, created_at AS at FROM staff_locations WHERE user_id = ? ORDER BY id DESC LIMIT 1');
     const freshMs = LIVE_FRESH_MINUTES * 60_000;
@@ -149,7 +172,8 @@ function overview(db) {
             const age = last ? Date.now() - Date.parse(last.at.replace(' ', 'T') + 'Z') : Infinity;
             const state = !u.on_shift_since ? 'off' : age <= freshMs ? 'live' : 'quiet';
             return { id: u.id, name: u.display_name, role: u.role, role_label: TRACKED_ROLES[u.role], consent: Boolean(u.location_consent_at),
-                on_shift_since: u.on_shift_since || null, state, last: last && { ...last, kind_label: KINDS[last.kind] || last.kind } };
+                on_shift_since: u.on_shift_since || null, state, last: last && { ...last, kind_label: KINDS[last.kind] || last.kind },
+                trip: u.on_shift_since ? tripView(tripOf(u)) : null };
         }),
         kinds: KINDS,
         retention_days: RETENTION_DAYS,
@@ -175,4 +199,134 @@ function prune(db) {
     return Number(db.prepare("DELETE FROM staff_locations WHERE created_at < datetime('now', ?)").run(`-${RETENTION_DAYS} days`).changes);
 }
 
-module.exports = { TRACKED_ROLES, KINDS, RETENTION_DAYS, ensureTable, mine, shift, record, visit, overview, day, prune };
+/* ---------------- The trip: to a customer, the time and distance left ---------------- */
+
+const ARRIVED_METERS = 150;    // this close: arrived
+const REFRESH_SECONDS = 120;   // Google is asked again after 2 minutes…
+const REFRESH_METERS = 300;    // …or sooner when the phone moved this far
+
+/**
+ * A trip starts (a technician's «في الطريق», or a marketer's «وجهتي»): to { lat, lng } with a label, for a work
+ * order or not. `from` (the phone's place now) computes the time and distance at once.
+ */
+async function startTrip(db, user, { lat, lng, label, order_id = null }, from = null) {
+    ensureTable(db);
+    if (!tracked(user) || !user.id) throw err(403, 'الرحلات للفنيين والمسوقين فقط');
+    const to = coords({ lat, lng });
+    saveTrip(db, user.id, { ...to, label: clip(label, 120) || 'الوجهة', order_id: order_id ? Number(order_id) : null, started_at: sqlNow() });
+    if (from) await refreshTrip(db, user, from, { force: true });
+    return tripView(tripOf(row(db, user.id)));
+}
+
+/* The trip ends: arrived and started the work, the order closed, «إلغاء الوجهة», or the end of the day.
+   With order_id: only the trips to that order (whoever is on it). */
+function endTrip(db, { userId = null, orderId = null } = {}) {
+    ensureTable(db);
+    if (userId) return saveTrip(db, Number(userId), null);
+    if (orderId) {
+        for (const u of db.prepare('SELECT id, trip_json FROM staff_users WHERE trip_json IS NOT NULL').all()) {
+            const t = tripOf(u);
+            if (t && t.order_id === Number(orderId)) saveTrip(db, u.id, null);
+        }
+    }
+}
+
+/**
+ * The time and distance left from the phone's place now; asked of Google at most every 2 minutes (sooner
+ * after 300 m). Closer than 150 m: arrived. Returns the trip as screens show it (or null without a trip).
+ */
+async function refreshTrip(db, user, here, { force = false } = {}) {
+    ensureTable(db);
+    const u = row(db, user.id);
+    const trip = tripOf(u);
+    if (!trip || trip.arrived_at) return tripView(trip);
+    const from = coords(here);
+    const straight = routing.haversine(from, trip);
+    if (straight <= ARRIVED_METERS) {
+        saveTrip(db, u.id, { ...trip, arrived_at: sqlNow(), seconds: 0, meters: 0, polyline: null, computed_at: sqlNow() });
+        return tripView(tripOf(row(db, u.id)));
+    }
+    const age = trip.computed_at ? (Date.now() - Date.parse(trip.computed_at.replace(' ', 'T') + 'Z')) / 1000 : Infinity;
+    const moved = trip.from ? routing.haversine(from, trip.from) : Infinity;
+    if (!force && age < REFRESH_SECONDS && moved < REFRESH_METERS) return tripView(trip);
+    const r = await routing.route(from, trip);
+    if (r.error) console.error('[routing]', r.error);
+    // The trip may have ended while Google was asked
+    const now = tripOf(row(db, u.id));
+    if (!now || now.started_at !== trip.started_at) return tripView(now);
+    saveTrip(db, u.id, { ...now, seconds: r.seconds, meters: r.meters, polyline: r.polyline, estimate: r.estimate, from, computed_at: sqlNow() });
+    return tripView(tripOf(row(db, u.id)));
+}
+
+/* A work order's place: kept with the order, else read from its map link (a short link is followed once) */
+async function orderPlace(db, order) {
+    ensureTable(db);
+    if (!order) return null;
+    const o = db.prepare('SELECT id, map_url, dest_lat, dest_lng FROM work_orders WHERE id = ?').get(order.id);
+    if (!o) return null;
+    if (o.dest_lat !== null && o.dest_lng !== null) return { lat: o.dest_lat, lng: o.dest_lng };
+    if (!o.map_url) return null;
+    const c = await routing.resolve(o.map_url);
+    if (c) db.prepare('UPDATE work_orders SET dest_lat = ?, dest_lng = ? WHERE id = ?').run(c.lat, c.lng, o.id);
+    return c;
+}
+
+/* The office changed the map link: the place is read again from it */
+async function replaceOrderPlace(db, orderId) {
+    ensureTable(db);
+    db.prepare('UPDATE work_orders SET dest_lat = NULL, dest_lng = NULL WHERE id = ?').run(Number(orderId));
+    const place = await orderPlace(db, { id: Number(orderId) });
+    movedTrips(db, Number(orderId), place);
+    return place;
+}
+
+/* Trips to this order follow its new place (asked again at the next place from the phone) */
+function movedTrips(db, orderId, place) {
+    for (const u of db.prepare('SELECT id, trip_json FROM staff_users WHERE trip_json IS NOT NULL').all()) {
+        const t = tripOf(u);
+        if (!t || t.order_id !== orderId) continue;
+        if (!place) { saveTrip(db, u.id, null); continue; }
+        const { computed_at, from, seconds, meters, polyline, arrived_at, ...rest } = t; // eslint-disable-line no-unused-vars
+        saveTrip(db, u.id, { ...rest, lat: place.lat, lng: place.lng });
+    }
+}
+
+/**
+ * The technician (or the office) sets where the customer is: a Google Maps / WhatsApp link, or the phone's
+ * place now («أنا عند العميل الآن»). Kept with the order (and its map link), for every later trip.
+ */
+async function setOrderPlace(db, orderId, b = {}) {
+    ensureTable(db);
+    const id = Number(orderId);
+    let place = null;
+    let link = String(b.map_url || '').trim().slice(0, 500);
+    if (link) {
+        place = await routing.resolve(link);
+        if (!place) throw err(400, 'لم أستطع قراءة الموقع من الرابط — انسخ رابط الموقع من خرائط Google (مشاركة ← نسخ الرابط) أو من موقع واتساب');
+        if (!/^https:\/\//i.test(link)) link = `https://www.google.com/maps?q=${place.lat},${place.lng}`;
+    } else {
+        place = coords(b);
+        link = `https://www.google.com/maps?q=${place.lat},${place.lng}`;
+    }
+    db.prepare("UPDATE work_orders SET map_url = ?, dest_lat = ?, dest_lng = ?, updated_at = datetime('now') WHERE id = ?").run(link, place.lat, place.lng, id);
+    movedTrips(db, id, place);
+    return { ...place, map_url: link };
+}
+
+/* For the customer's «تتبع طلبي»: a technician on the way to this order — the time and distance left (no place) */
+function orderTrip(db, orderId) {
+    ensureTable(db);
+    for (const u of db.prepare("SELECT id, display_name, trip_json FROM staff_users WHERE trip_json IS NOT NULL AND on_shift_since IS NOT NULL AND role = 'technician'").all()) {
+        const t = tripOf(u);
+        if (!t || t.order_id !== Number(orderId)) continue;
+        const fresh = t.computed_at && Date.now() - Date.parse(t.computed_at.replace(' ', 'T') + 'Z') < 15 * 60_000;
+        if (t.arrived_at) return { arrived: true };
+        return fresh ? { arrived: false, eta_text: routing.durationText(t.seconds), distance_text: routing.distanceText(t.meters), estimate: Boolean(t.estimate) } : { arrived: false };
+    }
+    return null;
+}
+
+module.exports = {
+    TRACKED_ROLES, KINDS, RETENTION_DAYS, ensureTable, mine, shift, record, visit, overview, day, prune,
+    startTrip, endTrip, refreshTrip, orderTrip, orderPlace, replaceOrderPlace, setOrderPlace, coords
+};
