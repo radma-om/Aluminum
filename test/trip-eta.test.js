@@ -41,6 +41,29 @@ test('a place from what people paste', async (t) => {
     assert.equal(asked.filter((u) => u.includes('example.com')).length, 0, 'other sites are never fetched');
 });
 
+test('links as phones share them: with the place\'s name, a place by name only, Google\'s consent page, Arabic digits', async (t) => {
+    t.after(() => routing.setFetchForTests(null));
+    const asked = [];
+    const page = (html) => ({ status: 200, headers: { get: () => null }, text: async () => html });
+    const go = (to) => ({ status: 302, headers: { get: (h) => (h === 'location' ? to : null) } });
+    routing.setFetchForTests(async (url, opts) => {
+        asked.push({ url, ua: opts.headers['User-Agent'] });
+        if (url.includes('maps.app.goo.gl/named')) return go('https://maps.google.com/?q=Lulu+Hypermarket,+Muscat&ftid=0x3e91f:0x12ab&entry=gps&g_st=iw');
+        if (url.startsWith('https://maps.google.com/?q=Lulu')) return go('https://www.google.com/maps?q=Lulu+Hypermarket,+Muscat&ftid=0x3e91f:0x12ab');
+        if (url.startsWith('https://www.google.com/maps?q=Lulu')) return page('<html><meta content="https://maps.google.com/maps/api/staticmap?center=23.6143%2C58.545&amp;zoom=15&amp;size=900x900" property="og:image"></html>');
+        if (url.includes('maps.app.goo.gl/eu')) return go('https://consent.google.com/m?continue=https://www.google.com/maps/place/Home/data%3D!3d23.5811!4d58.3822&gl=DE');
+        if (url.includes('maps.app.goo.gl/empty')) return page('<html>nothing here</html>');
+        return { status: 404, headers: { get: () => null }, text: async () => '' };
+    });
+    // The Google Maps app's «Share»: the name, a line break, the short link
+    assert.deepEqual(await routing.resolve('لولو هايبرماركت - مسقط\nhttps://maps.app.goo.gl/named'), { lat: 23.6143, lng: 58.545 }, 'a place by name: read from its page');
+    assert.ok(asked.every((a) => /iPhone/.test(a.ua)), 'asked as a phone\'s browser');
+    assert.deepEqual(await routing.resolve('https://maps.app.goo.gl/eu'), { lat: 23.5811, lng: 58.3822 }, 'past the consent page');
+    assert.deepEqual(await routing.resolveDetail('https://maps.app.goo.gl/empty'), { place: null, reason: 'no_coords:maps.app.goo.gl:200' });
+    assert.deepEqual(await routing.resolve('٢٣٫٥٨٨، ٥٨٫٣٨٢٩'), { lat: 23.588, lng: 58.3829 }, 'Arabic digits');
+    assert.deepEqual(await routing.resolve('https://www.google.com/maps/search/23.588,+58.3829?entry=tts'), { lat: 23.588, lng: 58.3829 });
+});
+
 test('Google Routes: road distance and time with traffic; the estimate without a key or on failure', async (t) => {
     const from = { lat: 23.588, lng: 58.3829 };
     const to = { lat: 23.6143, lng: 58.545 };

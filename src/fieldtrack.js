@@ -301,8 +301,9 @@ async function setOrderPlace(db, orderId, b = {}) {
     let place = null;
     let link = String(b.map_url || '').trim().slice(0, 500);
     if (link) {
-        place = await routing.resolve(link);
-        if (!place) throw err(400, 'لم أستطع قراءة الموقع من الرابط — انسخ رابط الموقع من خرائط Google (مشاركة ← نسخ الرابط) أو من موقع واتساب');
+        const r = await routing.resolveDetail(link);
+        place = r.place;
+        if (!place) { console.error('[routing] could not read the place from the link:', r.reason); throw err(400, routing.unreadable(r.reason)); }
         if (!/^https:\/\//i.test(link)) link = `https://www.google.com/maps?q=${place.lat},${place.lng}`;
     } else {
         place = coords(b);
