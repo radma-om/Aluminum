@@ -2204,12 +2204,14 @@ function applyPermissions() {
         g.hidden = !any;
     });
     $id('meName').textContent = ME.display_name;
-    $id('meRole').textContent = ME.owner ? 'المدير العام' : ME.role === 'manager' ? 'مدير' : ME.role === 'technician' ? 'فني' : 'موظف';
+    $id('meRole').textContent = ME.owner ? 'المدير العام' : ME.role === 'manager' ? 'مدير' : ME.role === 'technician' ? 'فني' : ME.role === 'marketer' ? 'مسوق' : 'موظف';
     document.querySelectorAll('.office-only').forEach((el) => { el.hidden = ME.role === 'technician'; });
     $id('mePwd').hidden = Boolean(ME.owner);
     $id('me2fa').hidden = Boolean(ME.owner);
     $id('me2fa').style.color = ME.totp_enabled ? 'var(--success)' : '';
     $id('me2fa').title = ME.totp_enabled ? 'التحقق بخطوتين مفعّل' : 'تفعيل التحقق بخطوتين';
+    // A technician / marketer: the working-day bar (sharing their place on shift)
+    if (typeof initShift === 'function' && !applyPermissions.shiftReady) { applyPermissions.shiftReady = true; initShift(); }
     const active = document.querySelector('.sidebar .tab-btn.active');
     if (!active || active.hidden) {
         const first = document.querySelector('.sidebar .tab-btn[data-tab]:not([hidden])');

@@ -22,7 +22,7 @@ function renderUsers() {
         <tr class="${u.active ? '' : 'muted-row'}">
             <td data-label="الموظف"><strong>${esc(u.display_name)}</strong></td>
             <td data-label="اسم المستخدم" dir="ltr">${esc(u.username)}${u.email ? `<br><small class="status-text">${esc(u.email)}</small>` : ''}</td>
-            <td data-label="الدور">${u.role === 'manager' ? '<span class="badge on">مدير</span>' : u.role === 'technician' ? '<span class="badge lme">فني</span>' : '<span class="badge">موظف</span>'}</td>
+            <td data-label="الدور">${u.role === 'manager' ? '<span class="badge on">مدير</span>' : u.role === 'technician' ? '<span class="badge lme">فني</span>' : u.role === 'marketer' ? '<span class="badge lme">مسوق</span>' : '<span class="badge">موظف</span>'}</td>
             <td data-label="الأقسام" class="perm-badges">${u.role === 'manager' ? '<span class="pill">كل الأقسام</span>'
                 : u.permissions.map((p) => `<span class="pill">${esc(usersData.sections[p] || p)}</span>`).join(' ')}</td>
             <td data-label="متابعة العملاء">${u.permissions.includes('leads') ? esc(u.leads_scope === 'mine' ? 'عملاؤه فقط' : 'كل العملاء') : '—'}</td>
@@ -57,10 +57,13 @@ function resetUserForm() {
 }
 
 function userRoleChanged() {
-    $id('uPermsBox').hidden = $id('uRole').value !== 'staff';
-    $id('uManagerNote').hidden = $id('uRole').value !== 'manager';
-    $id('uTechNote').hidden = $id('uRole').value !== 'technician';
-    $id('uMaxDiscBox').hidden = $id('uRole').value !== 'staff';
+    const role = $id('uRole').value;
+    // A marketer chooses sections and has a discount limit like an employee
+    $id('uPermsBox').hidden = role !== 'staff' && role !== 'marketer';
+    $id('uManagerNote').hidden = role !== 'manager';
+    $id('uTechNote').hidden = role !== 'technician';
+    $id('uMarketerNote').hidden = role !== 'marketer';
+    $id('uMaxDiscBox').hidden = role !== 'staff' && role !== 'marketer';
 }
 
 function editUser(id) {

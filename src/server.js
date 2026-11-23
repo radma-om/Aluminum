@@ -24,6 +24,7 @@ const motors = require('./motors');
 const leads = require('./leads');
 const dashboard = require('./dashboard');
 const occasions = require('./occasions');
+const fieldtrack = require('./fieldtrack');
 const agent = require('./agent');
 const mazbot = require('./mazbot');
 const backup = require('./backup');
@@ -438,6 +439,20 @@ const PAGE_CSP = [
     "base-uri 'self'",
     "form-action 'self'"
 ].join('; ');
+/* The admin panel also draws «تتبع الفريق» with Google Maps (its script, tiles, fonts and data) */
+const ADMIN_CSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://maps.googleapis.com https://*.googleapis.com https://*.gstatic.com",
+    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+    "font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.google.com https://*.googleusercontent.com",
+    "connect-src 'self' https://*.googleapis.com https://*.google.com https://*.gstatic.com data: blob:",
+    "frame-src https://*.google.com",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'"
+].join('; ');
 
 /* Logs that only matter for a while: webhook delivery log, AI conversation history (a conversation
    older than its TTL starts afresh anyway) and ended sessions. Business data is never touched. */
@@ -451,7 +466,8 @@ function pruneOldLogs(db) {
         audit_log: audit.prune(db), // 365 days
         system_alerts: alerts.prune(db),
         password_resets: Number(db.prepare("DELETE FROM password_resets WHERE expires_at < datetime('now', '-1 day')").run().changes),
-        offsite_backups: Number(db.prepare("DELETE FROM offsite_backups WHERE at < datetime('now', ?)").run(days).changes)
+        offsite_backups: Number(db.prepare("DELETE FROM offsite_backups WHERE at < datetime('now', ?)").run(days).changes),
+        staff_locations: fieldtrack.prune(db) // 30 days
     };
 }
 
@@ -464,6 +480,7 @@ function createApp(db, { agentClient } = {}) {
     orderNotify.ensureTables(db);
     quotePage.ensureColumns(db);
     phoneVerify.ensureTable(db);
+    fieldtrack.ensureTable(db);
     try { workorders.cancelOrphans(db); } catch (err) { console.error('[work-orders] orphans', err.message); }
     // Statistics: quotes / customers of cancelled invoices no longer counted as sold; no frozen unfinished month
     try { invoices.repairCancelled(db); require('./bonuses').dropUnfinished(db); } catch (err) { console.error('[stats] repair', err.message); }
@@ -504,9 +521,11 @@ function createApp(db, { agentClient } = {}) {
         // (Inline scripts stay allowed: the pages are written with them.)
         const isPage = customerPages.has(req.path) || req.path === '/admin' || req.path === '/admin/' || req.path.endsWith('.html');
         const framing = customerPages.has(req.path) ? `frame-ancestors 'self' ${embedOrigins()}`.trim() : "frame-ancestors 'none'";
-        res.setHeader('Content-Security-Policy', isPage ? `${PAGE_CSP}; ${framing}` : framing);
+        const adminPage = req.path === '/admin' || req.path === '/admin/' || req.path === '/admin.html';
+        res.setHeader('Content-Security-Policy', isPage ? `${adminPage ? ADMIN_CSP : PAGE_CSP}; ${framing}` : framing);
         if (!customerPages.has(req.path)) res.setHeader('X-Frame-Options', 'DENY');
-        res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+        // The admin panel may ask for the phone's place (a technician / marketer on shift); no other page
+        res.setHeader('Permissions-Policy', `camera=(), microphone=(), geolocation=(${adminPage ? 'self' : ''}), payment=()`);
         // HTTPS only from now on (the browser remembers it for 180 days); only sent over HTTPS
         if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=15552000');
         next();
@@ -919,6 +938,8 @@ function createApp(db, { agentClient } = {}) {
     });
 
     const admin = express.Router();
+    // A phone on shift sends its place about once a minute; anything far faster is refused
+    const locationLimit = rateLimit({ windowMs: 10 * 60_000, max: 200 });
     admin.use(makeRequireAdmin(db, loginGuard));
     admin.use(audit.middleware(db, { getSettings }));
 
@@ -943,6 +964,13 @@ function createApp(db, { agentClient } = {}) {
     /* ---- The signed-in user, and staff accounts (managers) ---- */
 
     admin.get('/me', (req, res) => res.json({ user: req.user, sections: staff.SECTIONS }));
+    /* ---- «تتبع الفريق»: the technician's / marketer's own sharing, and the map for those allowed ---- */
+    admin.get('/me/location', (req, res) => res.json(fieldtrack.mine(db, req.user)));
+    admin.post('/me/shift', (req, res) => res.json(fieldtrack.shift(db, req.user, req.body || {})));
+    admin.post('/me/location', locationLimit, (req, res) => res.json(fieldtrack.record(db, req.user, req.body || {})));
+    admin.post('/me/visit', (req, res) => res.status(201).json(fieldtrack.visit(db, req.user, req.body || {})));
+    admin.get('/tracking', (req, res) => res.json(fieldtrack.overview(db)));
+    admin.get('/tracking/:userId', (req, res) => res.json(fieldtrack.day(db, req.params.userId, String(req.query.date || ''))));
     /* ---- Versions and the manager's notices to everyone (forced update, stop, info) ---- */
     // Every signed-in user: the server's version (a page loaded with an older one offers «حدّث الآن») and the notices now
     admin.get('/me/app-status', (req, res) => res.json({ version: APP_VERSION, notices: appNotices.current(db) }));
@@ -2885,7 +2913,7 @@ function createApp(db, { agentClient } = {}) {
     app.use((err, req, res, next) => {
         const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
         if (status >= 500) console.error(err);
-        res.status(status).json({ error: status >= 500 && !err.expose ? 'خطأ في الخادم' : err.message, ...(err.need_verification ? { need_verification: true } : {}) });
+        res.status(status).json({ error: status >= 500 && !err.expose ? 'خطأ في الخادم' : err.message, ...(err.need_verification ? { need_verification: true } : {}), ...(err.need_consent ? { need_consent: true } : {}) });
     });
 
     return app;

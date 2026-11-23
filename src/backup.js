@@ -247,7 +247,7 @@ async function restoreWorkbook(db, buffer) {
             require('./motors').linkItems(db);
             const broken = db.prepare('PRAGMA foreign_key_check').all();
             if (broken.length) throw err400(`بيانات غير مترابطة في الملف (مثلاً ${broken[0].table} يشير إلى سجل غير موجود في ${broken[0].parent})`);
-            const badRole = data.staff_users && db.prepare("SELECT username FROM staff_users WHERE role NOT IN ('staff', 'manager', 'technician') OR password_hash NOT LIKE 'scrypt$%'").get();
+            const badRole = data.staff_users && db.prepare("SELECT username FROM staff_users WHERE role NOT IN ('staff', 'manager', 'technician', 'marketer') OR password_hash NOT LIKE 'scrypt$%'").get();
             if (badRole) throw err400(`حساب «${badRole.username}» في الملف غير صالح (الدور أو تجزئة كلمة المرور)`);
             db.exec('COMMIT');
         } catch (err) {

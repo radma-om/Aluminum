@@ -788,3 +788,21 @@ body.sb-collapsed .sb-version { justify-content: center; padding: 8px 0; }
 .occasions-table .occ-actions .btn { margin: 2px; }
 .badge.warn { background: #fff1c2; color: #8a5a00; }
 @media (max-width: 640px) { .occasions-table .occ-actions { white-space: normal; } }
+
+/* «تتبع الفريق»: the technician's / marketer's working-day bar, and the map */
+.shift-bar:not([hidden]) { display: block; margin: 0 0 14px; border: 1px solid #d6dde6; background: #f7f9fc; border-radius: 14px; padding: 10px 14px; }
+.shift-bar.on { border-color: #9fd3b0; background: #f1faf4; }
+.shift-bar .shift-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.shift-bar .shift-state { flex: 1 1 220px; font-weight: 600; }
+.shift-bar .visit-form { margin-top: 10px; border-top: 1px dashed #d6dde6; padding-top: 10px; }
+.tracking-grid { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 16px; align-items: start; }
+.tracking-people .tp-row { padding: 10px 0; border-top: 1px solid #eef1f5; }
+.tracking-people .tp-row:first-of-type { border-top: 0; }
+.tracking-people .tp-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tracking-people .tp-last { font-size: 0.86rem; margin: 3px 0 6px; }
+.tracking-people .tp-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.tracking-map { width: 100%; height: 480px; border-radius: 12px; background: #eef2f6; }
+.tracking-day { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tracking-stops { margin: 10px 0 0; padding-inline-start: 22px; font-size: 0.9rem; line-height: 1.9; }
+.tracking-stops a { margin-inline-start: 6px; font-size: 0.82rem; }
+@media (max-width: 860px) { .tracking-grid { grid-template-columns: 1fr; } .tracking-map { height: 360px; } }

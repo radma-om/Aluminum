@@ -433,7 +433,7 @@ let leadFilter = { status: 'open', assigned: '', due: false, overdue: false };
 let leadsCache = [];
 let currentLeadId = null;
 const AVATAR_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#6250d6', '#e34948', '#008300', '#d55181', '#c98500'];
-const CH_ICONS = { whatsapp: 'fa-brands fa-whatsapp', website: 'fas fa-globe', calculator: 'fas fa-calculator' };
+const CH_ICONS = { whatsapp: 'fa-brands fa-whatsapp', website: 'fas fa-globe', calculator: 'fas fa-calculator', field: 'fas fa-user-tag' };
 
 const parseUtc = (s) => new Date(String(s).replace(' ', 'T') + 'Z');
 function ago(s) {

@@ -2,6 +2,19 @@
    Used by admin-i18n.js only when the user chose English. To add a text, add
    its exact Arabic (spaces collapsed) and the English. */
 window.I18N_EN = {
+    "تتبع الفريق": "Team tracking",
+    "تسجيل زيارة عميل": "Record a customer visit",
+    "ملاحظة الزيارة": "Visit note",
+    "حفظ الزيارة مع موقعي": "Save the visit with my location",
+    "زيارة ميدانية": "Field visit",
+    "مواقع الفنيين والمسوقين أثناء الدوام فقط: يرسل جواله موقعه كل دقيقة والنظام مفتوح على شاشته، ولقطة عند كل خطوة في أمر العمل وعند كل زيارة عميل. تُحذف المواقع تلقائياً بعد 30 يوماً.": "Technicians' and marketers' locations during working hours only: their phone sends its location every minute while the system is open on its screen, plus a snapshot at each work order step and each customer visit. Locations are deleted automatically after 30 days.",
+    "الفريق الآن": "The team now",
+    "كل الفريق": "Whole team",
+    "لعرض الخريطة هنا أضف مفتاح Google Maps في متغيرات الخادم باسم GOOGLE_MAPS_API_KEY. وحتى ذلك يفتح زر «خرائط Google» موقع كل شخص.": "To show the map here, add a Google Maps key to the server variables as GOOGLE_MAPS_API_KEY. Until then, the «Google Maps» button opens each person's location.",
+    "مسوق — أقسام محددة وزيارات العملاء ومشاركة موقعه": "Marketer — chosen sections, customer visits and location sharing",
+    "حساب «مسوق» يعمل في الأقسام التي تختارها مثل الموظف (عملاء، عروض أسعار، وعمولة على مبيعاته)، ويسجل زيارات العملاء بموقعها، ويشارك موقعه أثناء الدوام في «تتبع الفريق» بعد موافقته.": "A «Marketer» account works in the sections you choose like an employee (customers, quotes, and commission on their sales), records customer visits with their location, and shares their location during the working day in «Team tracking» once they agree.",
+    "الدوام ومشاركة الموقع": "Working day and location sharing",
+    "مثلاً: يريد بوابة شتر لكراج 3×2.5 م، يتصل بعد أسبوع": "e.g. wants a roller shutter for a 3×2.5 m garage, call back in a week",
     "تقويم المناسبات": "Occasions calendar",
     "تنبيه ⚠️ في لوحة المؤشرات قبل كل مناسبة بأسبوع، ليُجهَّز عرض أو تهنئة في وقتها. «جهّز عرضاً» و«تهنئة» يملآن البطاقة المناسبة بالاسم والتاريخ، فتعدّل النسبة والأيام ثم تحفظ، فيبدأ العرض وينتهي وحده. التواريخ الهجرية تقديرية وقد تتغير يوماً حسب رؤية الهلال.": "A ⚠️ alert on the dashboard a week before each occasion, so an offer or a greeting is ready in time. «Prepare an offer» and «Greeting» fill the matching card with the name and date; adjust the percentage and the days, then save, and the offer starts and ends by itself. Hijri dates are estimates and may move by a day with the moon sighting.",
     "المناسبة": "Occasion",
@@ -1579,7 +1592,7 @@ window.I18N_EN = {
     "حرف": "characters",
     "حساب": "The account",
     "حساب «": "The account «",
-    "حساب «فني» يرى قسم «أوامر العمل» فقط، وفيه الأوامر المسندة إليه فقط (بدون أسعار): يبدأ العمل ويكتب ما تم ويغلقه. أضف بريده ليصله كل أمر جديد وقائمة أعماله كل صباح.": "A «Technician» account sees only «Work Orders», and only the orders assigned to them (no prices): they start the job, write what was done and close it. Add their email so they receive each new order and their list every morning.",
+    "حساب «فني» يرى قسم «أوامر العمل» فقط، وفيه الأوامر المسندة إليه فقط (بدون أسعار): يبدأ العمل ويكتب ما تم ويغلقه. أضف بريده ليصله كل أمر جديد وقائمة أعماله كل صباح. ويشارك موقعه أثناء الدوام في «تتبع الفريق» بعد موافقته.": "A «Technician» account sees only «Work Orders», and only the orders assigned to them (no prices): they start the job, write what was done and close it. Add their email so they receive each new order and their list every morning. They share their location during the working day in «Team tracking» once they agree.",
     "حساب «مدير» يُطلب منه تفعيل التحقق بخطوتين (رمز من تطبيق على الجوال) عند أول دخول، ولا يستطيع استخدام اللوحة قبل ذلك.": "A «Manager» account must turn on two-step sign-in (a code from a phone app) at first sign-in, and cannot use the panel before that.",
     "حساب الكمية": "Quantity basis",
     "حساب محذوف": "Deleted account",
