@@ -23,18 +23,22 @@ const DEFAULT_SETTINGS = {
     promo_enabled: false,           // خصم للعملاء يفعّله المدير (عرض موسمي) — يظهر في الحاسبات وعند المساعد الذكي
     promo_percent: 0,               // نسبة الخصم من السعر قبل الضريبة (حتى 50%)
     promo_label: '',                // اسم العرض، مثل «عرض الشتاء»
+    promo_from: '',                 // أول يوم (YYYY-MM-DD) — فارغ: من الآن؛ يبدأ العرض وحده في يومه
     promo_until: '',                // آخر يوم (YYYY-MM-DD) — فارغ: حتى يُوقف
     promo_scope: ['rolling_shutter', 'overhead', 'motors'], // الحاسبات التي يشملها العرض
     promo_parts: {},                // لكل حاسبة: الأجزاء التي يشملها الخصم (فارغ = البضاعة فقط، بدون التركيب والتوصيل)، مثل { rolling_shutter: ['slats'] }
     gift_enabled: false,            // هدية مع كل بوابة (مثل جهاز GSM opener): تظهر بسعرها وتُخصم 100%
     gift_name: '',
     gift_price: 0,
+    gift_from: '',
     gift_until: '',
     gift_scope: ['rolling_shutter', 'overhead', 'motors'],
     greeting_enabled: false,        // تهنئة للعملاء في الحاسبات (مثل اليوم الوطني) مع ألعاب نارية — مرة لكل زائر
     greeting_title: 'كل عام وعُمان بخير',
     greeting_text: 'ردما للبوابات الإلكترونية تهنئكم باليوم الوطني المجيد',
+    greeting_from: '',              // أول يوم تظهر فيه (فارغ: من الآن)
     greeting_until: '',             // آخر يوم تظهر فيه (فارغ: حتى تُوقف)
+    occasions: require('./occasions').DEFAULT_OCCASIONS, // تقويم المناسبات: تنبيه في لوحة المؤشرات قبل كل مناسبة بأسبوع
     follow_up_stale_days: 3,     // عميل مفتوح بلا متابعة من موظف لهذه المدة يظهر في «بحاجة متابعة»
     follow_up_emails: true,      // بريد يومي لكل موظف بعملائه المستحقين + تقرير أسبوعي للمديرين
     // Slat thicknesses of the in-house calculators (pricing and weight tabs): details, mm, kg per meter
@@ -897,6 +901,12 @@ function saveSettings(db, patch) {
             upsert.run(key, JSON.stringify(names));
             continue;
         }
+        if (key === 'occasions') {
+            let list;
+            try { list = require('./occasions').clean(patch[key]); } catch (e) { throw badValue(e.message); }
+            upsert.run(key, JSON.stringify(list));
+            continue;
+        }
         if (key === 'promo_scope' || key === 'gift_scope') {
             const allowed = ['rolling_shutter', 'overhead', 'motors'];
             if (!Array.isArray(patch[key]) || patch[key].some((k) => !allowed.includes(k))) throw badValue(key === 'gift_scope' ? 'اختيار الحاسبات للهدية غير صالح' : 'اختيار الحاسبات للعرض غير صالح');
@@ -941,6 +951,9 @@ function saveSettings(db, patch) {
         if (key === 'promo_percent' && !(value >= 0 && value <= 50)) throw badValue('نسبة خصم العملاء بين 0 و50%');
         if (key === 'promo_until' && value && !(/^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z')))) {
             throw badValue('تاريخ نهاية العرض غير صالح');
+        }
+        if (['promo_from', 'gift_from', 'greeting_from'].includes(key) && value && !(/^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z')))) {
+            throw badValue('تاريخ بداية العرض غير صالح');
         }
         if (key === 'promo_label' && String(value).length > 60) throw badValue('اسم العرض طويل (60 حرفاً كحد أقصى)');
         if (key === 'greeting_title' && String(value).trim().length > 60) throw badValue('عنوان التهنئة طويل (60 حرفاً كحد أقصى)');

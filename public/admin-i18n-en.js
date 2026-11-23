@@ -2,6 +2,14 @@
    Used by admin-i18n.js only when the user chose English. To add a text, add
    its exact Arabic (spaces collapsed) and the English. */
 window.I18N_EN = {
+    "تقويم المناسبات": "Occasions calendar",
+    "تنبيه ⚠️ في لوحة المؤشرات قبل كل مناسبة بأسبوع، ليُجهَّز عرض أو تهنئة في وقتها. «جهّز عرضاً» و«تهنئة» يملآن البطاقة المناسبة بالاسم والتاريخ، فتعدّل النسبة والأيام ثم تحفظ، فيبدأ العرض وينتهي وحده. التواريخ الهجرية تقديرية وقد تتغير يوماً حسب رؤية الهلال.": "A ⚠️ alert on the dashboard a week before each occasion, so an offer or a greeting is ready in time. «Prepare an offer» and «Greeting» fill the matching card with the name and date; adjust the percentage and the days, then save, and the offer starts and ends by itself. Hijri dates are estimates and may move by a day with the moon sighting.",
+    "المناسبة": "Occasion",
+    "متى": "When",
+    "إضافة مناسبة": "Add an occasion",
+    "حفظ التقويم": "Save the calendar",
+    "أول يوم": "First day",
+    "مناسبات قريبة": "Upcoming occasions",
     "العهدة": "Petty cash",
     "العهدة والمصروفات": "Petty cash",
     "عهدتي": "My petty cash",
@@ -2402,7 +2410,7 @@ window.I18N_EN = {
     "نسبة القبول %": "Acceptance %",
     "نسبة المقدم لا تتجاوز": "The deposit percentage cannot exceed",
     "نسبة المقدم لا تتجاوز 100%": "The deposit percentage cannot exceed 100%",
-    "نسبة تُخصم من السعر قبل الضريبة في الحاسبات المختارة، وعلى الأجزاء المختارة فقط من كل بوابة (مثلاً الشرائح وحدها، أو بوابة الأوفرهيد بدون المحرك والتركيب). يراها العميل في الحاسبة، وتظهر في عرض السعر وملف PDF، ويذكرها المساعد الذكي، وتُطبَّق تلقائياً في عروض الموظفين ولا تُحسب من حد خصمهم. ينتهي العرض تلقائياً بعد آخر يوم.": "A percentage taken off the price before VAT in the chosen calculators, and only on the chosen parts of each gate (e.g. the slats only, or the overhead gate without motor and installation). The customer sees it in the calculator; it appears in the quote and PDF, the AI assistant mentions it, and it applies automatically to staff quotes without counting against their limit. The offer ends automatically after its last day.",
+    "نسبة تُخصم من السعر قبل الضريبة في الحاسبات المختارة، وعلى الأجزاء المختارة فقط من كل بوابة (مثلاً الشرائح وحدها، أو بوابة الأوفرهيد بدون المحرك والتركيب). يراها العميل في الحاسبة، وتظهر في عرض السعر وملف PDF، ويذكرها المساعد الذكي، وتُطبَّق تلقائياً في عروض الموظفين ولا تُحسب من حد خصمهم. يبدأ العرض تلقائياً في أول يوم، وينتهي تلقائياً بعد آخر يوم.": "A percentage taken off the price before VAT in the chosen calculators, and only on the chosen parts of each gate (e.g. the slats only, or the overhead gate without motor and installation). The customer sees it in the calculator; it appears in the quote and PDF, the AI assistant mentions it, and it applies automatically to staff quotes without counting against their limit. The offer starts automatically on its first day and ends automatically after its last day.",
     "نسبة ربح المكائن": "Motors profit %",
     "نسبة عمولتي": "My commission rate",
     "نسبة قبول العروض": "Quote acceptance rate",

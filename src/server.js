@@ -23,6 +23,7 @@ const overhead = require('./overhead');
 const motors = require('./motors');
 const leads = require('./leads');
 const dashboard = require('./dashboard');
+const occasions = require('./occasions');
 const agent = require('./agent');
 const mazbot = require('./mazbot');
 const backup = require('./backup');
@@ -526,12 +527,12 @@ function createApp(db, { agentClient } = {}) {
     const publicReadLimit = rateLimit({ windowMs: 10 * 60_000, max: 120 });
 
     /* The greeting on the customer calculators (e.g. the National Day), when the manager switched it on and
-       its last day has not passed; ?preview=1 shows the saved wording even when off (the «معاينة» button) */
+       it is between its first and last day; ?preview=1 shows the saved wording even when off (the «معاينة» button) */
     app.get('/api/public/greeting', publicReadLimit, (req, res) => {
         const s = getSettings(db);
         const today = leads.localToday();
         const title = String(s.greeting_title || '').trim();
-        const on = (s.greeting_enabled && !(s.greeting_until && s.greeting_until < today)) || req.query.preview === '1';
+        const on = occasions.runsOn(s.greeting_enabled, s.greeting_from, s.greeting_until, today) || req.query.preview === '1';
         if (!on || !title) return res.json({ greeting: null });
         const text = String(s.greeting_text || '').trim();
         // Each wording is shown once per visitor: a new wording (or last day) is a new greeting
@@ -1886,7 +1887,9 @@ function createApp(db, { agentClient } = {}) {
     admin.get('/dashboard', (req, res) => res.json({
         ...dashboard.build(db, { days: req.query.days, user: req.user }),
         // Today's pulse, the rates and the latest events: the whole company's figures, for managers
-        pulse: req.user.role === 'manager' ? team.pulse(db, { days: req.query.days }) : null
+        pulse: req.user.role === 'manager' ? team.pulse(db, { days: req.query.days }) : null,
+        // ⚠️ The occasions of the coming week, so the managers get an offer or a greeting ready
+        occasions: req.user.role === 'manager' ? occasions.upcoming(getSettings(db)) : []
     }));
     /* Employees' performance between two dates (managers only: the route is not mapped to a section) */
     admin.get('/team', (req, res) => res.json(team.report(db, {

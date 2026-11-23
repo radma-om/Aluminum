@@ -675,11 +675,16 @@ const PROMO_KINDS = {
     motors: { name: 'مكائن البوابات', parts: { kit: 'المكينة (الطقم)', parts: 'القطع الإضافية', installation: 'التركيب', delivery: 'التوصيل' } }
 };
 const localDay = () => new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
+/* An offer's state from its switch and its first and last day: off, scheduled (starts by itself), running, ended */
+const offerState = (enabled, from, until, today = localDay()) =>
+    !enabled ? 'off' : until && until < today ? 'ended' : from && from > today ? 'scheduled' : 'on';
+const offerDays = (from, until) => [from && `من ${from}`, until && `حتى ${until}`].filter(Boolean).join(' ');
 
 function fillPromo(st) {
     $id('promoEnabled').checked = Boolean(st.promo_enabled);
     $id('promoLabel').value = st.promo_label || '';
     $id('promoPercent').value = st.promo_percent || '';
+    $id('promoFrom').value = st.promo_from || '';
     $id('promoUntil').value = st.promo_until || '';
     const parts = st.promo_parts || {};
     $id('promoScope').innerHTML = Object.entries(PROMO_KINDS).map(([k, kind]) => {
@@ -689,8 +694,12 @@ function fillPromo(st) {
             <div class="promo-parts" data-kind="${k}">${Object.entries(kind.parts).map(([p, label]) =>
                 `<label><input type="checkbox" value="${p}" ${chosen.includes(p) ? 'checked' : ''}> ${label}</label>`).join('')}</div></div>`;
     }).join('');
-    const ended = st.promo_enabled && st.promo_until && st.promo_until < localDay();
-    setStatus('promoStatus', !st.promo_enabled ? 'متوقف' : ended ? 'انتهى (مرّ آخر يوم)' : `يعمل الآن: خصم ${st.promo_percent}%`, st.promo_enabled && !ended ? 'ok' : '');
+    const state = offerState(st.promo_enabled, st.promo_from, st.promo_until);
+    setStatus('promoStatus', {
+        off: 'متوقف', ended: 'انتهى (مرّ آخر يوم)',
+        scheduled: `⏳ مجدول: خصم ${st.promo_percent}% يبدأ وحده في ${st.promo_from}${st.promo_until ? ` وينتهي بعد ${st.promo_until}` : ''}`,
+        on: `يعمل الآن: خصم ${st.promo_percent}%${st.promo_until ? ` حتى ${st.promo_until}` : ''}`
+    }[state], state === 'on' || state === 'scheduled' ? 'ok' : '');
     fillGift(st);
     offersSummary(st);
 }
@@ -700,15 +709,79 @@ function offersSummary(st) {
     const el = $id('offersSummary');
     if (!el) return;
     const today = localDay();
-    const promo = st.promo_enabled && !(st.promo_until && st.promo_until < today) && Number(st.promo_percent) > 0;
-    const gift = st.gift_enabled && !(st.gift_until && st.gift_until < today) && st.gift_name && Number(st.gift_price) > 0;
-    el.textContent = [promo ? `🎉 ${st.promo_label || 'خصم'} ${st.promo_percent}% يعمل الآن` : 'لا خصم يعمل الآن',
-        gift ? `🎁 ${st.gift_name} مع كل بوابة` : 'لا هدية الآن'].join(' — ');
+    const promo = Number(st.promo_percent) > 0 ? offerState(st.promo_enabled, st.promo_from, st.promo_until, today) : 'off';
+    const gift = st.gift_name && Number(st.gift_price) > 0 ? offerState(st.gift_enabled, st.gift_from, st.gift_until, today) : 'off';
+    el.textContent = [promo === 'on' ? `🎉 ${st.promo_label || 'خصم'} ${st.promo_percent}% يعمل الآن`
+        : promo === 'scheduled' ? `⏳ ${st.promo_label || 'خصم'} ${st.promo_percent}% يبدأ ${st.promo_from}` : 'لا خصم يعمل الآن',
+    gift === 'on' ? `🎁 ${st.gift_name} مع كل بوابة` : gift === 'scheduled' ? `⏳ هدية ${st.gift_name} تبدأ ${st.gift_from}` : 'لا هدية الآن'].join(' — ');
 }
 
 async function loadOffers() {
-    try { const st = await api('GET', '/api/admin/settings'); fillPromo(st); fillGreeting(st); } catch (err) { setStatus('promoStatus', err.message, 'err'); }
+    try { const st = await api('GET', '/api/admin/settings'); fillPromo(st); fillGreeting(st); fillOccasions(st); } catch (err) { setStatus('promoStatus', err.message, 'err'); }
     loadPromoReminders();
+}
+
+/* «تقويم المناسبات»: the year's occasions; the dashboard warns a week before each. «جهّز عرضاً» / «تهنئة» fill
+   the discount or the greeting with the occasion's name and day (nothing is saved until «حفظ» there). */
+const daysUntil = (date, today = localDay()) => Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400_000);
+const whenText = (n) => n === 0 ? 'اليوم' : n === 1 ? 'غداً' : n === 2 ? 'بعد يومين' : n <= 10 ? `بعد ${n} أيام` : `بعد ${n} يوماً`;
+const occasionShort = (name) => String(name || '').split(' — ')[0].trim();
+function fillOccasions(st) {
+    const list = Array.isArray(st.occasions) ? st.occasions : [];
+    $id('occasionRows').innerHTML = list.map((o) => occasionRow(o)).join('') || '';
+    if (!list.length) addOccasion();
+}
+function occasionRow(o = { name: '', date: '' }) {
+    const n = o.date ? daysUntil(o.date) : null;
+    const when = n === null ? '' : n < 0 ? '<span class="muted">مضت</span>' : n <= 7 ? `<span class="badge warn">⚠️ ${whenText(n)}</span>` : whenText(n);
+    return `<tr class="${n !== null && n < 0 ? 'past' : ''}"><td data-label="المناسبة"><input type="text" class="occ-name" maxlength="60" value="${esc(o.name)}" placeholder="اسم المناسبة"></td>
+        <td data-label="التاريخ"><input type="date" class="occ-date" value="${esc(o.date)}"></td>
+        <td data-label="متى" class="occ-when">${when}</td>
+        <td class="occ-actions"><button type="button" class="btn btn-outline btn-sm" onclick="prepareOccasionOffer(this)"><i class="fas fa-tags"></i> جهّز عرضاً</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="prepareOccasionGreeting(this)"><i class="fas fa-gift"></i> تهنئة</button>
+            <button type="button" class="btn btn-outline btn-sm" title="حذف" aria-label="حذف" onclick="this.closest('tr').remove()"><i class="fas fa-xmark"></i></button></td></tr>`;
+}
+function addOccasion() {
+    $id('occasionRows').insertAdjacentHTML('beforeend', occasionRow());
+    const rows = $id('occasionRows').querySelectorAll('tr');
+    rows[rows.length - 1].querySelector('.occ-name').focus();
+}
+const occasionOf = (btn) => {
+    const tr = btn.closest('tr');
+    return { name: tr.querySelector('.occ-name').value.trim(), date: tr.querySelector('.occ-date').value };
+};
+async function saveOccasions() {
+    const list = [...$id('occasionRows').querySelectorAll('tr')].map((tr) => ({ name: tr.querySelector('.occ-name').value.trim(), date: tr.querySelector('.occ-date').value }))
+        .filter((o) => o.name || o.date);
+    if (list.some((o) => !o.name || !o.date)) return setStatus('occasionStatus', 'اكتب اسم وتاريخ كل مناسبة (أو احذف الصف الفارغ)', 'err');
+    try {
+        fillOccasions(await api('PUT', '/api/admin/settings', { occasions: list }));
+        setStatus('occasionStatus', 'تم الحفظ ✓', 'ok');
+    } catch (err) { setStatus('occasionStatus', err.message, 'err'); }
+}
+/* The discount card, filled for this occasion: its name, from its day to its day (change them, then «حفظ») */
+function prepareOccasionOffer(btn) {
+    const o = occasionOf(btn);
+    if (!o.name || !o.date) return setStatus('occasionStatus', 'اكتب اسم المناسبة وتاريخها أولاً', 'err');
+    $id('promoEnabled').checked = true;
+    $id('promoLabel').value = `عرض ${occasionShort(o.name)}`.slice(0, 60);
+    $id('promoFrom').value = o.date;
+    $id('promoUntil').value = o.date;
+    setStatus('promoStatus', 'عُبّئ من التقويم — حدّد النسبة والأجزاء، وعدّل أول وآخر يوم، ثم اضغط «حفظ»', '');
+    $id('promoCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $id('promoPercent').focus({ preventScroll: true });
+}
+function prepareOccasionGreeting(btn) {
+    const o = occasionOf(btn);
+    if (!o.name || !o.date) return setStatus('occasionStatus', 'اكتب اسم المناسبة وتاريخها أولاً', 'err');
+    const name = occasionShort(o.name);
+    $id('greetingEnabled').checked = true;
+    $id('greetingTitle').value = /الوطني/.test(name) ? 'كل عام وعُمان بخير' : 'كل عام وأنتم بخير';
+    $id('greetingText').value = `ردما للبوابات الإلكترونية تهنئكم بمناسبة ${name}`.slice(0, 160);
+    $id('greetingFrom').value = o.date;
+    $id('greetingUntil').value = o.date;
+    setStatus('greetingStatus', 'عُبّئت من التقويم — راجع النص والأيام ثم اضغط «حفظ»', '');
+    $id('greetingCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /* «تهنئة العملاء في الحاسبات»: the wording, on/off and its last day (save first, then «معاينة» shows the saved one) */
@@ -716,14 +789,22 @@ function fillGreeting(st) {
     $id('greetingEnabled').checked = Boolean(st.greeting_enabled);
     $id('greetingTitle').value = st.greeting_title || '';
     $id('greetingText').value = st.greeting_text || '';
+    $id('greetingFrom').value = st.greeting_from || '';
     $id('greetingUntil').value = st.greeting_until || '';
-    const ended = st.greeting_until && st.greeting_until < new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
-    setStatus('greetingStatus', !st.greeting_enabled ? 'متوقفة' : ended ? 'انتهت (مرّ آخر يوم)' : `تظهر الآن لزوار الحاسبات${st.greeting_until ? ` حتى ${st.greeting_until}` : ''}`, st.greeting_enabled && !ended ? 'ok' : '');
+    const state = offerState(st.greeting_enabled, st.greeting_from, st.greeting_until);
+    setStatus('greetingStatus', {
+        off: 'متوقفة', ended: 'انتهت (مرّ آخر يوم)',
+        scheduled: `⏳ مجدولة: تظهر وحدها ${offerDays(st.greeting_from, st.greeting_until)}`,
+        on: `تظهر الآن لزوار الحاسبات${st.greeting_until ? ` حتى ${st.greeting_until}` : ''}`
+    }[state], state === 'on' || state === 'scheduled' ? 'ok' : '');
 }
+/* The first day must not come after the last one */
+const badDays = (from, until) => Boolean(from && until && from > until);
 async function saveGreeting() {
     const body = { greeting_enabled: $id('greetingEnabled').checked, greeting_title: $id('greetingTitle').value.trim(),
-        greeting_text: $id('greetingText').value.trim(), greeting_until: $id('greetingUntil').value };
+        greeting_text: $id('greetingText').value.trim(), greeting_from: $id('greetingFrom').value, greeting_until: $id('greetingUntil').value };
     if (body.greeting_enabled && !body.greeting_title) return setStatus('greetingStatus', 'اكتب عنوان التهنئة', 'err');
+    if (badDays(body.greeting_from, body.greeting_until)) return setStatus('greetingStatus', 'أول يوم بعد آخر يوم — صحّح التاريخين', 'err');
     try { fillGreeting(await api('PUT', '/api/admin/settings', body)); } catch (err) { setStatus('greetingStatus', err.message, 'err'); }
 }
 
@@ -795,9 +876,10 @@ async function savePromo() {
     }
     const body = {
         promo_enabled: $id('promoEnabled').checked, promo_label: $id('promoLabel').value.trim(),
-        promo_percent: Number($id('promoPercent').value) || 0, promo_until: $id('promoUntil').value,
+        promo_percent: Number($id('promoPercent').value) || 0, promo_from: $id('promoFrom').value, promo_until: $id('promoUntil').value,
         promo_scope: scope, promo_parts: parts
     };
+    if (badDays(body.promo_from, body.promo_until)) return setStatus('promoStatus', 'أول يوم بعد آخر يوم — صحّح التاريخين', 'err');
     if (body.promo_enabled && (!body.promo_percent || !scope.length)) return setStatus('promoStatus', 'اكتب النسبة واختر حاسبة واحدة على الأقل', 'err');
     if (body.promo_enabled && scope.some((k) => !parts[k].length)) return setStatus('promoStatus', 'اختر جزءاً واحداً على الأقل لكل حاسبة مختارة', 'err');
     try { fillPromo(await api('PUT', '/api/admin/settings', body)); } catch (err) { setStatus('promoStatus', err.message, 'err'); }
@@ -808,18 +890,24 @@ function fillGift(st) {
     $id('giftEnabled').checked = Boolean(st.gift_enabled);
     $id('giftName').value = st.gift_name || '';
     $id('giftPrice').value = st.gift_price || '';
+    $id('giftFrom').value = st.gift_from || '';
     $id('giftUntil').value = st.gift_until || '';
     $id('giftScope').querySelectorAll('input').forEach((c) => { c.checked = (st.gift_scope || []).includes(c.value); });
-    const ended = st.gift_enabled && st.gift_until && st.gift_until < localDay();
-    setStatus('giftStatus', !st.gift_enabled ? 'متوقفة' : ended ? 'انتهت (مرّ آخر يوم)' : `تعمل الآن: ${st.gift_name} (${Number(st.gift_price).toFixed(3)} ر.ع) مع كل بوابة`, st.gift_enabled && !ended ? 'ok' : '');
+    const state = offerState(st.gift_enabled, st.gift_from, st.gift_until);
+    setStatus('giftStatus', {
+        off: 'متوقفة', ended: 'انتهت (مرّ آخر يوم)',
+        scheduled: `⏳ مجدولة: ${st.gift_name} تبدأ وحدها في ${st.gift_from}${st.gift_until ? ` وتنتهي بعد ${st.gift_until}` : ''}`,
+        on: `تعمل الآن: ${st.gift_name} (${Number(st.gift_price).toFixed(3)} ر.ع) مع كل بوابة${st.gift_until ? ` حتى ${st.gift_until}` : ''}`
+    }[state], state === 'on' || state === 'scheduled' ? 'ok' : '');
 }
 
 async function saveGift() {
     const body = {
         gift_enabled: $id('giftEnabled').checked, gift_name: $id('giftName').value.trim(),
-        gift_price: Number($id('giftPrice').value) || 0, gift_until: $id('giftUntil').value,
+        gift_price: Number($id('giftPrice').value) || 0, gift_from: $id('giftFrom').value, gift_until: $id('giftUntil').value,
         gift_scope: [...$id('giftScope').querySelectorAll('input:checked')].map((c) => c.value)
     };
+    if (badDays(body.gift_from, body.gift_until)) return setStatus('giftStatus', 'أول يوم بعد آخر يوم — صحّح التاريخين', 'err');
     if (body.gift_enabled && (!body.gift_name || !(body.gift_price > 0) || !body.gift_scope.length)) return setStatus('giftStatus', 'اكتب اسم الهدية وسعرها واختر حاسبة واحدة على الأقل', 'err');
     try { fillPromo(await api('PUT', '/api/admin/settings', body)); } catch (err) { setStatus('giftStatus', err.message, 'err'); }
 }

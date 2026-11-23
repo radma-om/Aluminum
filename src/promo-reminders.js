@@ -44,10 +44,11 @@ function ensureTable(db) {
 
 /* The running promotion and gift that have a last day: what a reminder can be about */
 function running(settings, today = localToday()) {
-    const on = (enabled, until) => Boolean(enabled) && Boolean(until) && String(until) >= today;
-    const promo = on(settings.promo_enabled && Number(settings.promo_percent) > 0, settings.promo_until)
+    // Running now (started, not ended) and with a last day to remind of
+    const on = (enabled, until, from) => Boolean(enabled) && Boolean(until) && String(until) >= today && !(from && String(from) > today);
+    const promo = on(settings.promo_enabled && Number(settings.promo_percent) > 0, settings.promo_until, settings.promo_from)
         ? { label: String(settings.promo_label || '').trim() || 'خصم', until: settings.promo_until } : null;
-    const gift = on(settings.gift_enabled && String(settings.gift_name || '').trim(), settings.gift_until)
+    const gift = on(settings.gift_enabled && String(settings.gift_name || '').trim(), settings.gift_until, settings.gift_from)
         ? { name: String(settings.gift_name).trim(), until: settings.gift_until } : null;
     // One key per promotion: a new promotion (another name or day) reminds again
     const key = [promo && `p:${promo.label}:${promo.until}`, gift && `g:${gift.name}:${gift.until}`].filter(Boolean).join('|');

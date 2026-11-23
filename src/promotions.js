@@ -3,7 +3,8 @@
    1) A promotion: a % off the price before VAT, for the chosen
       calculators and, in each, only the chosen parts (e.g. the slats of
       a roller shutter, or an overhead gate without its motor and
-      installation). A name ("عرض اليوم الوطني") and an optional last day.
+      installation). A name ("عرض اليوم الوطني") and an optional first and last day:
+      it starts and ends by itself.
    2) A gift (e.g. a GSM opener): shown as a line with its price and taken
       off in full (100%), so the customer sees what it is worth. It joins
       the total discount. One per gate (a motor kit counts as one gate).
@@ -26,6 +27,8 @@ const MAX_GIFT_PRICE = 1000;
 
 const localToday = () => new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
 const ended = (until, today) => Boolean(until) && String(until) < today;
+/* Not started yet: its first day is still ahead (it starts by itself on that day) */
+const early = (from, today) => Boolean(from) && String(from) > today;
 
 /* Services: a promotion covers them only when the manager ticks them */
 const SERVICES = ['installation', 'delivery'];
@@ -42,7 +45,7 @@ function active(settings, kind, today = localToday()) {
     if (!settings || !settings.promo_enabled) return null;
     const percent = Number(settings.promo_percent);
     if (!(percent > 0 && percent <= MAX_PERCENT)) return null;
-    if (ended(settings.promo_until, today)) return null;
+    if (ended(settings.promo_until, today) || early(settings.promo_from, today)) return null;
     const scope = Array.isArray(settings.promo_scope) ? settings.promo_scope : [];
     if (kind && !scope.includes(kind)) return null;
     return {
@@ -57,7 +60,7 @@ function activeGift(settings, kind, today = localToday()) {
     const price = round2(Number(settings.gift_price));
     const name = String(settings.gift_name || '').trim();
     if (!(price > 0) || !name) return null;
-    if (ended(settings.gift_until, today)) return null;
+    if (ended(settings.gift_until, today) || early(settings.gift_from, today)) return null;
     const scope = Array.isArray(settings.gift_scope) ? settings.gift_scope : [];
     if (kind && !scope.includes(kind)) return null;
     return { name, price, until: settings.gift_until || null, scope };
