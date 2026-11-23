@@ -976,8 +976,10 @@ function createApp(db, { agentClient } = {}) {
     /* «وجهتي»: a trip to a place (a marketer's visit, or a technician without a work order): a map link */
     admin.post('/me/trip', asyncRoute(async (req, res) => {
         const b = req.body || {};
-        const place = await require('./routing').resolve(b.map_url);
-        if (!place) throw httpError(400, 'لم أستطع قراءة الموقع من الرابط — انسخ رابط الموقع من خرائط Google (مشاركة ← نسخ الرابط) أو من موقع واتساب');
+        const routing = require('./routing');
+        const r = await routing.resolveDetail(b.map_url);
+        const place = r.place;
+        if (!place) { console.error('[routing] could not read the place from the link:', r.reason); throw httpError(400, routing.unreadable(r.reason)); }
         let from = null;
         try { from = fieldtrack.coords(b.from || {}); } catch { from = null; }
         res.json({ trip: await fieldtrack.startTrip(db, req.user, { ...place, label: b.label || 'وجهتي' }, from) });
