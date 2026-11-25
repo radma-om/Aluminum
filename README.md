@@ -1527,6 +1527,90 @@ npm start
   - `/api/admin/webhooks` و `/api/admin/webhooks/:id/test`
   - `/api/admin/price-list.txt`
 
+## المسار الداخلي لبانوراما (`/api/internal/v1`)
+
+نظام بانوراما (panorama-commerce) يضيف العميل أو يحدّثه، ويفتح أمر عمل تركيب ينفذه فنيو ردما، ويستعلم عن حالته. هذا المسار مستقل عن لوحة الإدارة:
+- `ADMIN_TOKEN` وجلسات الموظفين لا تفتحه.
+- مفتاحه لا يفتح `/api/admin`.
+- لا يقرأ ولا يعيد أي أسعار أو فواتير أو تكاليف.
+
+**التفعيل:** يبقى موقوفاً (`503 {"status":"unavailable"}`) حتى يُضبط في متغيرات البيئة:
+
+| المتغير | الوصف |
+|---|---|
+| `INTERNAL_API_KEY` | مفتاح Bearer لبانوراما (طويل وعشوائي، ومختلف عن `ADMIN_TOKEN`؛ إن تساويا يبقى المسار موقوفاً) |
+| `INTERNAL_API_HMAC_SECRET` | سر توقيع الطلبات |
+
+**الترويسات (كل طلب):**
+```
+Authorization: Bearer <INTERNAL_API_KEY>
+X-Timestamp: <ثوانٍ Unix — يُرفض فرق أكثر من 300 ث>
+X-Request-Id: <UUID — يُرفض إذا تكرر خلال 24 ساعة>
+X-Signature: sha256=<hex HMAC-SHA256(INTERNAL_API_HMAC_SECRET, "<X-Timestamp>.<X-Request-Id>.<الجسم الخام>")>
+Idempotency-Key: <إلزامي لطلبات POST — نفس المفتاح على نفس المسار خلال 24 ساعة يعيد الرد المحفوظ دون تنفيذ ثانٍ>
+Content-Type: application/json
+```
+في طلب `GET` الجسم فارغ، فيُوقَّع النص `"<X-Timestamp>.<X-Request-Id>."`.
+
+**حالات الرد:**
+
+| `status` | رمز HTTP | المعنى |
+|---|---|---|
+| `ok` | 200 / 201 | نجح |
+| `invalid_arguments` | 422 | حقل ناقص أو غير صالح، واسم الحقل في `field` |
+| `not_found` | 404 | غير موجود |
+| `forbidden` | 401 | فشل المصادقة (بلا تفاصيل) |
+| `unavailable` | 503 | المسار غير مفعّل |
+| `rate_limited` | 429 | أكثر من 60 طلباً في الدقيقة |
+| `error` | 500 | خطأ داخلي |
+
+**`POST /api/internal/v1/customers/upsert`**
+- **المطابقة:** بالرقم، مع 968 أو بدونها، أو الرقم الثاني للعميل.
+- **العميل الجديد:** يُنشأ.
+- **العميل الموجود:** تُحدَّث الحقول المرسلة غير الفارغة فقط، ولا يُمسح أي حقل.
+- **الولاية:** `wilaya` يُحفظ في «المدينة/الولاية».
+- **رقم العميل في بانوراما:** `external_ref` يُحفظ في `customer_external_refs`.
+```json
+{ "phone": "9689XXXXXXX", "name": "...", "email": null, "wilaya": "نزوى", "address": null, "map_url": null, "source": "panorama", "external_ref": "panorama:customer:45" }
+→ { "status": "ok", "customer_id": 812, "created": false }
+```
+
+**`POST /api/internal/v1/work-orders`** — أمر تركيب جديد:
+- **الإلزامي:** `customer_phone`، `business` (`panorama` فقط)، `external_ref`، `title`، `items` (`[{description, qty}]`)، `approved_by`.
+- **الاختياري:** `customer_name` (يلزم لعميل غير معروف)، `location` (`map_url`، `wilaya`، `address`)، `preferred_date` (YYYY-MM-DD)، `notes`.
+- **العميل:** يُضاف أو يُحدَّث أولاً بنفس منطق `upsert`.
+- **الأمر:** يُنشأ بحالة «جديد» بلا فني ولا موعد. يحدد المكتب الموعد والفني كالمعتاد، وعندها فقط تصل إشعارات العميل.
+- **لا يُرسل للعميل أي شيء عند الإنشاء.**
+- **الوصف:** العنوان، ثم سطر لكل بند، ثم «الموعد المفضل لدى العميل»، ثم الملاحظات. `preferred_date` ليس موعداً مجدولاً.
+- **الحدث:** يُطلق `work_order.created`.
+- **منع التكرار:** نفس `business` و`external_ref` مرة ثانية يعيد الأمر الموجود مع `"duplicate": true`.
+```json
+{ "customer_phone": "9689XXXXXXX", "customer_name": "...", "business": "panorama", "external_ref": "panorama:install:1021",
+  "title": "تركيب 8 كاميرات + NVR", "items": [ { "description": "كاميرا IP 4MP خارجية", "qty": 8 } ],
+  "location": { "map_url": "https://maps.google.com/...", "wilaya": "نزوى", "address": "..." },
+  "preferred_date": "2026-12-02", "notes": "التمديدات موجودة", "approved_by": "اسم مسؤول المبيعات" }
+→ 201 { "status": "ok", "work_order_id": 3301, "number": "WO-2026-0153", "duplicate": false }
+```
+
+**`GET /api/internal/v1/work-orders/by-ref/<external_ref>?business=panorama`** — يعيد الحالة دون بيانات الفني أو ملاحظات المكتب:
+```json
+{ "status": "ok", "work_order_id": 3301, "number": "WO-2026-0153", "order_status": "scheduled", "scheduled_date": "2026-12-03", "scheduled_time": "09:00", "completed_at": null }
+```
+حالة الأمر في `order_status`، لأن `status` هو نتيجة الطلب (`ok`).
+
+**أوامر العمل في الـ Webhooks:** لكل أمر عمل حقلان جديدان، `business` (`radma` افتراضياً) و`external_ref`. يظهران داخل `data` لحدثي `work_order.created` و`work_order.status_changed`، وتبقى كل الحقول القديمة كما هي.
+
+**الحدثان الجديدان:**
+- `lead.message` و`handoff.requested` مسجلان، لكن **لا يُطلقان بعد**؛ يُطلقان في مهمة لاحقة (ربط الوكيل).
+- عند فشل إرسال أحدهما يُعاد بعد 1 ثم 5 ثم 15 دقيقة، بنفس الـ payload ونفس `id`، ثم يتوقف مع تنبيه.
+- الحالة محفوظة في جدول `webhook_retries`، فتستمر بعد إعادة التشغيل.
+- الأحداث الأخرى تبقى محاولة واحدة.
+
+**السجل والحدود:**
+- كل طلب يُسجَّل في سجل النشاط باسم `panorama`، بلا أسرار.
+- 60 طلباً في الدقيقة.
+- سجل الطلبات `internal_requests` يُحذف بعد يومين، وإعادات الـ Webhooks بعد 7 أيام.
+
 ### ضوابط العروض والألوان
 عند تعدد سجلات العملاء للهاتف نفسه وتضارب الإسناد، يُحجب العرض عن الموظف محدود النطاق ما لم تسمح جميع السجلات بوصوله. لا يفتح سجل غير مُسند عرض موظف آخر؛ على المدير معالجة تضارب الإسناد. يبقى وصول المدير وروابط المشاركة المحمية بمفاتيحها كما هو.
 يلزم اختيار لون صالح عندما توجد ألوان للسماكة المختارة؛ تبقى السماكات التي ليس لها ألوان قابلة للتسعير دون لون.
