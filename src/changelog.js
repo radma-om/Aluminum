@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.60.0', date: '2026-11-25',
+        ar: ['مسار داخلي لنظام بانوراما (/api/internal/v1) بمفتاح وتوقيع خاصين، مستقل عن لوحة الإدارة: إضافة العميل أو تحديثه، وفتح أمر عمل تركيب (حالته «جديد» ويحدد المكتب الموعد والفني كالمعتاد، ولا يصل العميل شيء عند الإنشاء)، والاستعلام عن حالة الأمر', 'لأوامر العمل حقلان جديدان: الجهة (ردما أو بانوراما) ورقم الأمر لديها — ويظهران في أحداث الـ Webhooks', 'حدثان جديدان للـ Webhooks (رسالة العميل، وطلب التحويل لموظف) يُعادان تلقائياً بعد 1 ثم 5 ثم 15 دقيقة عند فشل الإرسال — مسجلان ولا يُرسلان بعد'],
+        en: ['An internal path for the Panorama system (/api/internal/v1) with its own key and signature, separate from the admin panel: add or update a customer, open an installation work order (status «New»; the office sets the day and the technician as usual, and the customer is told nothing when it is created), and look up the order\'s status', 'Work orders have two new fields: the business (Radma or Panorama) and the order\'s number there — included in the webhook events', 'Two new webhook events (a customer message, and a request for a person) retried automatically after 1, 5 and 15 minutes when delivery fails — registered, not sent yet']
+    },
+    {
         version: '3.59.1', date: '2026-11-23',
         ar: ['«وجهتي» و«تحديد موقع العميل»: يُقرأ الآن الموقع من روابط خرائط Google كما تنسخها الجوالات — النص مع اسم المكان والرابط معاً، والمكان المشارك باسمه (يُقرأ من صفحته)، وصفحة موافقة Google، والأرقام العربية مثل ٢٣٫٥٨', 'عند تعذر القراءة تشرح الرسالة البديل (الضغط المطول لوضع دبوس ثم نسخ الرابط، أو لصق الإحداثيات) مع السبب'],
         en: ['«My destination» and «Set the customer\'s location»: places are now read from Google Maps links as phones copy them — the text with the place\'s name and the link together, a place shared by its name (read from its page), Google\'s consent page, and Arabic digits such as ٢٣٫٥٨', 'When it cannot be read, the message explains the alternative (long-press to drop a pin then copy the link, or paste the coordinates) with the reason']

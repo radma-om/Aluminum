@@ -25,6 +25,7 @@ const leads = require('./leads');
 const dashboard = require('./dashboard');
 const occasions = require('./occasions');
 const fieldtrack = require('./fieldtrack');
+const internalApi = require('./internal-api');
 const agent = require('./agent');
 const mazbot = require('./mazbot');
 const backup = require('./backup');
@@ -467,7 +468,9 @@ function pruneOldLogs(db) {
         system_alerts: alerts.prune(db),
         password_resets: Number(db.prepare("DELETE FROM password_resets WHERE expires_at < datetime('now', '-1 day')").run().changes),
         offsite_backups: Number(db.prepare("DELETE FROM offsite_backups WHERE at < datetime('now', ?)").run(days).changes),
-        staff_locations: fieldtrack.prune(db) // 30 days
+        staff_locations: fieldtrack.prune(db), // 30 days
+        internal_requests: internalApi.prune(db), // 2 days
+        webhook_retries: Number(db.prepare("DELETE FROM webhook_retries WHERE created_at < datetime('now', '-7 days')").run().changes)
     };
 }
 
@@ -1125,6 +1128,13 @@ function createApp(db, { agentClient } = {}) {
             warnings.push({ level: 'danger', text: 'MAZBOT_ALLOW_UNSIGNED=1 مفعّل: النظام يقبل رسائل MazBot دون توقيع HMAC. احذفه في الإنتاج.' });
         } else if ((process.env.MAZBOT_WEBHOOK_SECRET || '').length >= 16 && !process.env.MAZBOT_SIGNING_SECRET) {
             warnings.push({ level: 'danger', text: 'MAZBOT_SIGNING_SECRET غير مضبوط: رسائل MazBot ستُرفض حتى يتم تفعيل توقيع HMAC.' });
+        }
+        const internalKey = String(process.env.INTERNAL_API_KEY || '').trim();
+        const internalSecret = String(process.env.INTERNAL_API_HMAC_SECRET || '').trim();
+        if (internalKey && internalKey === String(process.env.ADMIN_TOKEN || '').trim()) {
+            warnings.push({ level: 'danger', text: 'INTERNAL_API_KEY يساوي ADMIN_TOKEN — المسار الداخلي لبانوراما موقوف. اجعل لكل منهما قيمة مختلفة.' });
+        } else if (Boolean(internalKey) !== Boolean(internalSecret)) {
+            warnings.push({ level: 'warning', text: 'المسار الداخلي لبانوراما يحتاج INTERNAL_API_KEY وINTERNAL_API_HMAC_SECRET معاً — أحدهما فقط مضبوط، فالمسار موقوف.' });
         }
         if (process.env.TRUST_PROXY !== undefined) {
             warnings.push({ level: 'warning', text: 'المتغير TRUST_PROXY لم يعد يُستخدم (كان يثق بأي وكيل). احذفه، واستخدم TRUSTED_PROXIES بعناوين صريحة.' });
@@ -2840,6 +2850,13 @@ function createApp(db, { agentClient } = {}) {
     /* Ready-made WhatsApp text of the public price list (for copy/paste or automations) */
     admin.get('/price-list.txt', (req, res) => res.type('text/plain').send(whatsapp.priceListText(db)));
 
+    /* The internal API for panorama-commerce (internal-api.js): its own key and signature, never the admin panel's */
+    app.use('/api/internal/v1', internalApi.router(db, {
+        emit: (event, data) => webhooks.emit(db, event, data),
+        afterCreate: (order) => { fieldtrack.orderPlace(db, order).catch(() => null); }
+    }));
+    app.use('/api/internal', internalApi.bodyErrors());
+
     app.use('/api/admin', admin);
 
     whatsapp.registerRoutes(app, db, { saveQuote: (q) => saveQuote(db, q) });
@@ -2982,6 +2999,7 @@ function start() {
     offsite.scheduleDaily(db);
     followup.schedule(db);
     require('./ratings').schedule(db);
+    webhooks.scheduleRetries(db);
     // PORT is usually a number; some hosting runners pass a socket path instead
     const port = process.env.PORT || 3000;
     createApp(db).listen(/^\d+$/.test(String(port)) ? Number(port) : port, () => {

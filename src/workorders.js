@@ -102,7 +102,8 @@ function nextNumber(db, year) {
  * input: { kind, invoice_id? | quote_id? | customer_name + customer_phone, location?, address?, map_url?,
  *          scheduled_date?, scheduled_time?, technician_id?, description? }
  */
-function create(db, input, author, { source = null, notify = true } = {}) {
+function create(db, input, author, { source = null, notify = true, external = null } = {}) {
+    // external = { business, ref }: an order of another business (the internal API only — never from a request body)
     const kind = KINDS[input.kind] ? input.kind : 'installation';
     let base = { customer_name: clip(input.customer_name, 120), customer_phone: String(input.customer_phone || '').replace(/\D/g, '').slice(0, 20), location: clip(input.location, 120) || null };
     let quoteId = null;
@@ -131,11 +132,11 @@ function create(db, input, author, { source = null, notify = true } = {}) {
     const id = tx(db, () => {
         const number = nextNumber(db, leads.localToday().slice(0, 4));
         const info = db.prepare(`INSERT INTO work_orders (number, kind, quote_id, invoice_id, customer_name, customer_phone, location, address, map_url,
-                                    scheduled_date, scheduled_time, technician_id, description, status, created_by)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+                                    scheduled_date, scheduled_time, technician_id, description, status, created_by, business, external_ref)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
             .run(number, kind, quoteId, invoiceId, base.customer_name, base.customer_phone, base.location,
                 clip(input.address, 200) || null, cleanMapUrl(input.map_url), sched.scheduled_date || null, sched.scheduled_time || null,
-                techId, description, status, clip(author, 80) || null);
+                techId, description, status, clip(author, 80) || null, external ? external.business : 'radma', external ? external.ref : null);
         const orderId = Number(info.lastInsertRowid);
         require('./customers').ensure(db, { phone: base.customer_phone, name: base.customer_name, city: base.location });
         event(db, orderId, `أُنشئ أمر ${KINDS[kind]}${techId ? ` وأُسند إلى ${techName(db, techId)}` : ''}`, author);
