@@ -22,11 +22,14 @@
 | `GET /api/public/overhead` / `POST /api/public/overhead-price` / `POST /api/public/overhead-quotes` | حاسبة الأوفرهيد |
 | `GET /api/public/motors` / `POST /api/public/motor-quotes` | المكائن |
 
-### واجهات إدارية (`Authorization: Bearer <ADMIN_TOKEN>`)
+### واجهات إدارية (`Authorization: Bearer <ADMIN_TOKEN>` أو توكن جلسة موظف)
 `/api/admin/products` · `/api/admin/settings` · `/api/admin/quotes` · `/api/admin/configurator` · `/api/admin/webhooks` وغيرها (القائمة الكاملة في `README.md` ← «واجهة API باختصار»).
 
+- `ADMIN_TOKEN` صلاحية المالك الكاملة، ويمكن إيقاف الدخول به بـ `ADMIN_TOKEN_LOGIN=off` (عند وجود مدير بالتحقق بخطوتين). توكن الموظف من `POST /api/auth/login` صالح 14 يوماً وبصلاحيات أقسامه.
+- **لا يوجد مسار داخلي مخصص لنظام خارجي** (مفتاح خاص بصلاحيات محدودة). أي ربط يستدعي ردما من الخارج سيحتاج إضافة مسار جديد (مثل `/api/internal/*`) بمصادقة مستقلة.
+
 ### أحداث Webhooks
-`quote.created` · `quote.status_changed` · `invoice.created` · `invoice.updated` · `invoice.cancelled` · `payment.created` · `work_order.created` · `work_order.status_changed` · `product.created` · `product.updated` · `product.deleted` · `purchase.created` · `settings.updated`
+`quote.created` · `quote.status_changed` · `invoice.created` · `invoice.updated` · `invoice.cancelled` · `payment.created` · `work_order.created` · `work_order.status_changed` · `product.created` · `product.updated` · `product.deleted` · `purchase.created` · `settings.updated` · `database.restored` · `webhook.test`
 
 كل طلب يحمل الترويسة `X-Aluminum-Event`، ومع المفتاح السري `X-Aluminum-Signature: sha256=<HMAC>`. تُقبل فقط روابط عامة على الإنترنت.
 
@@ -37,7 +40,11 @@
 ## آخر التغييرات
 | التاريخ | التغيير | PR |
 |---|---|---|
-| 2026-11-23 | تطبيق المكتب الصناعي دون اتصال (offline) | #203 |
+| 2026-11-25 | إضافة `CLAUDE.md` و`docs/STATUS.md` | #204 |
+| 2026-11-23 | 3.59.1: قراءة المواقع من روابط خرائط Google كما تشاركها الجوالات | #203 |
+| 2026-11-23 | 3.59.0: الوقت والمسافة المتبقيان لوصول الفني (Google Routes) | #201 |
+| 2026-11-23 | 3.58.0: «تتبع الفريق» على خرائط Google، ودور «مسوق» مع زيارات العملاء | #199 |
+| 2026-11-23 | 3.57.0: تقويم المناسبات، وتاريخ بداية للعروض | #197 |
 
 ## قيد العمل / معلّق
-- —
+- تأكيد نطاق الإنتاج من المالك: هذا الملف و`CLAUDE.md` يذكران `calc.radma.co`، بينما مثال `public_base_url` في الكود يذكر `calcshutter.radma.co` (`src/db.js`).
