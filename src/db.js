@@ -606,6 +606,42 @@ CREATE TABLE IF NOT EXISTS agent_conversations (
     messages_json     TEXT NOT NULL DEFAULT '[]',
     updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- The internal API for another system (internal-api.js): each request once (X-Request-Id), and the saved
+-- answer of a POST for its Idempotency-Key (kept 2 days)
+CREATE TABLE IF NOT EXISTS internal_requests (
+    request_id       TEXT PRIMARY KEY,
+    idempotency_key  TEXT,
+    endpoint         TEXT NOT NULL,
+    status_code      INTEGER,
+    response_json    TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS internal_requests_idem ON internal_requests (idempotency_key, endpoint, created_at);
+
+-- A customer's number in another system (e.g. panorama:customer:45)
+CREATE TABLE IF NOT EXISTS customer_external_refs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id  INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    system       TEXT NOT NULL,
+    ref          TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (system, ref)
+);
+
+-- Outgoing webhook events sent again after a failure (only the events in webhooks.RETRY_EVENTS):
+-- after 1, 5 and 15 minutes, the same payload (same id); next_at NULL = finished (gave up). Kept 7 days.
+CREATE TABLE IF NOT EXISTS webhook_retries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    webhook_id  INTEGER NOT NULL,
+    event       TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    attempt     INTEGER NOT NULL DEFAULT 0,
+    next_at     TEXT,
+    last_error  TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS webhook_retries_due ON webhook_retries (next_at);
 `;
 
 /* Starter catalog, inserted only into an empty database.
@@ -716,6 +752,10 @@ function migrate(db) {
     addColumns('regions', { overhead_installation_fee: 'REAL' });
     // What happened to each MazBot webhook request, and the message key used to answer it only once
     addColumns('inbound_events', { status: 'TEXT', event_key: 'TEXT' });
+    // A work order of another business (e.g. a Panorama installation) and its number there; one order per number
+    addColumns('work_orders', { business: "TEXT NOT NULL DEFAULT 'radma'", external_ref: 'TEXT' });
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS work_orders_business_ref ON work_orders (business, external_ref)
+             WHERE external_ref IS NOT NULL AND external_ref != ''`);
     // Gate motors have their own installation fee per wilayah (NULL = set after a site visit)
     addColumns('regions', { motor_installation_fee: 'REAL' });
     // MazBot webhook requests: the signature check result (verified / bad / missing / unchecked in local compatibility mode)

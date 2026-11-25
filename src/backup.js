@@ -59,12 +59,13 @@ const TABLES = [
     ['leads', 'متابعة العملاء'],
     ['lead_assignments', 'سجل إسناد المتابعة'],
     ['lead_messages', 'رسائل العملاء'],
-    ['lead_notes', 'تقارير المتابعة']
+    ['lead_notes', 'تقارير المتابعة'],
+    ['customer_external_refs', 'أرقام العملاء في الأنظمة الأخرى']
 ];
 /* Sheets added after the first backups: an older file without them keeps the current data */
 const OPTIONAL = new Set(['invoice_revisions', 'overhead_sizes', 'overhead_motors', 'overhead_types', 'bonus_months', 'knowledge_items', 'motor_sections', 'motor_items', 'motor_extra_fees',
     'staff_users', 'leads', 'lead_assignments', 'lead_messages', 'lead_notes', 'invoices', 'payments', 'work_orders', 'work_order_events', 'customers', 'service_requests',
-    'wallet_requests', 'wallet_entries']);
+    'wallet_requests', 'wallet_entries', 'customer_external_refs']);
 /* Restored together or not at all (a customer without its messages, or messages of another
    backup's customers, would be inconsistent) */
 const GROUPS = [['leads', 'lead_messages', 'lead_notes'], ['invoices', 'payments'], ['work_orders', 'work_order_events'], ['wallet_requests', 'wallet_entries']];
