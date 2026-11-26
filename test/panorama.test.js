@@ -298,3 +298,30 @@ test('the panel: managers only; settings shown as set or not, never their values
     const tok = JSON.parse(await (await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'nour', password: 'pass-12345' }) })).text()).token;
     assert.equal((await call('GET', '/api/admin/panorama', tok)).status, 403);
 });
+
+test('mode 1: «السلام عليكم» in a new conversation fires no lead.message (the model still sees both sets)', async (t) => {
+    withEnv(t, { PANORAMA_TOOLS_ENABLED: '1', ...ENV });
+    panorama.setFetchForTests(fakePanorama());
+    const emitted = [];
+    const realEmit = webhooks.emit;
+    webhooks.emit = (db, event) => { emitted.push(event); return Promise.resolve([]); };
+    t.after(() => { webhooks.emit = realEmit; });
+    const db = openDatabase(':memory:');
+    const client = fakeClaude([textReply('وعليكم السلام، كيف أخدمك؟')]);
+    await agent.chat({ db, key: 'mz:96894444444', channel: 'mazbot', phone: '96894444444', text: 'السلام عليكم', client, createQuote: () => {}, notifyHuman: async () => {} });
+    const names = client.calls[0].tools.map((x) => x.name);
+    assert.ok(names.includes('calculate_final_price') && names.includes('panorama_search_products'), 'both sets of tools');
+    assert.equal(emitted.length, 0, 'no lead.message for a first greeting');
+});
+
+test('shadow: «السلام عليكم» in a new conversation keeps no shadow reply', async (t) => {
+    withEnv(t, { PANORAMA_TOOLS_ENABLED: 'shadow', ...ENV });
+    panorama.setFetchForTests(fakePanorama());
+    const db = openDatabase(':memory:');
+    const client = fakeClaude([textReply('وعليكم السلام')]);
+    await agent.chat({ db, key: 'mz:96895555555', channel: 'mazbot', phone: '96895555555', text: 'السلام عليكم', client, createQuote: () => {}, notifyHuman: async () => {} });
+    await new Promise((res) => setTimeout(res, 100));
+    assert.equal(client.calls.length, 1, 'no second (shadow) run');
+    panorama.ensureTables(db);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM panorama_shadow_replies').get().n, 0);
+});

@@ -707,7 +707,9 @@ async function runChat({ db, key, channel, phone, text, images = [], createQuote
 
     const route = require('./router').classify(text, conversationState(db, args.key));
     panorama.logRoute(db, route.route, channel);
-    const forPanorama = route.route === 'PANORAMA' || route.route === 'MIXED';
+    // About Panorama: the message says so (PANORAMA / MIXED), or it says nothing in a conversation already about Panorama.
+    // A greeting in a new conversation is not (route.route still shows it both sets of tools)
+    const forPanorama = route.kind === 'PANORAMA' || route.kind === 'MIXED' || (route.kind === 'NONE' && route.business === 'PANORAMA');
     if (pmode === 'shadow') {
         // The customer gets Radma's reply as today; Panorama's is written aside for review, never sent or kept
         const history = loadConversation(db, args.key);
