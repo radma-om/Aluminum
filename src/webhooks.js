@@ -42,6 +42,19 @@ function subscribed(hook, event) {
     return events.includes('*') || events.includes(event);
 }
 
+/* The address that passed the public-URL check, pinned for the connection (no DNS rebinding).
+   Node 20+ (autoSelectFamily) calls lookup with { all: true } and then expects
+   an array of { address, family }; answering with a bare string makes the
+   socket fail with "Invalid IP address: undefined". Serve both call shapes. */
+function pinnedLookup(address) {
+    return (_hostname, options, callback) => {
+        if (typeof options === 'function') { callback = options; options = {}; }
+        const family = net.isIP(address);
+        if (options && options.all) callback(null, [{ address, family }]);
+        else callback(null, address, family);
+    };
+}
+
 /* POST over a pinned address. Native fetch resolves the hostname again after
    safe-url.js checked it, leaving a DNS-rebinding window. The custom lookup
    callback below always returns the address that passed the public-address
@@ -59,7 +72,7 @@ function postPinned({ url, host, addresses }, headers, body) {
             path: url.pathname + url.search,
             method: 'POST',
             headers: requestHeaders,
-            lookup: (_hostname, _options, callback) => callback(null, address, net.isIP(address)),
+            lookup: pinnedLookup(address),
             ...(url.protocol === 'https:' && !net.isIP(host) ? { servername: host } : {})
         }, (res) => {
             res.resume();
@@ -168,4 +181,4 @@ function scheduleRetries(db) {
     setInterval(run, 60_000).unref();
 }
 
-module.exports = { EVENTS, RETRY_EVENTS, RETRY_DELAYS_MIN, emit, sign, processRetries, scheduleRetries };
+module.exports = { EVENTS, RETRY_EVENTS, RETRY_DELAYS_MIN, emit, sign, processRetries, scheduleRetries, pinnedLookup };
