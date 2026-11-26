@@ -740,6 +740,8 @@ window.switchTab = function (tabId) {
     if (!online) return;
     if (tabId === 'dashboard') loadDashboard();
     if (tabId === 'leads') { renderLeadFilters(); loadLeads().then(() => { if (currentLeadId) openLead(currentLeadId, { keepScroll: true }); }).catch(() => {}); }
+    // After the follow-up list: its status names are loaded with it
+    if (tabId === 'leads' && ME && ME.role === 'manager') setTimeout(loadLeadReminders, 0);
 };
 
 // Back to the app (phone unlocked, app brought back from the background): fresh data at once,
@@ -780,3 +782,57 @@ document.addEventListener('admin-ready', () => {
             .then((r) => updateLeadsBadge(r.leads.filter((l) => l.status === 'needs_staff').length)).catch(() => {});
     }
 });
+
+
+/* «تذكير العملاء بلا عرض سعر» (managers): who will get it, who got it and answered, and the send buttons */
+let leadReminders = null;
+const REMIND_ANSWERS = { quote: '✅ يريد عرض سعر', no: '🔕 لا شكراً' };
+async function loadLeadReminders() {
+    const box = $id('leadReminderRows');
+    if (!box) return;
+    try { leadReminders = await api('GET', '/api/admin/lead-reminders'); } catch (err) { setStatus('leadReminderStatus', err.message, 'err'); return; }
+    const r = leadReminders;
+    const why = !r.template ? 'قالب التذكير غير مضبوط (MAZBOT_LEAD_REMINDER_TEMPLATE_ID) — أضفه بعد اعتماده من Meta.'
+        : !r.login ? 'حساب القوالب في MazBot غير مضبوط.' : '';
+    $id('leadReminderCount').textContent = `— ${r.candidates.length} بانتظار التذكير${r.sent.length ? `، و${r.sent.length} وصلهم` : ''}`;
+    setStatus('leadReminderStatus', why || `سيصل التذكير لـ ${r.candidates.length} عميل.`, why ? 'err' : '');
+    // Stored in UTC: shown in Muscat time
+    const when = (t) => (t ? esc(typeof muscatTime === 'function' ? muscatTime(t) : String(t).slice(0, 16)) : '—');
+    if (!Object.keys(leadMeta.statuses || {}).length) { try { await loadLeads(); } catch { /* the names stay as codes */ } }
+    const row = (c, state, canSend) => `<tr id="leadRemind${c.lead_id}"><td data-label="العميل"><a href="#" onclick="openLead(${Number(c.lead_id)}); return false">${esc(c.name || 'بدون اسم')}</a><br><small dir="ltr">+${esc(c.phone)}</small></td>
+        <td data-label="آخر رسالة منه">${when(c.last_customer_at)}</td>
+        <td data-label="الحالة">${esc((leadMeta.statuses && leadMeta.statuses[c.status]) || c.status)}</td>
+        <td data-label="التذكير" class="remind-state">${state}</td>
+        <td>${canSend ? `<button class="btn btn-outline btn-sm" onclick="sendLeadReminderOne(${Number(c.lead_id)}, this)"><i class="fas fa-paper-plane"></i> إرسال</button>` : ''}</td></tr>`;
+    box.innerHTML = [...r.candidates.map((c) => row(c, c.last_error ? `<span class="badge">لم يصل: ${esc(c.last_error.slice(0, 80))}</span>` : 'سيصله', !why)),
+        ...r.sent.map((c) => row(c, `<span class="badge on">✓ وصله ${when(c.sent_at)}</span>${c.response ? ` <span class="badge">${REMIND_ANSWERS[c.response] || esc(c.response)}</span>` : ''}`, false))].join('')
+        || '<tr><td colspan="5" class="status-text">لا يوجد عملاء بلا عرض سعر خلال آخر 14 يوماً.</td></tr>';
+    $id('leadReminderSend').disabled = Boolean(why) || !r.candidates.length;
+}
+async function sendLeadReminderOne(leadId, btn) {
+    const c = leadReminders && leadReminders.candidates.find((x) => x.lead_id === leadId);
+    if (!c) return;
+    if (!(await askYes(`إرسال تذكير «هل تحب نجهز لك عرض سعر؟» إلى ${c.name || 'العميل'} (+${c.phone})؟`, { okLabel: 'إرسال' }))) return;
+    btn.disabled = true;
+    const cell = $id('leadRemind' + leadId).querySelector('.remind-state');
+    try {
+        const out = await api('POST', `/api/admin/lead-reminders/${leadId}/send`);
+        leadReminders = out.list;
+        cell.innerHTML = out.ok ? '<span class="badge on">✓ وصله الآن</span>' : `<span class="badge">لم يصل: ${esc(String(out.error || '').slice(0, 80))}</span>`;
+        if (out.ok) btn.remove(); else btn.disabled = false;
+    } catch (err) {
+        cell.innerHTML = `<span class="badge">${esc(err.message)}</span>`;
+        btn.disabled = false;
+    }
+}
+async function sendLeadReminders() {
+    const r = leadReminders;
+    if (!r || !r.candidates.length) return;
+    if (!(await askYes(`إرسال تذكير «هل تحب نجهز لك عرض سعر؟» إلى ${r.candidates.length} عميل على واتساب؟\n(قالب تسويقي — تحتسب Meta تكلفة كل رسالة)`, { okLabel: 'إرسال' }))) return;
+    setStatus('leadReminderStatus', 'جاري الإرسال...');
+    try {
+        const out = await api('POST', '/api/admin/lead-reminders/send');
+        await loadLeadReminders();
+        setStatus('leadReminderStatus', `وصل ${out.sent}${out.failed ? `، ولم يصل ${out.failed} (السبب في القائمة)` : ''} ✓`, out.failed ? 'err' : 'ok');
+    } catch (err) { setStatus('leadReminderStatus', err.message, 'err'); }
+}

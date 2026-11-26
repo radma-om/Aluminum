@@ -808,3 +808,9 @@ body.sb-collapsed .sb-version { justify-content: center; padding: 8px 0; }
 @media (max-width: 860px) { .tracking-grid { grid-template-columns: 1fr; } .tracking-map { height: 360px; } }
 .shift-bar .shift-trip:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #c9e6d3; font-weight: 600; color: #8a4a00; }
 .tracking-people .tp-trip { font-size: 0.88rem; color: #8a4a00; font-weight: 600; margin: -2px 0 6px; }
+
+/* «تذكير العملاء بلا عرض سعر»: folded until opened, above the follow-up list */
+.lead-remind:not([hidden]) { display: block; margin-bottom: 14px; }
+.lead-remind > summary { cursor: pointer; list-style: none; border-bottom: 0; padding-bottom: 0; }
+.lead-remind > summary::-webkit-details-marker { display: none; }
+.lead-remind[open] > summary { border-bottom: 1px solid #edf0f4; padding-bottom: 12px; }

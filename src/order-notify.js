@@ -186,9 +186,14 @@ async function handleTemplatesEvent(db, event, { origin = '', client = null } = 
     const said = String(m.value || (d.selection && (d.selection.id || d.selection.title)) || d.title || '').trim();
     let action = 'ignored';
     let reply = null;
+    // The answer to «تذكير العملاء بلا عرض سعر» (its two buttons only, after a recent reminder: src/lead-reminders.js)
+    const answered = require('./lead-reminders').handle(db, phone, said, { origin });
     // A rating («5 ممتاز»…) or the comment after a low one (src/ratings.js)
-    const rated = require('./ratings').handle(db, phone, said);
-    if (rated) {
+    const rated = answered ? null : require('./ratings').handle(db, phone, said);
+    if (answered) {
+        action = answered.action;
+        reply = answered.reply;
+    } else if (rated) {
         action = rated.action;
         reply = rated.reply;
     } else if (MUTE_RE.test(said)) {

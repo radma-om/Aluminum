@@ -892,6 +892,17 @@
 
         <!-- ==================== Customer follow-up ==================== -->
         <div id="tab-leads" class="tab-content">
+            <details class="card manager-only lead-remind" id="leadReminderCard" hidden>
+                <summary class="card-title"><span class="icon"><i class="fas fa-bell"></i></span> تذكير العملاء بلا عرض سعر <span class="muted" id="leadReminderCount" style="font-weight:400;font-size:.9rem"></span></summary>
+                <p class="status-text" style="margin:8px 0 10px">رسالة واتساب (قالب معتمد) لمن راسلنا خلال آخر 14 يوماً ولم يصدر له عرض سعر: «هل تحب نجهز لك عرض سعر؟» مع زرّين. «أريد عرض سعر» يصله رابط الحاسبة ويتحول إلى «يطلب موظفاً» ويُبلَّغ فريق المبيعات، و«لا شكراً» لا يُذكَّر بعدها. مرة واحدة لكل عميل.</p>
+                <p class="status-text" id="leadReminderStatus"></p>
+                <div class="table-wrapper"><table class="stack-table">
+                    <thead><tr><th>العميل</th><th>آخر رسالة منه</th><th>الحالة</th><th>التذكير</th><th></th></tr></thead>
+                    <tbody id="leadReminderRows"></tbody>
+                </table></div>
+                <div class="form-buttons"><button class="btn btn-primary btn-sm" id="leadReminderSend" onclick="sendLeadReminders()"><i class="fas fa-paper-plane"></i> إرسال للكل</button>
+                    <button class="btn btn-outline btn-sm" onclick="loadLeadReminders()">تحديث</button></div>
+            </details>
             <div class="crm">
                 <div class="card crm-list">
                     <div class="crm-filters">
