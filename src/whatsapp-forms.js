@@ -68,25 +68,35 @@ function text(v) {
 }
 const LABEL_KEYS = ['label', 'question', 'title', 'field', 'field_name', 'name', 'key', 'id', 'question_text'];
 const VALUE_KEYS = ['value', 'answer', 'response', 'text', 'selected', 'values', 'answer_text', 'selection'];
-const META = /^(id|type|created_at|client_id|form_id|flow_id|flow_token|screen|version|timestamp|message_id|delivery_id|event|status)$/i;
+const META = /^(id|type|created_at|submitted_at|updated_at|client_id|contact_id|form_id|form_name|flow_id|flow_token|screen|version|timestamp|message_id|delivery_id|event|status|response_id)$/i;
 
-/* Every (label, value) pair in the event's data: plain keys, and lists of {label, value} / {question, answer} */
-function pairs(node, path = '', out = []) {
+/* One answer as an object: {label, value} / {question, answer} / {id, label, value: {id, title}} → [label, value];
+   a choice {id, title} alone is a value, not an answer */
+function asPair(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    const vk = VALUE_KEYS.find((k) => item[k] !== undefined);
+    if (!vk) return null;
+    const lk = LABEL_KEYS.find((k) => k !== vk && typeof item[k] === 'string' && item[k].trim());
+    return lk ? [item[lk], item[vk]] : null;
+}
+
+/* Every (label, value) pair in the event's data: plain keys, answers as objects (in a list or under each
+   field's id — MazBot sends {"<field id>": {"label": "رقم الجوال", "value": "…"}}) */
+function pairs(node, out = []) {
     if (node == null) return out;
     if (Array.isArray(node)) {
         for (const item of node) {
-            if (item && typeof item === 'object' && !Array.isArray(item)) {
-                const lk = LABEL_KEYS.find((k) => typeof item[k] === 'string' && item[k].trim());
-                const vk = VALUE_KEYS.find((k) => item[k] !== undefined);
-                if (lk && vk) { out.push([item[lk], item[vk]]); continue; }
-            }
-            pairs(item, path, out);
+            const p = asPair(item);
+            if (p) out.push(p);
+            else pairs(item, out);
         }
         return out;
     }
     if (typeof node === 'object') {
         for (const [k, v] of Object.entries(node)) {
-            if (v && typeof v === 'object' && !(LABEL_KEYS.some((x) => x in v) && Object.keys(v).length <= 3 && ('title' in v || 'id' in v) && !VALUE_KEYS.some((x) => x in v))) pairs(v, k, out);
+            const p = asPair(v);
+            if (p) out.push(p);
+            else if (v && typeof v === 'object' && !(Object.keys(v).length <= 3 && ('title' in v || 'id' in v))) pairs(v, out);
             else out.push([k, v]);
         }
     }
@@ -104,7 +114,11 @@ const FIELDS = [
     ['name', /name|اسم/i]
 ];
 const gateOf = (v) => (/رول|شتر|roll|shutter/i.test(v) ? 'rolling_shutter' : /أوفر|اوفر|over|section|سكشن/i.test(v) ? 'overhead' : null);
-const yesNo = (v) => (/^(نعم|ايوه|أيوه|yes|y|true|1)$/i.test(v.trim()) ? 1 : /^(لا|no|n|false|0)$/i.test(v.trim()) ? 0 : null);
+/* «نعم» / «لا», also as a choice's id («0_نعم», «yes_option») */
+const yesNo = (raw) => {
+    const v = String(raw).trim().replace(/^\d+_/, '').replace(/_option$/i, '').replace(/_/g, ' ').trim();
+    return /^(نعم|ايوه|أيوه|yes|y|true|1)$/i.test(v) ? 1 : /^(لا|no|n|false|0)$/i.test(v) ? 0 : null;
+};
 
 /**
  * The answers of one event: { name, phone, region_text, gate_type, width_cm, notes, inspection, unmatched[] }.
@@ -143,6 +157,28 @@ function extract(event) {
     if (!out.name) out.name = clip(text(contact.name || data.name || ''), 120) || null;
     out.phone = out.phone ? customers.normalizePhone(out.phone) : null;
     return out;
+}
+
+/* A wilayah written in English (the form is free text): its Arabic name, as the regions are kept */
+const WILAYAT_EN = {
+    buraimi: 'البريمي', mahdah: 'محضة', mahda: 'محضة', sunaynah: 'السنينة', sunainah: 'السنينة', nizwa: 'نزوى', nizwah: 'نزوى', bahla: 'بهلاء', bahlaa: 'بهلاء',
+    manah: 'منح', hamra: 'الحمراء', alhamra: 'الحمراء', adam: 'أدم', izki: 'إزكي', samail: 'سمائل', sumail: 'سمائل', bidbid: 'بدبد',
+    jabalakhdar: 'الجبل الأخضر', ibri: 'عبري', yanqul: 'ينقل', dhank: 'ضنك', haima: 'هيماء', haimaa: 'هيماء', mahout: 'محوت', mahoot: 'محوت',
+    duqm: 'الدقم', jazer: 'الجازر', jazir: 'الجازر', rustaq: 'الرستاق', rustaque: 'الرستاق', awabi: 'العوابي', nakhal: 'نخل', wadimaawil: 'وادي المعاول',
+    barka: 'بركاء', barkaa: 'بركاء', musannah: 'المصنعة', suwaiq: 'السويق', suwayq: 'السويق', sur: 'صور', soor: 'صور', kamil: 'الكامل والوافي',
+    jalanbanibuhasan: 'جعلان بني بو حسن', jalanbanibuali: 'جعلان بني بو علي', masirah: 'مصيرة', masira: 'مصيرة', sohar: 'صحار', suhar: 'صحار',
+    shinas: 'شناص', liwa: 'لوى', saham: 'صحم', khaburah: 'الخابورة', khabura: 'الخابورة', ibra: 'إبراء', mudhaibi: 'المضيبي', mudaybi: 'المضيبي',
+    bidiyah: 'بدية', bidiya: 'بدية', qabil: 'القابل', wadibanikhalid: 'وادي بني خالد', dima: 'دماء والطائيين', sinaw: 'سناو', salalah: 'صلالة', salala: 'صلالة',
+    taqah: 'طاقة', taqa: 'طاقة', mirbat: 'مرباط', rakhyut: 'رخيوت', thumrait: 'ثمريت', dhalkut: 'ضلكوت', mazyunah: 'المزيونة', muqshin: 'مقشن',
+    shalim: 'شليم وجزر الحلانيات', sadah: 'سدح', muscat: 'مسقط', muttrah: 'مطرح', matrah: 'مطرح', bausher: 'بوشر', bowsher: 'بوشر', seeb: 'السيب', alseeb: 'السيب',
+    amerat: 'العامرات', amarat: 'العامرات', quriyat: 'قريات', qurayyat: 'قريات', khasab: 'خصب', dibba: 'دبا', daba: 'دبا', bukha: 'بخا', madha: 'مدحاء'
+};
+function arabicWilayah(text) {
+    const words = String(text || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
+    const joined = words.join('').replace(/^al/, '');
+    if (WILAYAT_EN[joined]) return WILAYAT_EN[joined];
+    for (const w of words) { const k = w.replace(/^al-?/, ''); if (WILAYAT_EN[k]) return WILAYAT_EN[k]; }
+    return null;
 }
 
 /* ---------------- Receiving and processing ---------------- */
@@ -192,7 +228,9 @@ async function processSubmission(db, id, { notifyStaff = true } = {}) {
     let regionId = null;
     let regionName = null;
     if (f.region_text) {
-        const matches = require('./doors').findRegions(db, f.region_text);
+        const doors = require('./doors');
+        let matches = doors.findRegions(db, f.region_text);
+        if (matches.length !== 1 && arabicWilayah(f.region_text)) matches = doors.findRegions(db, arabicWilayah(f.region_text));
         if (matches.length === 1) { regionId = matches[0].id; regionName = `${matches[0].name}، ${matches[0].governorate}`; }
     }
     const set = { name: f.name, phone: f.phone, region_text: f.region_text, region_id: regionId, gate_type: f.gate_type, width_cm: f.width_cm,
@@ -274,4 +312,4 @@ function setStatus(db, id, status) {
     return get(db, id);
 }
 
-module.exports = { TYPE, STATUSES, GATES, ensureTable, isFormEvent, extract, receive, processSubmission, get, list, setStatus };
+module.exports = { arabicWilayah, TYPE, STATUSES, GATES, ensureTable, isFormEvent, extract, receive, processSubmission, get, list, setStatus };

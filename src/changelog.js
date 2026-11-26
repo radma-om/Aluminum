@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.62.1', date: '2026-11-26',
+        ar: ['طلبات نموذج واتساب: تُقرأ الآن الإجابات بالشكل الذي يرسله MazBot فعلاً (اسم الحقل وقيمته معاً)، فيظهر الاسم والجوال والولاية ونوع البوابة والعرض والمعاينة بدل «لم يُفهم»', 'الولاية المكتوبة بالإنجليزية (مثل Nizwa) تُطابق ولايتها (نزوى). للطلبات التي وصلت قبل الإصلاح: اضغط «إعادة المعالجة»'],
+        en: ['WhatsApp form requests: the answers are now read in the shape MazBot really sends (the field\'s name and its value together), so the name, mobile, wilayah, gate type, width and visit show instead of «not understood»', 'A wilayah written in English (e.g. Nizwa) is matched to its wilayah. For requests received before the fix: press «Reprocess»']
+    },
+    {
         version: '3.62.0', date: '2026-11-26',
         ar: ['«طلبات العروض» ← طلبات نموذج واتساب: ما يرسله العملاء في نموذج «طلب عرض سعر – بوابات ردما» على واتساب يصل وحده — الاسم والجوال والولاية ونوع البوابة (رول شتر أو أوفرهيد) والعرض والملاحظات والمعاينة — بحالة «جديد – من نموذج واتساب»، مع «الحدث الخام» كما أرسله MazBot', 'زر «تسعير الآن» يفتح منشئ العروض بالعميل ونوع البوابة والعرض (النموذج بلا ارتفاع)، ويُضاف العميل إلى «متابعة العملاء» بحالة «يطلب موظفاً» مع إجاباته، و«نعم» لزيارة المعاينة تُنشئ طلب معاينة في «طلبات المواعيد»', 'كل نموذج يُحفظ مرة واحدة مهما أعاد MazBot الإرسال، وما لم يُفهم من الإجابات يظهر للمكتب، و«إعادة المعالجة» تقرأ النموذج من جديد'],
         en: ['«Quote requests» → WhatsApp form requests: what customers send in the WhatsApp form «Quote request – Radma gates» arrives by itself — name, mobile, wilayah, gate type (roller shutter or overhead), width, notes and site visit — with the status «New – from the WhatsApp form», and the «raw event» as MazBot sent it', 'The «Price now» button opens the quote builder with the customer, the gate type and the width (the form has no height); the customer joins «Customer follow-up» as «Needs staff» with their answers, and «yes» to the site visit creates an inspection request in «Appointment requests»', 'Each form is kept once however many times MazBot resends it, answers that were not understood are shown to the office, and «Reprocess» reads the form again']
