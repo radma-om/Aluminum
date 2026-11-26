@@ -460,6 +460,7 @@ const ADMIN_CSP = [
 const LOG_RETENTION_DAYS = 90;
 function pruneOldLogs(db) {
     const days = `-${LOG_RETENTION_DAYS} days`;
+    require('./panorama-client').prune(db); // 30 days: Panorama's tool calls, shadow replies and routes (not in the report below)
     return {
         webhook_deliveries: Number(db.prepare("DELETE FROM webhook_deliveries WHERE created_at < datetime('now', ?)").run(days).changes),
         agent_conversations: Number(db.prepare("DELETE FROM agent_conversations WHERE updated_at < datetime('now', ?)").run(days).changes),
@@ -785,14 +786,15 @@ function createApp(db, { agentClient } = {}) {
             result = await inSessionOrder(session, () => agent.chat({
                 db, key: 'web:' + session, channel: 'website', phone: null, text, client: agentClient,
                 createQuote: (q) => saveQuote(db, { ...q, lead_key: leadKey }),
-                notifyHuman: async (summary) => {
+                notifyHuman: async (summary, team = null) => {
                     leads.humanRequested(db, leadKey, summary);
                     if (!humanAlerts.allow(session, req.ip)) {
                         console.warn('[chat] human-request alert skipped (limit reached) for', leadKey);
                         return;
                     }
-                    const alert = `🙋 زائر الموقع يطلب التواصل مع فريق المبيعات\n\n${summary}`;
-                    for (const to of mazbot.parseRecipients(settings.mazbot_recipients)) {
+                    const panorama = team === 'panorama_sales';
+                    const alert = `🙋 زائر الموقع يطلب التواصل مع فريق ${panorama ? 'مبيعات بانوراما' : 'المبيعات'}\n\n${summary}`;
+                    for (const to of mazbot.parseRecipients((panorama && settings.panorama_recipients) || settings.mazbot_recipients)) {
                         const r = await mazbot.sendTextToPhone(to, alert);
                         if (!r.ok) console.error('[chat] alert', to, r.error);
                     }
@@ -2699,6 +2701,19 @@ function createApp(db, { agentClient } = {}) {
         templates_webhook_path: req.user.role === 'manager' && (process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET || '').length >= 16
             ? `/webhooks/mazbot-templates/${process.env.MAZBOT_TEMPLATES_WEBHOOK_SECRET}` : null
     }));
+    /* «بانوراما» (managers only: /panorama is not mapped to a section): the mode, the settings set or not (never their
+       values), the circuit breaker, the health check, the last calls, the routing of 7 days and the shadow replies */
+    admin.get('/panorama', (req, res) => res.json({ ...require('./panorama-client').status(db), recipients: getSettings(db).panorama_recipients || '' }));
+    admin.post('/panorama/test', asyncRoute(async (req, res) => {
+        const panorama = require('./panorama-client');
+        if (panorama.missing().length) throw httpError(400, `ينقص: ${panorama.missing().join('، ')}`);
+        try {
+            const r = await panorama.listTools({ fresh: true, db });
+            res.json({ ok: true, count: r.tools.length, names: r.tools.map((t) => t.name), instructions: Boolean(r.instructions) });
+        } catch (err) {
+            res.json({ ok: false, error: err.name === 'TimeoutError' ? 'انتهت المهلة (5 ثوانٍ)' : err.message === 'http_401' ? 'مفاتيح بانوراما غير صحيحة (401)' : err.message });
+        }
+    }));
     /* Sign in to each account now: the main one (incoming messages, replies) and the templates' one */
     admin.get('/mazbot/check-accounts', asyncRoute(async (req, res) => {
         const acct = mazbot.templatesAccount();
@@ -3037,6 +3052,7 @@ function start() {
     followup.schedule(db);
     require('./ratings').schedule(db);
     webhooks.scheduleRetries(db);
+    require('./panorama-client').scheduleHealth(db);
     // PORT is usually a number; some hosting runners pass a socket path instead
     const port = process.env.PORT || 3000;
     createApp(db).listen(/^\d+$/.test(String(port)) ? Number(port) : port, () => {

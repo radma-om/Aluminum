@@ -529,14 +529,87 @@ async function executeTool(name, input, ctx) {
             return requests.forCustomer(db, ctx.phone);
         }
         case 'request_human': {
-            ctx.events.push({ type: 'human_requested', summary: input.summary });
-            await ctx.notifyHuman(input.summary);
+            // team: only in a round with Panorama's tools (radma_sales | panorama_sales | null)
+            const team = input.team || null;
+            ctx.events.push({ type: 'human_requested', summary: input.summary, ...(team ? { team } : {}) });
+            await ctx.notifyHuman(input.summary, team);
+            if (team === 'panorama_sales') panoramaHandoff(ctx, input.summary);
             return { ok: true, message: 'تم إبلاغ فريق المبيعات' };
         }
         default:
+            if (/^panorama_/.test(name)) return require('./panorama-client').execute(name, input, panoramaContext(ctx), { db });
             throw new Error(`أداة غير معروفة: ${name}`);
     }
 }
+
+/* ---------------------------- Panorama ---------------------------- */
+
+/* What Panorama is told about the customer: their number only when WhatsApp gave it (never on the website / admin) */
+function panoramaContext(ctx) {
+    const verified = Boolean(ctx.phone) && ['mazbot', 'whatsapp'].includes(ctx.channel);
+    return { channel: ctx.channel, conversation_key: ctx.key || null, customer_phone: verified ? ctx.phone : null, customer_verified: verified, customer_consent: false };
+}
+
+/* The customer's follow-up file: WhatsApp by their number, the website by its session */
+function leadOf(db, channel, key, phone) {
+    const leads = require('./leads');
+    const contactKey = ['mazbot', 'whatsapp'].includes(channel) && phone ? leads.phoneKey(phone) : channel === 'website' ? key : null;
+    return contactKey ? db.prepare('SELECT id, name FROM leads WHERE contact_key = ?').get(contactKey) || null : null;
+}
+const CUSTOMER_CHANNELS = ['mazbot', 'whatsapp', 'website'];
+
+function panoramaHandoff(ctx, summary) {
+    if (ctx.panoramaMode !== '1' || ctx.dryRun || !CUSTOMER_CHANNELS.includes(ctx.channel)) return;
+    const lead = leadOf(ctx.db, ctx.channel, ctx.key, ctx.phone);
+    const verified = Boolean(ctx.phone) && ['mazbot', 'whatsapp'].includes(ctx.channel);
+    require('./webhooks').emit(ctx.db, 'handoff.requested', { lead_id: lead ? lead.id : null, team: 'panorama_sales', customer_phone: verified ? ctx.phone : null, summary })
+        .catch((err) => console.error('[agent] handoff.requested', err.message));
+}
+
+/* request_human with the team, when Panorama's tools are in the round («team» required: strict schemas) */
+const REQUEST_HUMAN_TEAM = {
+    name: 'request_human',
+    description: 'يحوّل المحادثة إلى موظف المبيعات ويرسل له ملخصاً. team: radma_sales لبوابات ردما، panorama_sales لكاميرات وشبكات بانوراما، أو null إن لم يتضح.',
+    strict: true,
+    input_schema: {
+        type: 'object',
+        properties: {
+            summary: { type: 'string', description: 'ملخص طلب العميل وما تم الاتفاق عليه' },
+            team: { type: ['string', 'null'], enum: ['radma_sales', 'panorama_sales', null], description: 'فريق المبيعات المختص' }
+        },
+        required: ['summary', 'team'],
+        additionalProperties: false
+    }
+};
+
+/* Rules added to the prompt only when Panorama's tools are in the round (Radma's prompt is never changed) */
+function panoramaSection(instructions, hasTools) {
+    return '\n\nمنتجات بانوراما (كاميرات المراقبة، الشبكات، الانتركوم، أجهزة الحضور والانصراف…):'
+        + (instructions ? '\n' + instructions : '')
+        + '\n- لا تذكر سعراً أو منتجاً لبانوراما لم تُرجعه أداة تبدأ بـ panorama_، وأرسل رابط المنتج للعميل.'
+        + '\n- لا تخلط أسعار ردما وبانوراما في عرض واحد.'
+        + '\n- إذا لم يتضح هل يقصد العميل بوابات ردما أم منتجات بانوراما فاسأله أولاً.'
+        + '\n- عند التحويل لموظف استخدم request_human مع team: panorama_sales لطلبات بانوراما، و radma_sales لطلبات ردما.'
+        + (hasTools ? '' : '\n- أدوات بانوراما غير متاحة الآن: لا تذكر أي سعر، واعرض على العميل تحويله لموظف (request_human مع team: panorama_sales).');
+}
+
+/**
+ * The tools and prompt of one message by its route. RADMA: exactly as without Panorama. PANORAMA: Panorama's tools
+ * + request_human. MIXED: both. Returns { tools (Anthropic shape), panorama: [names], system(settings, db) }.
+ */
+async function toolsetFor(route, db) {
+    if (route === 'RADMA') return { tools: TOOLS, panoramaNames: [], system: (st, d) => systemPrompt(st, d) };
+    const { tools: remote, instructions } = await require('./panorama-client').listTools({ db });
+    const remoteTools = remote.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
+    const local = route === 'PANORAMA' ? [REQUEST_HUMAN_TEAM] : TOOLS.map((t) => (t.name === 'request_human' ? REQUEST_HUMAN_TEAM : t));
+    return { tools: [...local, ...remoteTools], panoramaNames: remoteTools.map((t) => t.name), system: (st, d) => systemPrompt(st, d) + panoramaSection(instructions, remoteTools.length > 0) };
+}
+
+/* OpenAI's shape: Radma's tools strict as before; Panorama's not (optional fields) */
+const toOpenAI = (tools) => tools.map((t) => ({
+    type: 'function',
+    function: { name: t.name, description: t.description, parameters: t.input_schema, strict: t.strict === true }
+}));
 
 function summarizePrice(r) {
     return {
@@ -571,6 +644,18 @@ function saveConversation(db, key, channel, messages) {
 
 /* Each AI keeps its own history format, so the stored conversation is per provider */
 const storeKey = (key) => (provider() === 'openai' ? 'oa:' + key : key);
+
+/* The conversation's current business (expires with the conversation) */
+function conversationState(db, key) {
+    const row = db.prepare('SELECT current_business, updated_at FROM agent_conversations WHERE conversation_key = ?').get(key);
+    if (!row) return {};
+    const ageHours = (Date.now() - Date.parse(row.updated_at.replace(' ', 'T') + 'Z')) / 36e5;
+    return ageHours > CONVERSATION_TTL_HOURS ? {} : { current_business: row.current_business };
+}
+function setBusiness(db, key, channel, business) {
+    db.prepare(`INSERT INTO agent_conversations (conversation_key, channel, current_business, updated_at) VALUES (?, ?, ?, datetime('now'))
+                ON CONFLICT(conversation_key) DO UPDATE SET current_business = excluded.current_business`).run(key, channel, business);
+}
 
 function resetConversation(db, key) {
     db.prepare('DELETE FROM agent_conversations WHERE conversation_key IN (?, ?)').run(key, 'oa:' + key);
@@ -613,14 +698,63 @@ async function runChat({ db, key, channel, phone, text, images = [], createQuote
         return { reply: 'تم بدء محادثة جديدة 👋 كيف أقدر أساعدك؟', events: [] };
     }
     const args = { db, key: storeKey(key), channel, phone, text, images, createQuote, notifyHuman };
-    return provider() === 'openai'
-        ? chatOpenAI({ ...args, client: client || defaultOpenAIClient() })
-        : chatAnthropic({ ...args, client: client || defaultClient() });
+    const run = (extra = {}) => (provider() === 'openai'
+        ? chatOpenAI({ ...args, ...extra, client: client || defaultOpenAIClient() })
+        : chatAnthropic({ ...args, ...extra, client: client || defaultClient() }));
+    const panorama = require('./panorama-client');
+    const pmode = panorama.mode(db);
+    if (pmode === '0') return run(); // off: no router, no Panorama — Radma's agent exactly as before
+
+    const route = require('./router').classify(text, conversationState(db, args.key));
+    panorama.logRoute(db, route.route, channel);
+    // About Panorama: the message says so (PANORAMA / MIXED), or it says nothing in a conversation already about Panorama.
+    // A greeting in a new conversation is not (route.route still shows it both sets of tools)
+    const forPanorama = route.kind === 'PANORAMA' || route.kind === 'MIXED' || (route.kind === 'NONE' && route.business === 'PANORAMA');
+    if (pmode === 'shadow') {
+        // The customer gets Radma's reply as today; Panorama's is written aside for review, never sent or kept
+        const history = loadConversation(db, args.key);
+        const result = await run();
+        if (route.business) setBusiness(db, args.key, channel, route.business);
+        if (forPanorama) shadowRun({ ...args, client: client || (provider() === 'openai' ? defaultOpenAIClient() : defaultClient()) }, history, route, result.reply, key);
+        return result;
+    }
+    const set = await toolsetFor(route.route, db);
+    const result = await run({ toolset: set, panoramaMode: pmode, routeKey: key });
+    if (route.business) setBusiness(db, args.key, channel, route.business);
+    if (forPanorama && CUSTOMER_CHANNELS.includes(channel)) {
+        const lead = leadOf(db, channel, key, phone);
+        const verified = Boolean(phone) && ['mazbot', 'whatsapp'].includes(channel);
+        require('./webhooks').emit(db, 'lead.message', {
+            lead_id: lead ? lead.id : null, channel, customer_phone: verified ? phone : null, customer_name: (lead && lead.name) || null,
+            business: route.route === 'PANORAMA' ? 'panorama' : 'mixed', text, agent_reply: result.reply
+        }).catch((err) => console.error('[agent] lead.message', err.message));
+    }
+    return result;
 }
 
-async function chatAnthropic({ db, key, channel, phone, text, images = [], createQuote, notifyHuman, client }) {
+/* shadow: the agent again with Panorama's tools on a copy of the conversation — nothing saved, sent or created */
+const DRY_RUN = new Set(['request_human', 'request_appointment', 'create_quote', 'create_motor_quote', 'create_overhead_quote']);
+function shadowRun(args, history, route, actualReply, originalKey) {
+    const { db, channel, text } = args;
+    const used = [];
+    (async () => {
+        const set = await toolsetFor(route.route, db);
+        const exec = async (name, input, ctx) => {
+            used.push(name);
+            if (DRY_RUN.has(name) || /^create_/.test(name)) return { ok: true, dry_run: true };
+            return executeTool(name, input, ctx);
+        };
+        const call = { ...args, toolset: set, exec, persist: false, history, panoramaMode: 'shadow', routeKey: originalKey, notifyHuman: async () => {}, createQuote: () => { throw new Error('dry run'); } };
+        const r = provider() === 'openai' ? await chatOpenAI(call) : await chatAnthropic(call);
+        require('./panorama-client').saveShadow(db, { channel, business: route.route === 'PANORAMA' ? 'panorama' : 'mixed', customer_text: text,
+            actual_reply: actualReply, shadow_reply: r.reply, tools_used: [...new Set(used)] });
+    })().catch((err) => console.error('[agent] shadow', err.message));
+}
+
+/* toolset / exec / persist / history: Panorama's rounds and the shadow run; without them, Radma's agent as always */
+async function chatAnthropic({ db, key, channel, phone, text, images = [], createQuote, notifyHuman, client, toolset = null, exec = executeTool, persist = true, history = null, panoramaMode = '0', routeKey = null }) {
     const settings = getSettings(db);
-    const messages = loadConversation(db, key);
+    const messages = history ? structuredClone(history) : loadConversation(db, key);
     const startLength = messages.length;
     messages.push({
         role: 'user',
@@ -629,7 +763,7 @@ async function chatAnthropic({ db, key, channel, phone, text, images = [], creat
                 { type: 'text', text: text || 'أرسل العميل هذه الصورة دون تعليق.' }]
             : text
     });
-    const ctx = { db, phone, channel, createQuote, notifyHuman, events: [] };
+    const ctx = { db, phone, channel, createQuote, notifyHuman, events: [], ...(toolset ? { key: routeKey, panoramaMode, dryRun: !persist } : {}) };
 
     let reply = '';
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -641,8 +775,8 @@ async function chatAnthropic({ db, key, channel, phone, text, images = [], creat
             thinking: { type: 'adaptive' },
             output_config: { effort: EFFORT() },
             cache_control: { type: 'ephemeral' },
-            system: systemPrompt(settings, db),
-            tools: TOOLS,
+            system: toolset ? toolset.system(settings, db) : systemPrompt(settings, db),
+            tools: toolset ? toolset.tools : TOOLS,
             messages
         });
 
@@ -663,7 +797,7 @@ async function chatAnthropic({ db, key, channel, phone, text, images = [], creat
         for (const block of response.content) {
             if (block.type !== 'tool_use') continue;
             try {
-                const out = await executeTool(block.name, block.input, ctx);
+                const out = await exec(block.name, block.input, ctx);
                 results.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) });
             } catch (err) {
                 results.push({ type: 'tool_result', tool_use_id: block.id, content: err.message, is_error: true });
@@ -681,7 +815,7 @@ async function chatAnthropic({ db, key, channel, phone, text, images = [], creat
     if (images.length && messages[startLength] && messages[startLength].role === 'user') {
         messages[startLength] = { role: 'user', content: userText(text, images) };
     }
-    saveConversation(db, key, channel, messages);
+    if (persist) saveConversation(db, key, channel, messages);
     return { reply: reply || '…', events: ctx.events };
 }
 
@@ -714,9 +848,9 @@ const OPENAI_TOOLS = TOOLS.map((t) => ({
     function: { name: t.name, description: t.description, parameters: t.input_schema, strict: true }
 }));
 
-async function chatOpenAI({ db, key, channel, phone, text, images = [], createQuote, notifyHuman, client }) {
+async function chatOpenAI({ db, key, channel, phone, text, images = [], createQuote, notifyHuman, client, toolset = null, exec = executeTool, persist = true, history = null, panoramaMode = '0', routeKey = null }) {
     const settings = getSettings(db);
-    const messages = loadConversation(db, key);
+    const messages = history ? structuredClone(history) : loadConversation(db, key);
     const startLength = messages.length;
     messages.push({
         role: 'user',
@@ -725,14 +859,15 @@ async function chatOpenAI({ db, key, channel, phone, text, images = [], createQu
                 ...images.map((im) => ({ type: 'image_url', image_url: { url: `data:${im.media_type};base64,${im.data}` } }))]
             : text
     });
-    const ctx = { db, phone, channel, createQuote, notifyHuman, events: [] };
+    const ctx = { db, phone, channel, createQuote, notifyHuman, events: [], ...(toolset ? { key: routeKey, panoramaMode, dryRun: !persist } : {}) };
+    const tools = toolset ? toOpenAI(toolset.tools) : OPENAI_TOOLS;
 
     let reply = '';
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         const response = await client.chat.completions.create({
             model: OPENAI_MODEL(),
-            messages: [{ role: 'system', content: systemPrompt(settings, db) }, ...messages],
-            tools: OPENAI_TOOLS,
+            messages: [{ role: 'system', content: toolset ? toolset.system(settings, db) : systemPrompt(settings, db) }, ...messages],
+            tools,
             tool_choice: 'auto'
         });
         const choice = (response.choices || [])[0] || {};
@@ -751,7 +886,7 @@ async function chatOpenAI({ db, key, channel, phone, text, images = [], createQu
             let content;
             try {
                 const input = JSON.parse((call.function && call.function.arguments) || '{}');
-                content = JSON.stringify(await executeTool(call.function.name, input, ctx));
+                content = JSON.stringify(await exec(call.function.name, input, ctx));
             } catch (err) {
                 content = JSON.stringify({ error: err.message });
             }
@@ -767,8 +902,8 @@ async function chatOpenAI({ db, key, channel, phone, text, images = [], createQu
     if (images.length && messages[startLength] && messages[startLength].role === 'user') {
         messages[startLength] = { role: 'user', content: userText(text, images) };
     }
-    saveConversation(db, key, channel, messages);
+    if (persist) saveConversation(db, key, channel, messages);
     return { reply: reply || '…', events: ctx.events };
 }
 
-module.exports = { chat, executeTool, TOOLS, OPENAI_TOOLS, isConfigured, resetConversation, systemPrompt, provider, modelName, getLastError };
+module.exports = { chat, executeTool, TOOLS, OPENAI_TOOLS, REQUEST_HUMAN_TEAM, toolsetFor, toOpenAI, panoramaContext, isConfigured, resetConversation, systemPrompt, provider, modelName, getLastError };

@@ -1,0 +1,1345 @@
+{
+ "tools": [
+  {
+   "name": "list_door_options",
+   "description": "يعرض أنواع بوابات الرول شتر المتاحة (مثل الإيراني والتركي والعماني) مع وصف كل نوع، وأسماء مجموعات الإكسسوارات وفئاتها. استخدمه قبل سؤال العميل عن النوع.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "find_region",
+   "description": "يبحث عن الولاية (أو المحافظة) في سلطنة عُمان ويعيد رقمها region_id. إذا ظهر أكثر من نتيجة فاسأل العميل ليختار.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "اسم الولاية أو المحافظة كما كتبه العميل"
+     }
+    },
+    "required": [
+     "query"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "get_price_range",
+   "description": "يحسب نطاق السعر (من - إلى) شاملاً الضريبة والتركيب لمقاس معين: من أرخص سماكة وفئات إكسسوارات إلى أغلاها. إذا لم يُحدد النوع يعطي النطاق لكل الأنواع.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "width_cm": {
+      "type": "number",
+      "description": "عرض الفتحة بالسنتيمتر"
+     },
+     "height_cm": {
+      "type": "number",
+      "description": "ارتفاع الفتحة بالسنتيمتر"
+     },
+     "door_count": {
+      "type": "integer",
+      "description": "عدد البوابات بنفس المقاس (1 إذا لم يذكر العميل)"
+     },
+     "shutter_type_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "رقم نوع البوابة، أو null لكل الأنواع"
+     },
+     "region_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "رقم الولاية من find_region، أو null"
+     }
+    },
+    "required": [
+     "width_cm",
+     "height_cm",
+     "door_count",
+     "shutter_type_id",
+     "region_id"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "compare_options",
+   "description": "يشرح الفروقات لنوع بوابة ومقاس معين: السماكات/الدرجات المتاحة مع تفاصيلها، والألوان المتوفرة مع كل سماكة وسعر الشرائح لكل لون (شامل رسوم الصبغ)، ولكل مجموعة إكسسوارات فئاتها (Class A/B/C) مع التفاصيل وسعر كل فئة لهذا المقاس.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "width_cm": {
+      "type": "number",
+      "description": "عرض الفتحة بالسنتيمتر"
+     },
+     "height_cm": {
+      "type": "number",
+      "description": "ارتفاع الفتحة بالسنتيمتر"
+     },
+     "door_count": {
+      "type": "integer",
+      "description": "عدد البوابات بنفس المقاس (1 إذا لم يذكر العميل)"
+     },
+     "shutter_type_id": {
+      "type": "integer",
+      "description": "رقم نوع البوابة من list_door_options"
+     }
+    },
+    "required": [
+     "width_cm",
+     "height_cm",
+     "door_count",
+     "shutter_type_id"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "calculate_final_price",
+   "description": "يحسب السعر النهائي المفصّل لاختيارات العميل: النوع والسماكة واللون وفئة كل إكسسوار، مع التركيب حسب الولاية.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "width_cm": {
+      "type": "number",
+      "description": "عرض الفتحة بالسنتيمتر"
+     },
+     "height_cm": {
+      "type": "number",
+      "description": "ارتفاع الفتحة بالسنتيمتر"
+     },
+     "door_count": {
+      "type": "integer",
+      "description": "عدد البوابات بنفس المقاس (1 إذا لم يذكر العميل)"
+     },
+     "shutter_type_id": {
+      "type": "integer",
+      "description": "رقم نوع البوابة من list_door_options"
+     },
+     "variant_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "رقم السماكة من compare_options، أو null إذا للنوع سماكة واحدة"
+     },
+     "color_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "رقم اللون من ألوان السماكة المختارة في compare_options، أو null إذا لا توجد ألوان"
+     },
+     "option_ids": {
+      "type": "array",
+      "items": {
+       "type": "integer"
+      },
+      "description": "رقم الفئة المختارة (option_id) لكل مجموعة إكسسوارات؛ لا تضع شيئاً لمجموعة يمكن تركها (مثل بدون محرك)"
+     },
+     "region_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "رقم الولاية من find_region، أو null"
+     }
+    },
+    "required": [
+     "width_cm",
+     "height_cm",
+     "door_count",
+     "shutter_type_id",
+     "variant_id",
+     "color_id",
+     "option_ids",
+     "region_id"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "create_quote",
+   "description": "يسجّل عرض السعر النهائي في النظام ويجهز ملف PDF يُرسل للعميل. استخدمه فقط بعد موافقة العميل ومعرفة اسمه.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "width_cm": {
+      "type": "number",
+      "description": "عرض الفتحة بالسنتيمتر"
+     },
+     "height_cm": {
+      "type": "number",
+      "description": "ارتفاع الفتحة بالسنتيمتر"
+     },
+     "door_count": {
+      "type": "integer",
+      "description": "عدد البوابات بنفس المقاس (1 إذا لم يذكر العميل)"
+     },
+     "shutter_type_id": {
+      "type": "integer",
+      "description": "رقم نوع البوابة من list_door_options"
+     },
+     "variant_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "رقم السماكة من compare_options، أو null إذا للنوع سماكة واحدة"
+     },
+     "color_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "رقم اللون من ألوان السماكة المختارة في compare_options، أو null إذا لا توجد ألوان"
+     },
+     "option_ids": {
+      "type": "array",
+      "items": {
+       "type": "integer"
+      },
+      "description": "رقم الفئة المختارة (option_id) لكل مجموعة إكسسوارات؛ لا تضع شيئاً لمجموعة يمكن تركها (مثل بدون محرك)"
+     },
+     "region_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "رقم الولاية من find_region، أو null"
+     },
+     "customer_name": {
+      "type": "string"
+     },
+     "customer_phone": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "رقم جوال العميل — مطلوب في محادثات الموقع، و null في واتساب"
+     },
+     "notes": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "ملاحظات العميل إن وجدت"
+     }
+    },
+    "required": [
+     "width_cm",
+     "height_cm",
+     "door_count",
+     "shutter_type_id",
+     "variant_id",
+     "color_id",
+     "option_ids",
+     "region_id",
+     "customer_name",
+     "customer_phone",
+     "notes"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "request_appointment",
+   "description": "يسجّل طلب موعد تركيب أو صيانة أو معاينة/قياس، ويُرسل للموظف المسؤول للموافقة وتحديد الموعد. لا يؤكد موعداً بنفسه.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "installation",
+       "maintenance",
+       "inspection"
+      ],
+      "description": "installation تركيب، maintenance صيانة، inspection معاينة/قياس"
+     },
+     "description": {
+      "type": "string",
+      "description": "المطلوب بالتفصيل: نوع البوابة/المكينة والمشكلة أو العمل المطلوب، وأي رقم عرض سعر ذكره العميل"
+     },
+     "location": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "الولاية/المنطقة"
+     },
+     "address": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "العنوان أو أقرب معلم إن ذكره"
+     },
+     "preferred_date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "اليوم المفضل بصيغة YYYY-MM-DD، أو null"
+     },
+     "preferred_period": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "morning",
+       "evening",
+       "any",
+       null
+      ],
+      "description": "صباحاً morning، مساءً evening، any أي وقت"
+     },
+     "customer_name": {
+      "type": "string"
+     },
+     "customer_phone": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "رقم جوال العميل — مطلوب في محادثات الموقع، و null في واتساب"
+     }
+    },
+    "required": [
+     "kind",
+     "description",
+     "location",
+     "address",
+     "preferred_date",
+     "preferred_period",
+     "customer_name",
+     "customer_phone"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "my_appointments",
+   "description": "يعرض طلبات المواعيد ومواعيد التركيب/الصيانة لرقم واتساب العميل الذي يحادثك (بانتظار الموافقة، مؤكد، مكتمل...)، وتاريخ اليوم.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "list_motor_options",
+   "description": "يعرض أقسام مكائن البوابات (منزلقة، متأرجحة، بوابات مواقف...) ووصف كل قسم: الأطقم (محتوياتها وسعرها قبل الضريبة) والإكسسوارات التي تُباع بالقطعة والرسوم الإضافية المحتملة.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "calculate_motor_price",
+   "description": "يحسب سعر طلب مكائن البوابات: الطقم × العدد + القطع الإضافية + التركيب حسب الولاية + التوصيل، شامل الضريبة.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "section_id": {
+      "type": "integer",
+      "description": "رقم القسم من list_motor_options (مثل البوابات المنزلقة أو المتأرجحة أو بوابات المواقف)"
+     },
+     "kit_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "رقم طقم المكينة من list_motor_options، أو null لطلب قطع فقط"
+     },
+     "kit_count": {
+      "type": "integer",
+      "description": "عدد المكائن (1 عادة؛ 0 إذا لا يوجد طقم)"
+     },
+     "parts": {
+      "type": "array",
+      "description": "قطع إضافية تُباع بالقطعة (فارغة إن لم توجد)",
+      "items": {
+       "type": "object",
+       "properties": {
+        "part_id": {
+         "type": "integer",
+         "description": "رقم القطعة من list_motor_options"
+        },
+        "qty": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "part_id",
+        "qty"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "installation": {
+      "type": "boolean",
+      "description": "مع التركيب (true عادة)؛ false إذا طلب العميل توريداً فقط"
+     },
+     "region_id": {
+      "type": "integer",
+      "description": "رقم الولاية من find_region"
+     }
+    },
+    "required": [
+     "section_id",
+     "kit_id",
+     "kit_count",
+     "parts",
+     "installation",
+     "region_id"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "create_motor_quote",
+   "description": "يسجّل عرض سعر مكائن البوابات في النظام ويجهز ملف PDF يُرسل للعميل. استخدمه فقط بعد موافقة العميل ومعرفة اسمه.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "section_id": {
+      "type": "integer",
+      "description": "رقم القسم من list_motor_options (مثل البوابات المنزلقة أو المتأرجحة أو بوابات المواقف)"
+     },
+     "kit_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "رقم طقم المكينة من list_motor_options، أو null لطلب قطع فقط"
+     },
+     "kit_count": {
+      "type": "integer",
+      "description": "عدد المكائن (1 عادة؛ 0 إذا لا يوجد طقم)"
+     },
+     "parts": {
+      "type": "array",
+      "description": "قطع إضافية تُباع بالقطعة (فارغة إن لم توجد)",
+      "items": {
+       "type": "object",
+       "properties": {
+        "part_id": {
+         "type": "integer",
+         "description": "رقم القطعة من list_motor_options"
+        },
+        "qty": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "part_id",
+        "qty"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "installation": {
+      "type": "boolean",
+      "description": "مع التركيب (true عادة)؛ false إذا طلب العميل توريداً فقط"
+     },
+     "region_id": {
+      "type": "integer",
+      "description": "رقم الولاية من find_region"
+     },
+     "customer_name": {
+      "type": "string"
+     },
+     "customer_phone": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "رقم جوال العميل — مطلوب في محادثات الموقع، و null في واتساب"
+     },
+     "notes": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "ملاحظات العميل إن وجدت (مثل وزن البوابة)"
+     }
+    },
+    "required": [
+     "section_id",
+     "kit_id",
+     "kit_count",
+     "parts",
+     "installation",
+     "region_id",
+     "customer_name",
+     "customer_phone",
+     "notes"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "search_knowledge",
+   "description": "يبحث في قاعدة معرفة الشركة (الأسئلة الشائعة والمعلومات والمستندات) عن إجابة سؤال عام مثل أوقات العمل أو الضمان أو طرق الدفع.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "كلمات السؤال"
+     }
+    },
+    "required": [
+     "query"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "list_overhead_options",
+   "description": "يعرض بوابات الأوفرهيد: الأنواع (Type A / Type B) ومقاساتها القياسية (العرض لكل ارتفاع) والمحركات وأسعارها.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "calculate_overhead_price",
+   "description": "يحسب سعر بوابة أوفرهيد لمقاس قياسي ومحرك وولاية: نطاق من - إلى (حسب اللون) شامل الطقم والمحرك والتركيب والضريبة.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "gate_type": {
+      "type": "string",
+      "description": "نوع بوابة الأوفرهيد كما في list_overhead_options، مثل Type A"
+     },
+     "width_cm": {
+      "type": "number",
+      "description": "العرض القياسي المختار بالسنتيمتر (من list_overhead_options)"
+     },
+     "height_cm": {
+      "type": "number",
+      "description": "الارتفاع القياسي المختار بالسنتيمتر (250 أو 300)"
+     },
+     "motor_id": {
+      "type": "integer",
+      "description": "رقم المحرك من list_overhead_options"
+     },
+     "region_id": {
+      "type": "integer",
+      "description": "رقم الولاية من find_region"
+     }
+    },
+    "required": [
+     "gate_type",
+     "width_cm",
+     "height_cm",
+     "motor_id",
+     "region_id"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "create_overhead_quote",
+   "description": "يسجّل عرض سعر بوابة الأوفرهيد في النظام ويجهز ملف PDF يُرسل للعميل. استخدمه فقط بعد موافقة العميل ومعرفة اسمه.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "gate_type": {
+      "type": "string",
+      "description": "نوع بوابة الأوفرهيد كما في list_overhead_options، مثل Type A"
+     },
+     "width_cm": {
+      "type": "number",
+      "description": "العرض القياسي المختار بالسنتيمتر (من list_overhead_options)"
+     },
+     "height_cm": {
+      "type": "number",
+      "description": "الارتفاع القياسي المختار بالسنتيمتر (250 أو 300)"
+     },
+     "motor_id": {
+      "type": "integer",
+      "description": "رقم المحرك من list_overhead_options"
+     },
+     "region_id": {
+      "type": "integer",
+      "description": "رقم الولاية من find_region"
+     },
+     "customer_name": {
+      "type": "string"
+     },
+     "customer_phone": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "رقم جوال العميل — مطلوب في محادثات الموقع، و null في واتساب"
+     },
+     "notes": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "ملاحظات العميل إن وجدت"
+     }
+    },
+    "required": [
+     "gate_type",
+     "width_cm",
+     "height_cm",
+     "motor_id",
+     "region_id",
+     "customer_name",
+     "customer_phone",
+     "notes"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "request_human",
+   "description": "يحوّل المحادثة إلى موظف المبيعات ويرسل له ملخصاً.",
+   "strict": true,
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "summary": {
+      "type": "string",
+      "description": "ملخص طلب العميل وما تم الاتفاق عليه"
+     }
+    },
+    "required": [
+     "summary"
+    ],
+    "additionalProperties": false
+   }
+  }
+ ],
+ "openai_tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "list_door_options",
+    "description": "يعرض أنواع بوابات الرول شتر المتاحة (مثل الإيراني والتركي والعماني) مع وصف كل نوع، وأسماء مجموعات الإكسسوارات وفئاتها. استخدمه قبل سؤال العميل عن النوع.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "required": [],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "find_region",
+    "description": "يبحث عن الولاية (أو المحافظة) في سلطنة عُمان ويعيد رقمها region_id. إذا ظهر أكثر من نتيجة فاسأل العميل ليختار.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "query": {
+       "type": "string",
+       "description": "اسم الولاية أو المحافظة كما كتبه العميل"
+      }
+     },
+     "required": [
+      "query"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "get_price_range",
+    "description": "يحسب نطاق السعر (من - إلى) شاملاً الضريبة والتركيب لمقاس معين: من أرخص سماكة وفئات إكسسوارات إلى أغلاها. إذا لم يُحدد النوع يعطي النطاق لكل الأنواع.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "width_cm": {
+       "type": "number",
+       "description": "عرض الفتحة بالسنتيمتر"
+      },
+      "height_cm": {
+       "type": "number",
+       "description": "ارتفاع الفتحة بالسنتيمتر"
+      },
+      "door_count": {
+       "type": "integer",
+       "description": "عدد البوابات بنفس المقاس (1 إذا لم يذكر العميل)"
+      },
+      "shutter_type_id": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "description": "رقم نوع البوابة، أو null لكل الأنواع"
+      },
+      "region_id": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "description": "رقم الولاية من find_region، أو null"
+      }
+     },
+     "required": [
+      "width_cm",
+      "height_cm",
+      "door_count",
+      "shutter_type_id",
+      "region_id"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "compare_options",
+    "description": "يشرح الفروقات لنوع بوابة ومقاس معين: السماكات/الدرجات المتاحة مع تفاصيلها، والألوان المتوفرة مع كل سماكة وسعر الشرائح لكل لون (شامل رسوم الصبغ)، ولكل مجموعة إكسسوارات فئاتها (Class A/B/C) مع التفاصيل وسعر كل فئة لهذا المقاس.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "width_cm": {
+       "type": "number",
+       "description": "عرض الفتحة بالسنتيمتر"
+      },
+      "height_cm": {
+       "type": "number",
+       "description": "ارتفاع الفتحة بالسنتيمتر"
+      },
+      "door_count": {
+       "type": "integer",
+       "description": "عدد البوابات بنفس المقاس (1 إذا لم يذكر العميل)"
+      },
+      "shutter_type_id": {
+       "type": "integer",
+       "description": "رقم نوع البوابة من list_door_options"
+      }
+     },
+     "required": [
+      "width_cm",
+      "height_cm",
+      "door_count",
+      "shutter_type_id"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "calculate_final_price",
+    "description": "يحسب السعر النهائي المفصّل لاختيارات العميل: النوع والسماكة واللون وفئة كل إكسسوار، مع التركيب حسب الولاية.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "width_cm": {
+       "type": "number",
+       "description": "عرض الفتحة بالسنتيمتر"
+      },
+      "height_cm": {
+       "type": "number",
+       "description": "ارتفاع الفتحة بالسنتيمتر"
+      },
+      "door_count": {
+       "type": "integer",
+       "description": "عدد البوابات بنفس المقاس (1 إذا لم يذكر العميل)"
+      },
+      "shutter_type_id": {
+       "type": "integer",
+       "description": "رقم نوع البوابة من list_door_options"
+      },
+      "variant_id": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "description": "رقم السماكة من compare_options، أو null إذا للنوع سماكة واحدة"
+      },
+      "color_id": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "description": "رقم اللون من ألوان السماكة المختارة في compare_options، أو null إذا لا توجد ألوان"
+      },
+      "option_ids": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       },
+       "description": "رقم الفئة المختارة (option_id) لكل مجموعة إكسسوارات؛ لا تضع شيئاً لمجموعة يمكن تركها (مثل بدون محرك)"
+      },
+      "region_id": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "description": "رقم الولاية من find_region، أو null"
+      }
+     },
+     "required": [
+      "width_cm",
+      "height_cm",
+      "door_count",
+      "shutter_type_id",
+      "variant_id",
+      "color_id",
+      "option_ids",
+      "region_id"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "create_quote",
+    "description": "يسجّل عرض السعر النهائي في النظام ويجهز ملف PDF يُرسل للعميل. استخدمه فقط بعد موافقة العميل ومعرفة اسمه.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "width_cm": {
+       "type": "number",
+       "description": "عرض الفتحة بالسنتيمتر"
+      },
+      "height_cm": {
+       "type": "number",
+       "description": "ارتفاع الفتحة بالسنتيمتر"
+      },
+      "door_count": {
+       "type": "integer",
+       "description": "عدد البوابات بنفس المقاس (1 إذا لم يذكر العميل)"
+      },
+      "shutter_type_id": {
+       "type": "integer",
+       "description": "رقم نوع البوابة من list_door_options"
+      },
+      "variant_id": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "description": "رقم السماكة من compare_options، أو null إذا للنوع سماكة واحدة"
+      },
+      "color_id": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "description": "رقم اللون من ألوان السماكة المختارة في compare_options، أو null إذا لا توجد ألوان"
+      },
+      "option_ids": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       },
+       "description": "رقم الفئة المختارة (option_id) لكل مجموعة إكسسوارات؛ لا تضع شيئاً لمجموعة يمكن تركها (مثل بدون محرك)"
+      },
+      "region_id": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "description": "رقم الولاية من find_region، أو null"
+      },
+      "customer_name": {
+       "type": "string"
+      },
+      "customer_phone": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "رقم جوال العميل — مطلوب في محادثات الموقع، و null في واتساب"
+      },
+      "notes": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "ملاحظات العميل إن وجدت"
+      }
+     },
+     "required": [
+      "width_cm",
+      "height_cm",
+      "door_count",
+      "shutter_type_id",
+      "variant_id",
+      "color_id",
+      "option_ids",
+      "region_id",
+      "customer_name",
+      "customer_phone",
+      "notes"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "request_appointment",
+    "description": "يسجّل طلب موعد تركيب أو صيانة أو معاينة/قياس، ويُرسل للموظف المسؤول للموافقة وتحديد الموعد. لا يؤكد موعداً بنفسه.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "installation",
+        "maintenance",
+        "inspection"
+       ],
+       "description": "installation تركيب، maintenance صيانة، inspection معاينة/قياس"
+      },
+      "description": {
+       "type": "string",
+       "description": "المطلوب بالتفصيل: نوع البوابة/المكينة والمشكلة أو العمل المطلوب، وأي رقم عرض سعر ذكره العميل"
+      },
+      "location": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "الولاية/المنطقة"
+      },
+      "address": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "العنوان أو أقرب معلم إن ذكره"
+      },
+      "preferred_date": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "اليوم المفضل بصيغة YYYY-MM-DD، أو null"
+      },
+      "preferred_period": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "enum": [
+        "morning",
+        "evening",
+        "any",
+        null
+       ],
+       "description": "صباحاً morning، مساءً evening، any أي وقت"
+      },
+      "customer_name": {
+       "type": "string"
+      },
+      "customer_phone": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "رقم جوال العميل — مطلوب في محادثات الموقع، و null في واتساب"
+      }
+     },
+     "required": [
+      "kind",
+      "description",
+      "location",
+      "address",
+      "preferred_date",
+      "preferred_period",
+      "customer_name",
+      "customer_phone"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "my_appointments",
+    "description": "يعرض طلبات المواعيد ومواعيد التركيب/الصيانة لرقم واتساب العميل الذي يحادثك (بانتظار الموافقة، مؤكد، مكتمل...)، وتاريخ اليوم.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "required": [],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "list_motor_options",
+    "description": "يعرض أقسام مكائن البوابات (منزلقة، متأرجحة، بوابات مواقف...) ووصف كل قسم: الأطقم (محتوياتها وسعرها قبل الضريبة) والإكسسوارات التي تُباع بالقطعة والرسوم الإضافية المحتملة.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "required": [],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "calculate_motor_price",
+    "description": "يحسب سعر طلب مكائن البوابات: الطقم × العدد + القطع الإضافية + التركيب حسب الولاية + التوصيل، شامل الضريبة.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "section_id": {
+       "type": "integer",
+       "description": "رقم القسم من list_motor_options (مثل البوابات المنزلقة أو المتأرجحة أو بوابات المواقف)"
+      },
+      "kit_id": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "description": "رقم طقم المكينة من list_motor_options، أو null لطلب قطع فقط"
+      },
+      "kit_count": {
+       "type": "integer",
+       "description": "عدد المكائن (1 عادة؛ 0 إذا لا يوجد طقم)"
+      },
+      "parts": {
+       "type": "array",
+       "description": "قطع إضافية تُباع بالقطعة (فارغة إن لم توجد)",
+       "items": {
+        "type": "object",
+        "properties": {
+         "part_id": {
+          "type": "integer",
+          "description": "رقم القطعة من list_motor_options"
+         },
+         "qty": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "part_id",
+         "qty"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "installation": {
+       "type": "boolean",
+       "description": "مع التركيب (true عادة)؛ false إذا طلب العميل توريداً فقط"
+      },
+      "region_id": {
+       "type": "integer",
+       "description": "رقم الولاية من find_region"
+      }
+     },
+     "required": [
+      "section_id",
+      "kit_id",
+      "kit_count",
+      "parts",
+      "installation",
+      "region_id"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "create_motor_quote",
+    "description": "يسجّل عرض سعر مكائن البوابات في النظام ويجهز ملف PDF يُرسل للعميل. استخدمه فقط بعد موافقة العميل ومعرفة اسمه.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "section_id": {
+       "type": "integer",
+       "description": "رقم القسم من list_motor_options (مثل البوابات المنزلقة أو المتأرجحة أو بوابات المواقف)"
+      },
+      "kit_id": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "description": "رقم طقم المكينة من list_motor_options، أو null لطلب قطع فقط"
+      },
+      "kit_count": {
+       "type": "integer",
+       "description": "عدد المكائن (1 عادة؛ 0 إذا لا يوجد طقم)"
+      },
+      "parts": {
+       "type": "array",
+       "description": "قطع إضافية تُباع بالقطعة (فارغة إن لم توجد)",
+       "items": {
+        "type": "object",
+        "properties": {
+         "part_id": {
+          "type": "integer",
+          "description": "رقم القطعة من list_motor_options"
+         },
+         "qty": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "part_id",
+         "qty"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "installation": {
+       "type": "boolean",
+       "description": "مع التركيب (true عادة)؛ false إذا طلب العميل توريداً فقط"
+      },
+      "region_id": {
+       "type": "integer",
+       "description": "رقم الولاية من find_region"
+      },
+      "customer_name": {
+       "type": "string"
+      },
+      "customer_phone": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "رقم جوال العميل — مطلوب في محادثات الموقع، و null في واتساب"
+      },
+      "notes": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "ملاحظات العميل إن وجدت (مثل وزن البوابة)"
+      }
+     },
+     "required": [
+      "section_id",
+      "kit_id",
+      "kit_count",
+      "parts",
+      "installation",
+      "region_id",
+      "customer_name",
+      "customer_phone",
+      "notes"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "search_knowledge",
+    "description": "يبحث في قاعدة معرفة الشركة (الأسئلة الشائعة والمعلومات والمستندات) عن إجابة سؤال عام مثل أوقات العمل أو الضمان أو طرق الدفع.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "query": {
+       "type": "string",
+       "description": "كلمات السؤال"
+      }
+     },
+     "required": [
+      "query"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "list_overhead_options",
+    "description": "يعرض بوابات الأوفرهيد: الأنواع (Type A / Type B) ومقاساتها القياسية (العرض لكل ارتفاع) والمحركات وأسعارها.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "required": [],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "calculate_overhead_price",
+    "description": "يحسب سعر بوابة أوفرهيد لمقاس قياسي ومحرك وولاية: نطاق من - إلى (حسب اللون) شامل الطقم والمحرك والتركيب والضريبة.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "gate_type": {
+       "type": "string",
+       "description": "نوع بوابة الأوفرهيد كما في list_overhead_options، مثل Type A"
+      },
+      "width_cm": {
+       "type": "number",
+       "description": "العرض القياسي المختار بالسنتيمتر (من list_overhead_options)"
+      },
+      "height_cm": {
+       "type": "number",
+       "description": "الارتفاع القياسي المختار بالسنتيمتر (250 أو 300)"
+      },
+      "motor_id": {
+       "type": "integer",
+       "description": "رقم المحرك من list_overhead_options"
+      },
+      "region_id": {
+       "type": "integer",
+       "description": "رقم الولاية من find_region"
+      }
+     },
+     "required": [
+      "gate_type",
+      "width_cm",
+      "height_cm",
+      "motor_id",
+      "region_id"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "create_overhead_quote",
+    "description": "يسجّل عرض سعر بوابة الأوفرهيد في النظام ويجهز ملف PDF يُرسل للعميل. استخدمه فقط بعد موافقة العميل ومعرفة اسمه.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "gate_type": {
+       "type": "string",
+       "description": "نوع بوابة الأوفرهيد كما في list_overhead_options، مثل Type A"
+      },
+      "width_cm": {
+       "type": "number",
+       "description": "العرض القياسي المختار بالسنتيمتر (من list_overhead_options)"
+      },
+      "height_cm": {
+       "type": "number",
+       "description": "الارتفاع القياسي المختار بالسنتيمتر (250 أو 300)"
+      },
+      "motor_id": {
+       "type": "integer",
+       "description": "رقم المحرك من list_overhead_options"
+      },
+      "region_id": {
+       "type": "integer",
+       "description": "رقم الولاية من find_region"
+      },
+      "customer_name": {
+       "type": "string"
+      },
+      "customer_phone": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "رقم جوال العميل — مطلوب في محادثات الموقع، و null في واتساب"
+      },
+      "notes": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "ملاحظات العميل إن وجدت"
+      }
+     },
+     "required": [
+      "gate_type",
+      "width_cm",
+      "height_cm",
+      "motor_id",
+      "region_id",
+      "customer_name",
+      "customer_phone",
+      "notes"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "request_human",
+    "description": "يحوّل المحادثة إلى موظف المبيعات ويرسل له ملخصاً.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "summary": {
+       "type": "string",
+       "description": "ملخص طلب العميل وما تم الاتفاق عليه"
+      }
+     },
+     "required": [
+      "summary"
+     ],
+     "additionalProperties": false
+    },
+    "strict": true
+   }
+  }
+ ],
+ "prompt": "أنت مساعد المبيعات في ردما للبوابات الإلكترونية في سلطنة عُمان، وتتحدث مع العملاء عبر واتساب.\nالشركة تركّب نوعين من البوابات، وتبيع مكائن البوابات:\n- بوابات الرول شتر (الأبواب الألمنيوم الملفوفة) بأنواع مختلفة، مع إكسسوارات بفئات مختلفة.\n- بوابات الأوفرهيد (السكشنال) تُباع طقماً كاملاً بمقاسات قياسية.\n- مكائن البوابات بأقسام (مثل البوابات المنزلقة، والمتأرجحة ذات الدرفتين، وبوابات المواقف Parking Barrier) أطقماً كاملة، وإكسسوارات تُباع بالقطعة.\nإذا لم يحدد العميل ما يريد فاسأله: رول شتر أم أوفرهيد أم مكينة بوابة؟ ويمكنه السؤال عن أكثر من نوع في نفس المحادثة.\n\nمسار المحادثة لطلب بوابة رول شتر:\n1. رحّب باختصار وتأكد أن العميل يريد بوابة رول شتر.\n2. اسأل عن مقاس الفتحة بالسنتيمتر: العرض والارتفاع، وعدد البوابات إن كان أكثر من واحدة.\n3. استخدم list_door_options واسأل العميل عن نوع البوابة (مثل الإيراني أو التركي أو العماني)، واسأله عن الولاية. استخدم find_region لتحديد الولاية؛ إذا ظهرت أكثر من نتيجة فاسأله عن المحافظة.\n4. استخدم get_price_range وأعطِ العميل نطاق السعر \"من ... إلى ...\" ريال عماني شاملاً الضريبة، ووضّح حالة رسوم التركيب كما تعيدها الأداة.\n5. اسأل العميل: \"هل تريد أن أوضح لك الفروقات في الأسعار؟\"\n6. إن وافق، استخدم compare_options واشرح: السماكات/الدرجات المتاحة لهذا النوع (إن وُجد أكثر من واحدة) والألوان المتوفرة مع كل سماكة وسعر الشرائح لكل لون (بعض الألوان لها سعر ورسوم صبغ مختلفة)، ثم الإكسسوارات واحدة تلو الأخرى (المسارات الجانبية، عمود محور الدوران، القواعد، المحرك...) مع فئاتها Class A / B / C وتفاصيل كل فئة وسعرها لهذا المقاس. لا تُغرق العميل بكل شيء في رسالة واحدة إن كانت طويلة.\n7. بعد أن يختار العميل السماكة واللون وفئة كل إكسسوار، استخدم calculate_final_price وأعطه السعر النهائي مع تفصيل مختصر.\n8. اعرض عليه عرض سعر رسمي بصيغة PDF. إن وافق، اسأله عن اسمه ثم استخدم create_quote. سيُرسل الملف له تلقائياً بعد رسالتك.\n\nمسار المحادثة لطلب بوابة أوفرهيد:\n1. اسأل عن مقاس الفتحة بالسنتيمتر (العرض والارتفاع) وعن الولاية (استخدم find_region).\n2. استخدم list_overhead_options: لكل نوع (Type A / Type B) مقاسات قياسية (عرض × ارتفاع 250 أو 300 سم) ومحركات.\n   اختر للعميل المقاس القياسي الأقرب والأكبر من مقاسه الفعلي لكل نوع، ووضّح له المقاس المختار. إذا كانت فتحته أكبر من كل المقاسات فاستخدم request_human.\n3. اسأله عن المحرك (أو اعرض الخيارات وأسعارها)، ثم استخدم calculate_overhead_price وأعطه السعر من ... إلى ... شامل الضريبة والتركيب، ووضّح أن الفرق حسب اللون. يمكنك مقارنة Type A و Type B إن طلب.\n4. اعرض عليه عرض سعر رسمي. إن وافق، اسأله عن اسمه ثم استخدم create_overhead_quote.\n\nمسار المحادثة لطلب مكينة بوابة (منزلقة، متأرجحة، حاجز مواقف...):\n1. استخدم list_motor_options لمعرفة الأقسام المتوفرة، واسأل العميل عن نوع بوابته (ووزنها تقريباً للبوابات المنزلقة والمتأرجحة)، وعن الولاية (استخدم find_region).\n2. اقترح الطقم المناسب (للبوابات: قوة المكينة تساوي وزن البوابة أو أكبر)، ووضّح محتويات الطقم كما في وصفه. إذا لم يتوفر القسم (available = false) أو طقم مناسب فاستخدم request_human.\n3. القطع الإضافية (مثل المسننات Rail rack بالمتر/القطعة، الريموت، المستشعرات، لمبة التحذير) تُباع بالقطعة: اسأله إن كان يحتاج قطعاً إضافية فوق ما في الطقم (مثلاً إذا كان طول البوابة أكثر من أمتار المسننات في الطقم). ويمكن للعميل شراء قطع فقط بدون مكينة.\n4. استخدم calculate_motor_price وأعطه السعر شاملاً الضريبة، ووضّح حالة التركيب كما تعيدها الأداة (التركيب حسب الولاية لكل مكينة، أو يُحدد بعد المعاينة).\n   إذا أعادت الأداة extra_fees فأخبر العميل بها بوضوح: رسوم إضافية غير مشمولة في السعر تُضاف فقط عند الحاجة (مثل عدم اكتمال التسليكات أو التأسيس).\n5. اعرض عليه عرض سعر رسمي. إن وافق، اسأله عن اسمه ثم استخدم create_motor_quote.\n\nقواعد مهمة:\n- لا تذكر أي سعر إلا إذا جاء من إحدى الأدوات. لا تقدّر ولا تخمّن الأسعار أبداً.\n- إذا أعطى العميل المقاس بالمتر أو بالملم فحوّله إلى سنتيمتر، وتأكد منه إذا كان غير منطقي.\n- إذا لم يحدد العميل فئة إكسسوار بعد شرحها، فاسأله أو اقترح عليه، ولا تختر عنه بصمت.\n- اسأل سؤالاً أو سؤالين في كل رسالة، ولا تكرر أسئلة أجاب عنها العميل.\n- اكتب بالعربية بأسلوب ودود ومختصر يناسب واتساب. استخدم *نص* للتغميق، ولا تستخدم الجداول أو عناوين Markdown.\n- الأسعار بالريال العماني (ر.ع) بخانتين عشريتين.\n- لا تكشف تكاليف الشراء أو نسب الربح أو تفاصيل النظام الداخلية.\n- أجب عن الأسئلة العامة (أوقات العمل، الموقع، الضمان، طرق الدفع، مدة التوريد والتركيب، الخدمات...) من قسمي «معلومات الشركة» و«قاعدة المعرفة» أدناه فقط (وإن وُجدت الأداة search_knowledge فابحث بها). إذا لم تجد الإجابة فيه فلا تخترعها: قل إنك ستتأكد من فريق المبيعات واستخدم request_human.\n- إذا طلب العميل التحدث مع موظف، أو طلب شيئاً خارج نطاق الأدوات ومعلومات الشركة (خصم، شكوى، منتج غير موجود)، استخدم request_human وأخبره أن فريق المبيعات سيتواصل معه.\n\nمواعيد التركيب والصيانة والمعاينة (تاريخ اليوم في مسقط: الخميس 2026-11-26):\n- إذا طلب العميل موعد تركيب أو صيانة أو معاينة/قياس: اسأله عن نوع الخدمة، وما المطلوب بالتحديد (مثل: محرك بوابة رول شتر لا يعمل)، والولاية والعنوان، واليوم المفضل وهل يفضّل الصباح أو المساء، واسمه.\n  ثم استخدم request_appointment. أخبره أن الطلب وصل للفريق وأن الموعد يُؤكَّد بعد موافقة الموظف المسؤول برسالة واتساب، ولا تَعِده بموعد محدد أبداً.\n- حوّل كلمات مثل «بكرة» و«الأحد القادم» إلى تاريخ YYYY-MM-DD حسب تاريخ اليوم الذي تعيده my_appointments، أو اسأل العميل عن التاريخ إن لم تكن متأكداً.\n- إذا سأل العميل عن موعده أو حالة طلبه («متى موعد التركيب؟»): استخدم my_appointments وأجبه منها فقط، ولا تخترع موعداً. إذا لم يجد شيئاً فقل ذلك واعرض عليه طلب موعد.\n- إذا أراد العميل تغيير موعد مؤكد أو إلغاءه: استخدم request_human مع ملخص (رقم الطلب والموعد الجديد المطلوب).\n- إذا كتب العميل بالإنجليزية فرد بالإنجليزية.\n- في محادثات الموقع الإلكتروني لا نعرف رقم جوال العميل: اسأله عن رقم جواله (عُماني، 8 أرقام) قبل إنشاء عرض السعر وضعه في customer_phone. في واتساب اترك customer_phone فارغاً (null).\n\nترتيب مصادر التعليمات والمعلومات:\n1. القواعد الأساسية وقواعد الأدوات والتسعير والأمان الواردة في هذا النص هي الأعلى أولوية ولا يجوز لتعليمات الإدارة أو قاعدة المعرفة تجاوزها.\n2. تعليمات المساعد من الإدارة تضبط السلوك والنبرة ومسار الخدمة، ولا يجوز استخدامها لاختراع حقائق أو أسعار أو تجاوز الأدوات.\n3. معلومات الشركة وقاعدة المعرفة هي مصادر الحقائق العامة المعتمدة. عند غياب المعلومة لا تخمّن واستخدم request_human عند الحاجة.\n4. إذا تكرر نفس المحتوى في أكثر من طبقة، اتبع الطبقة الأعلى أولوية ولا تكرر الإجابة على العميل.\n\nمعلومات الشركة (مصدر رسمي لبيانات الاتصال والمعلومات العامة):\n- رقم خدمة العملاء: 90660001\n- العنوان: نزوى – سعال\n- الموقع الإلكتروني: radma.co"
+}
