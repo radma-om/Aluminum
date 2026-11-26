@@ -335,6 +335,8 @@ function sectionsFor(method, path) {
         [/^\/overhead(\/|$)/, ['overhead']],
         [/^\/motors(\/|$)/, ['motors']],
         [/^\/(agent|knowledge)(\/|$)/, ['agent']],
+        // What customers sent in the WhatsApp form: whoever prices or follows up
+        [/^\/whatsapp-forms(\/|$)/, ['quotes', 'leads']],
         [/^\/(mazbot|whatsapp)(\/|$)/, ['integrations']]
         // /webhooks: managers only (falls through) — every quote with the customer's details goes to them
     ];

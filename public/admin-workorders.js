@@ -468,7 +468,7 @@ let srList = [];
 let srMeta = { kinds: {}, periods: {} };
 let srFilter = 'pending';
 let srApproving = null;
-const SR_SOURCES = { mazbot: 'واتساب (المساعد)', whatsapp: 'واتساب (المساعد)', website: 'الموقع (المساعد)', staff: 'المكتب' };
+const SR_SOURCES = { mazbot: 'واتساب (المساعد)', whatsapp: 'واتساب (المساعد)', website: 'الموقع (المساعد)', staff: 'المكتب', whatsapp_form: 'نموذج واتساب' };
 const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const srDay = (d) => (d ? `${DAY_NAMES[new Date(d + 'T00:00:00Z').getUTCDay()]} ${d}` : '');
 
