@@ -50,6 +50,22 @@ test('reading the answers from three shapes of data', () => {
     assert.ok(!forms.isFormEvent({ type: 'message.received' }, ''));
 });
 
+test('the shape MazBot really sends: {label, value} under each field id, a wilayah in English', () => {
+    const real = { id: 'evt-real', type: 'whatsapp_form.submitted', data: { form_id: 12, contact: { id: 7, phone: '96890000002' }, submitted_at: '2026-11-26T11:56:20+02:00',
+        responses: { screen_0_TextInput_0: { label: 'الاسم', value: 'Mohammad' }, screen_0_PhoneNumber_1: { label: 'رقم الجوال', value: '76979066' },
+            screen_0_TextInput_2: { label: 'الولاية أو المنطقة', value: 'Nizwa' }, screen_1_Dropdown_0: { label: 'نوع البوابة', value: { id: '0_رول_شتر', title: 'رول شتر' } },
+            screen_1_Number_1: { label: 'عرض الفتحة بالسم', value: '400' }, screen_1_TextArea_2: { label: 'ملاحظات إضافية', value: '' },
+            screen_1_Radio_3: { label: 'هل تريد زيارة معاينة؟', value: '0_نعم' } } } };
+    const f = forms.extract(real);
+    assert.deepEqual({ ...f }, { name: 'Mohammad', phone: '96876979066', region_text: 'Nizwa', gate_type: 'rolling_shutter', width_cm: 400, notes: null, inspection: 1, unmatched: [] });
+    assert.equal(forms.arabicWilayah('Nizwa'), 'نزوى');
+    assert.equal(forms.arabicWilayah('Al Seeb'), 'السيب');
+    assert.equal(forms.arabicWilayah('wilayat bahla'), 'بهلاء');
+    // The value as plain text too («أوفرهيد», «لا»)
+    const plain = forms.extract({ data: { fields: { a: { label: 'نوع البوابة', value: 'أوفرهيد' }, b: { label: 'هل تريد زيارة معاينة؟', value: 'لا' }, c: { label: 'رقم الجوال', value: '92222222' } } } });
+    assert.deepEqual([plain.gate_type, plain.inspection, plain.phone], ['overhead', 0, '96892222222']);
+});
+
 test('the webhook: signed only, once per id, the customer followed up, the inspection request, the routes', async (t) => {
     Object.assign(process.env, ENV);
     t.after(() => { for (const k of Object.keys(ENV)) delete process.env[k]; });
@@ -157,4 +173,12 @@ test('the main account webhook takes the form too', async (t) => {
     await wait();
     const s = db.prepare('SELECT * FROM whatsapp_form_submissions').get();
     assert.deepEqual([s.account, s.phone, s.status], ['main', '96893333333', 'new']);
+});
+
+test('«Nizwa» in the form is the wilayah of نزوى', async () => {
+    const db = openDatabase(':memory:');
+    saveSettings(db, { mazbot_recipients: '' });
+    const r = forms.receive(db, { id: 'evt-nizwa', type: 'whatsapp_form.submitted', data: { responses: { a: { label: 'رقم الجوال', value: '76979066' }, b: { label: 'الولاية أو المنطقة', value: 'Nizwa' } } } });
+    const s = await forms.processSubmission(db, r.id, { notifyStaff: false });
+    assert.equal(s.region, 'نزوى، الداخلية');
 });
