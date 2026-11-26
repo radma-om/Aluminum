@@ -564,7 +564,7 @@ window.I18N_EN = {
     "عملاء ضغطوا «أوافق على العرض» من صفحة عرضهم (آخر 30 يوماً). من يُصدر الفاتورة تُحتسب له العمولة.": "Customers who pressed «I accept the quote» on their quote page (last 30 days). Whoever issues the invoice gets the commission.",
     "وافق العميل على العرض": "The customer accepted the quote",
     "طلبات نموذج واتساب": "WhatsApp form requests",
-    "ما أرسله العملاء في نموذج «طلب عرض سعر – بوابات ردما» على واتساب. النموذج بلا ارتفاع، فاضغط «تسعير الآن» لفتح منشئ العروض بالبيانات. «الحدث الخام» يعرض ما وصل من MazBot كما هو.": "What customers sent in the WhatsApp form «Quote request – Radma gates». The form has no height, so press «Price now» to open the quote builder with the data. «Raw event» shows what came from MazBot as it is.",
+    "ما أرسله العملاء في نموذج «طلب عرض سعر – بوابات ردما» على واتساب. اضغط «تسعير الآن» لفتح منشئ العروض بالعميل ونوع البوابة والمقاس، وأكمل ما لم يذكره العميل. «الحدث الخام» يعرض ما وصل من MazBot كما هو.": "What customers sent in the WhatsApp form «Quote request – Radma gates». Press «Price now» to open the quote builder with the customer, the gate type and the size, and complete what the customer did not give. «Raw event» shows what came from MazBot as it is.",
     "جديد – من نموذج واتساب": "New – from the WhatsApp form",
     "تم التسعير": "Priced",
     "مغلق": "Closed",
