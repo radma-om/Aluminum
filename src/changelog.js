@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.61.0', date: '2026-11-26',
+        ar: ['«متابعة العملاء» ← تذكير العملاء بلا عرض سعر (للمديرين): قائمة بمن راسلنا خلال آخر 14 يوماً ولم يصدر له عرض سعر، مع زر «إرسال للكل» وزر لكل عميل — قالب واتساب «هل تحب نجهز لك عرض سعر؟»، مرة واحدة لكل عميل', 'زر «أريد عرض سعر» يرسل للعميل رابط الحاسبة ويحوّله إلى «يطلب موظفاً» ويُبلغ فريق المبيعات، و«لا شكراً» يوقف التذكير له نهائياً'],
+        en: ['«Customer follow-up» → reminder for customers without a quote (managers): a list of everyone who wrote to us in the last 14 days and never got a quote, with «Send to all» and a button per customer — a WhatsApp template «Would you like us to prepare a quote?», once per customer', 'The «I want a quote» button sends the customer the calculator link, marks them «Needs staff» and tells the sales team; «No thanks» stops the reminder for them for good']
+    },
+    {
         version: '3.60.0', date: '2026-11-25',
         ar: ['مسار داخلي لنظام بانوراما (/api/internal/v1) بمفتاح وتوقيع خاصين، مستقل عن لوحة الإدارة: إضافة العميل أو تحديثه، وفتح أمر عمل تركيب (حالته «جديد» ويحدد المكتب الموعد والفني كالمعتاد، ولا يصل العميل شيء عند الإنشاء)، والاستعلام عن حالة الأمر', 'لأوامر العمل حقلان جديدان: الجهة (ردما أو بانوراما) ورقم الأمر لديها — ويظهران في أحداث الـ Webhooks', 'حدثان جديدان للـ Webhooks (رسالة العميل، وطلب التحويل لموظف) يُعادان تلقائياً بعد 1 ثم 5 ثم 15 دقيقة عند فشل الإرسال — مسجلان ولا يُرسلان بعد'],
         en: ['An internal path for the Panorama system (/api/internal/v1) with its own key and signature, separate from the admin panel: add or update a customer, open an installation work order (status «New»; the office sets the day and the technician as usual, and the customer is told nothing when it is created), and look up the order\'s status', 'Work orders have two new fields: the business (Radma or Panorama) and the order\'s number there — included in the webhook events', 'Two new webhook events (a customer message, and a request for a person) retried automatically after 1, 5 and 15 minutes when delivery fails — registered, not sent yet']

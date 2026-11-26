@@ -2,6 +2,11 @@
    Used by admin-i18n.js only when the user chose English. To add a text, add
    its exact Arabic (spaces collapsed) and the English. */
 window.I18N_EN = {
+    "تذكير العملاء بلا عرض سعر": "Reminder for customers without a quote",
+    "رسالة واتساب (قالب معتمد) لمن راسلنا خلال آخر 14 يوماً ولم يصدر له عرض سعر: «هل تحب نجهز لك عرض سعر؟» مع زرّين. «أريد عرض سعر» يصله رابط الحاسبة ويتحول إلى «يطلب موظفاً» ويُبلَّغ فريق المبيعات، و«لا شكراً» لا يُذكَّر بعدها. مرة واحدة لكل عميل.": "A WhatsApp message (approved template) to everyone who wrote to us in the last 14 days and never got a quote: «Would you like us to prepare a quote?» with two buttons. «I want a quote» sends them the calculator link, marks them «Needs staff» and tells the sales team; «No thanks» means no more reminders. Once per customer.",
+    "آخر رسالة منه": "Their last message",
+    "التذكير": "Reminder",
+    "إرسال للكل": "Send to all",
     "وجهتي": "My destination",
     "تتبع الفريق": "Team tracking",
     "تسجيل زيارة عميل": "Record a customer visit",

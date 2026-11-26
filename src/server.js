@@ -2134,6 +2134,18 @@ function createApp(db, { agentClient } = {}) {
         const r = await pr.sendQuote(db, req.params.quoteId, { origin: systemOrigin(req, db), by: staffName(req) });
         res.json({ ...r, list: pr.list(db) });
     }));
+    /* «تذكير العملاء بلا عرض سعر» (managers only: the route is not mapped to a section) */
+    admin.get('/lead-reminders', (req, res) => res.json(require('./lead-reminders').list(db)));
+    admin.post('/lead-reminders/send', asyncRoute(async (req, res) => {
+        const lr = require('./lead-reminders');
+        const r = await lr.send(db, { by: staffName(req) });
+        res.json({ ...r, list: lr.list(db) });
+    }));
+    admin.post('/lead-reminders/:leadId/send', asyncRoute(async (req, res) => {
+        const lr = require('./lead-reminders');
+        const r = await lr.sendLead(db, req.params.leadId, { by: staffName(req) });
+        res.json({ ...r, list: lr.list(db) });
+    }));
     admin.post('/quotes/:id/whatsapp', asyncRoute(async (req, res) => {
         const row = quoteFor(req, req.params.id);
         if (!row.access_key) throw httpError(400, 'هذا العرض بلا رابط للعميل');
