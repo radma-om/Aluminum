@@ -2146,6 +2146,15 @@ function createApp(db, { agentClient } = {}) {
         const r = await lr.sendLead(db, req.params.leadId, { by: staffName(req) });
         res.json({ ...r, list: lr.list(db) });
     }));
+    /* «طلبات نموذج واتساب»: what customers sent in the WhatsApp form, with the raw event */
+    admin.get('/whatsapp-forms', (req, res) => res.json(require('./whatsapp-forms').list(db, { status: String(req.query.status || '') })));
+    admin.get('/whatsapp-forms/:id', (req, res) => res.json(require('./whatsapp-forms').get(db, req.params.id, { raw: true })));
+    admin.post('/whatsapp-forms/:id/reprocess', asyncRoute(async (req, res) => {
+        const forms = require('./whatsapp-forms');
+        await forms.processSubmission(db, req.params.id);
+        res.json(forms.get(db, req.params.id, { raw: true }));
+    }));
+    admin.patch('/whatsapp-forms/:id', (req, res) => res.json(require('./whatsapp-forms').setStatus(db, req.params.id, String((req.body || {}).status || ''))));
     admin.post('/quotes/:id/whatsapp', asyncRoute(async (req, res) => {
         const row = quoteFor(req, req.params.id);
         if (!row.access_key) throw httpError(400, 'هذا العرض بلا رابط للعميل');
@@ -2885,6 +2894,19 @@ function createApp(db, { agentClient } = {}) {
         const secret = process.env.MAZBOT_WEBHOOK_SECRET || '';
         return secret.length >= 16 && safeEqual(given, secret);
     };
+    /* «طلب عرض سعر» (WhatsApp form, MazBot whatsapp_form.submitted) on either webhook, after its signature:
+       kept once per event id (a retry answers 200 and changes nothing), then read and acted on in the background. */
+    const formEvent = (req, res, event, eventId, account, raw) => {
+        const forms = require('./whatsapp-forms');
+        const deliveryId = req.get('x-mazbot-delivery-id') || null;
+        const got = forms.receive(db, event, { account, deliveryId, raw });
+        db.prepare('UPDATE inbound_events SET status = ?, event_key = ? WHERE id = ?').run(got.duplicate ? 'duplicate' : 'whatsapp_form', `form:${got.id}`, eventId);
+        res.json({ ok: true });
+        if (got.duplicate) return;
+        forms.processSubmission(db, got.id)
+            .then((r) => db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?').run(r.status === 'error' ? `whatsapp_form_error: ${String(r.error || '').slice(0, 200)}` : 'whatsapp_form', eventId))
+            .catch((e) => db.prepare('UPDATE inbound_events SET status = ? WHERE id = ?').run('error: ' + String(e.message).slice(0, 200), eventId));
+    };
     app.all('/webhooks/mazbot/:secret', express.raw({ type: () => true, limit: '1mb' }), (req, res) => {
         if (!webhookSecretOk(String(req.params.secret))) return res.status(404).json({ error: 'غير موجود' });
         const raw = req.rawBody || (Buffer.isBuffer(req.body) ? req.body : null);
@@ -2913,6 +2935,7 @@ function createApp(db, { agentClient } = {}) {
         }
         let event = null;
         try { event = JSON.parse(body); } catch { /* not JSON */ }
+        if (require('./whatsapp-forms').isFormEvent(event, req.get('x-mazbot-event-type'))) return formEvent(req, res, event, eventId, 'main', body);
         res.json({ ok: true }); // acknowledge fast; the reply is sent in the background
         mazbotInbox.handleEvent(db, eventId, event, {
             saveQuote: (q) => saveQuote(db, q),
@@ -2950,6 +2973,8 @@ function createApp(db, { agentClient } = {}) {
         }
         let event = null;
         try { event = JSON.parse(body); } catch { /* not JSON */ }
+        if (signing) db.prepare('UPDATE inbound_events SET signature = ? WHERE id = ?').run('verified', eventId);
+        if (require('./whatsapp-forms').isFormEvent(event, req.get('x-mazbot-event-type'))) return formEvent(req, res, event, eventId, 'templates', body);
         // Each message once (MazBot may deliver it again)
         const msgId = event && event.data && event.data.message && event.data.message.id;
         const key = msgId ? `tpl:${msgId}` : null;

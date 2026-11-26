@@ -499,6 +499,7 @@ async function loadQuotes() {
     if ($id('qbCostBtn')) $id('qbCostBtn').hidden = !canSee('purchases');
     if (!online) return;
     loadAcceptedQuotes();
+    if (typeof loadWaForms === 'function') loadWaForms();
     const params = new URLSearchParams();
     if ($id('quoteFilter').value) params.set('status', $id('quoteFilter').value);
     if ($id('quoteSearch').value.trim()) params.set('q', $id('quoteSearch').value.trim());

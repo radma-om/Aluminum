@@ -1978,6 +1978,26 @@
                     <tbody id="acceptedRows"></tbody>
                 </table></div>
             </div>
+            <div class="card" id="waFormsCard" hidden>
+                <div class="card-title"><span class="icon"><i class="fab fa-whatsapp"></i></span> طلبات نموذج واتساب <span class="muted" id="waFormsSummary" style="font-weight:400;font-size:.9rem"></span></div>
+                <p class="status-text" style="margin:0 0 8px">ما أرسله العملاء في نموذج «طلب عرض سعر – بوابات ردما» على واتساب. النموذج بلا ارتفاع، فاضغط «تسعير الآن» لفتح منشئ العروض بالبيانات. «الحدث الخام» يعرض ما وصل من MazBot كما هو.</p>
+                <div class="filter-row">
+                    <select id="waFormsFilter" onchange="loadWaForms()">
+                        <option value="">كل الحالات</option>
+                        <option value="new">جديد – من نموذج واتساب</option>
+                        <option value="contacted">تم التواصل</option>
+                        <option value="priced">تم التسعير</option>
+                        <option value="closed">مغلق</option>
+                        <option value="error">تعذرت المعالجة</option>
+                    </select>
+                    <button class="btn btn-outline btn-sm" onclick="loadWaForms()">تحديث</button>
+                    <span id="waFormsStatus" class="status-text"></span>
+                </div>
+                <div class="table-wrapper"><table class="stack-table">
+                    <thead><tr><th>وصل</th><th>العميل</th><th>الولاية/المنطقة</th><th>البوابة</th><th>المعاينة والملاحظات</th><th>الحالة</th><th></th></tr></thead>
+                    <tbody id="waFormsRows"></tbody>
+                </table></div>
+            </div>
             <div class="card">
                 <div class="card-title">
                     <span class="icon">Q</span>
@@ -3285,5 +3305,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-updates.js"></script>
     <script src="admin-wallet.js"></script>
     <script src="admin-tracking.js"></script>
+    <script src="admin-forms.js"></script>
 </body>
 </html>
