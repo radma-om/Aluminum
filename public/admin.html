@@ -2146,6 +2146,21 @@
 
         <!-- ==================== TAB 6: Integrations ==================== -->
         <div id="tab-integrations" class="tab-content">
+            <div class="card manager-only" id="panoramaCard">
+                <div class="card-title"><span class="icon"><i class="fas fa-video"></i></span> بانوراما — أدوات الوكيل <span class="muted" id="panoramaMode" style="font-weight:400;font-size:.9rem"></span></div>
+                <p class="status-text" style="margin:0 0 8px">حين يسأل العميل عن الكاميرات أو الشبكات أو الانتركوم يجيبه الوكيل بأسعار ومنتجات بانوراما الحقيقية. الوضع من المتغير PANORAMA_TOOLS_ENABLED: 0 معطّل، shadow تجريبي (يُكتب رد بانوراما هنا للمراجعة ولا يُرسل للعميل)، 1 مفعّل.</p>
+                <div id="panoramaStatus" class="status-text" style="white-space:pre-line"></div>
+                <div class="filter-row">
+                    <button class="btn btn-outline btn-sm" onclick="testPanorama()"><i class="fas fa-plug"></i> اختبار الاتصال</button>
+                    <button class="btn btn-outline btn-sm" onclick="loadPanorama()">تحديث</button>
+                    <span id="panoramaTestStatus" class="status-text"></span>
+                </div>
+                <div class="form-group"><label>أرقام مبيعات بانوراما <span class="unit">(مفصولة بفاصلة — فارغ: أرقام المبيعات في MazBot)</span></label>
+                    <div style="display:flex;gap:8px"><input type="text" id="panoramaRecipients" placeholder="9xxxxxxx, 9xxxxxxx" style="flex:1">
+                    <button class="btn btn-outline btn-sm" onclick="savePanoramaRecipients()">حفظ</button></div></div>
+                <details><summary>آخر الاستدعاءات</summary><div class="table-wrapper"><table class="stack-table"><thead><tr><th>الوقت</th><th>الأداة</th><th>النتيجة</th><th>المدة</th><th>القناة</th></tr></thead><tbody id="panoramaCalls"></tbody></table></div></details>
+                <details><summary>ردود بانوراما التجريبية</summary><div class="table-wrapper"><table class="stack-table"><thead><tr><th>الوقت</th><th>رسالة العميل</th><th>الرد الفعلي</th><th>الرد المقترح</th><th>الأدوات</th></tr></thead><tbody id="panoramaShadow"></tbody></table></div></details>
+            </div>
             <div class="card manager-only">
                 <div class="card-title"><span class="icon"><i class="fas fa-user-clock"></i></span> تذكيرات المتابعة والتقرير الأسبوعي</div>
                 <p class="status-text" style="margin:0 0 10px">كل صباح (8:00 بتوقيت مسقط) يصل كل موظف له بريد قائمة بعملائه الذين يحتاجون متابعة: موعد متابعة حلّ أو فات، أو عميل مفتوح لم يكتب عنه أحد تقريراً أو يرد عليه منذ المدة أدناه. العملاء بلا موظف (أو موظفهم بلا بريد) يصلون للمديرين. وكل يوم أحد يصل المديرين تقرير الأسبوع.</p>
@@ -3306,5 +3321,6 @@ X-Aluminum-Signature: sha256=HMAC_SHA256(secret, body)
     <script src="admin-wallet.js"></script>
     <script src="admin-tracking.js"></script>
     <script src="admin-forms.js"></script>
+    <script src="admin-panorama.js"></script>
 </body>
 </html>
