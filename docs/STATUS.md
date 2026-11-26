@@ -46,12 +46,16 @@
 `quote.created` · `quote.status_changed` · `invoice.created` · `invoice.updated` · `invoice.cancelled` · `payment.created` · `work_order.created` · `work_order.status_changed` · `product.created` · `product.updated` · `product.deleted` · `purchase.created` · `settings.updated` · `database.restored` · `webhook.test`
 
 - **جديد في `work_order.created` و`work_order.status_changed`:** داخل `data` حقلان إضافيان، `business` (`radma` أو `panorama`) و`external_ref`. كل الحقول القديمة كما هي.
-- **حدثان مسجلان، لا يُطلقان بعد** (يُطلقان في مهمة ربط الوكيل): `lead.message` و`handoff.requested`.
+- **`lead.message` و`handoff.requested` يُطلقان في الوضع `PANORAMA_TOOLS_ENABLED=1` فقط** (3.63.0): `lead.message` بعد كل رد على رسالة بانوراما أو مختلطة، و`handoff.requested` عند التحويل لفريق بانوراما. الشكل في `README.md` ← «ربط وكيل بانوراما».
   - عند فشل الإرسال يُعادان بعد 1 ثم 5 ثم 15 دقيقة، بنفس الـ payload ونفس `id`.
   - الأحداث الأخرى محاولة واحدة.
   - الاشتراك بـ «كل الأحداث» (`*`) سيستقبلهما عند إطلاقهما.
 
 كل طلب يحمل الترويسة `X-Aluminum-Event`، ومع المفتاح السري `X-Aluminum-Signature: sha256=<HMAC>`. تُقبل فقط روابط عامة على الإنترنت.
+
+### ما يستدعيه وكيل ردما من بانوراما (3.63.0)
+- `GET /api/internal/v1/tools` و`POST /api/internal/v1/tools/execute` على `PANORAMA_BASE_URL`، موقّعة بـ `PANORAMA_API_KEY` و`PANORAMA_HMAC_SECRET`.
+- المتغيرات: `PANORAMA_TOOLS_ENABLED` (`0`/`shadow`/`1`)، `PANORAMA_BASE_URL`، `PANORAMA_API_KEY`، `PANORAMA_HMAC_SECRET`، `PANORAMA_TOOL_TIMEOUT_MS`. وإعداد `panorama_recipients` في اللوحة.
 
 ## الربط مع متجر بانوراما (WooCommerce)
 - **الحالة:** المسار الداخلي v1 **مفعّل في الإنتاج** (العملاء وأوامر العمل)، وحقلا `business`/`external_ref` في أوامر العمل، وإعادة المحاولة للحدثين الجديدين. التالي في بانوراما: «أساس نظام بانوراما وعميل Aluminum».
@@ -67,6 +71,7 @@
 ## آخر التغييرات
 | التاريخ | التغيير | PR |
 |---|---|---|
+| 2026-11-26 | 3.63.0: ربط وكيل ردما بأدوات بانوراما (الأوضاع `0`/`shadow`/`1`، التوجيه، قاطع الدائرة، الردود التجريبية، بطاقة «بانوراما»)، وإطلاق `lead.message`/`handoff.requested` في الوضع `1`. لا تغيير في أي endpoint أو شكل حدث قائم | — |
 | 2026-11-26 | 3.62.2: نموذج واتساب — قراءة «ارتفاع الفتحة» وتعبئته في «تسعير الآن» | #218 |
 | 2026-11-26 | 3.62.1: قراءة إجابات نموذج واتساب بشكلها الفعلي من MazBot (`{label, value}` تحت معرّف كل حقل)، ومطابقة الولاية المكتوبة بالإنجليزية | #216 |
 | 2026-11-26 | 3.62.0: استقبال نموذج واتساب «طلب عرض سعر» (`whatsapp_form.submitted` على webhook حساب القوالب) وبطاقة «طلبات نموذج واتساب». لا تغيير في أي endpoint أو Webhook قائم | #214 |
@@ -82,5 +87,5 @@
 
 ## قيد العمل / معلّق
 - اختبار الاتصال من كود بانوراما نفسه (مثل زر «اختبار الاتصال بردما»)، والتأكد أن `ALUMINUM_API_KEY` في بانوراما طوله 64 حرفاً بلا أي جزء زائد.
-- إطلاق `lead.message` و`handoff.requested` في مهمة ربط الوكيل.
+- تفعيل ربط الوكيل في الإنتاج: ضبط متغيرات `PANORAMA_*` بالوضع `shadow`، ثم «اختبار الاتصال»، ومراجعة الردود التجريبية بعد نشر منتجات بانوراما، ثم الاشتراك في الحدثين بعنوان `https://commerce.tech-panorama.com/webhooks/aluminum` والانتقال إلى `1`.
 - نموذج واتساب: بعد نشر 3.62.1 اضغط «إعادة المعالجة» على أول طلب حقيقي وتأكد أن «لم يُفهم» فارغ.

@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.63.0', date: '2026-11-26',
+        ar: ['المساعد الذكي يجيب عن الكاميرات والشبكات والانتركوم بمنتجات وأسعار بانوراما الحقيقية — يتعرف من كلمات الرسالة هل هي عن بوابات ردما أو منتجات بانوراما أو الاثنين، وأسئلة البوابات تبقى كما هي تماماً', 'ثلاثة أوضاع: معطّل (الافتراضي)، وتجريبي (يُكتب رد بانوراما المقترح في «الربط» للمراجعة ولا يُرسل للعميل)، ومفعّل', '«الربط» ← بطاقة «بانوراما» للمديرين: الحالة، و«اختبار الاتصال»، وآخر الاستدعاءات، وإحصاء الرسائل، والردود التجريبية، وأرقام مبيعات بانوراما لطلبات التحويل لموظف'],
+        en: ['The AI assistant answers about cameras, networks and intercoms with Panorama\'s real products and prices — it tells from the message\'s words whether it is about Radma\'s gates, Panorama\'s products or both, and gate questions stay exactly as before', 'Three modes: off (default), trial (Panorama\'s suggested reply is written in «Integrations» for review and never sent to the customer), and on', '«Integrations» → a «Panorama» card for managers: status, «Test the connection», latest calls, message counts, trial replies, and Panorama\'s sales numbers for requests for a person']
+    },
+    {
         version: '3.62.2', date: '2026-11-26',
         ar: ['طلبات نموذج واتساب: يُقرأ الآن «ارتفاع الفتحة» ويظهر مع العرض، و«تسعير الآن» يملأ العرض والارتفاع معاً (وللأوفرهيد أصغر مقاس متاح يغطي الفتحة). المقاس بالمتر (مثل 4.2) يُحوَّل إلى سم'],
         en: ['WhatsApp form requests: the «opening height» is now read and shown with the width, and «Price now» fills both (for overhead, the smallest available size that covers the opening). A size in metres (e.g. 4.2) is turned into cm']

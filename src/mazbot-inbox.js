@@ -159,11 +159,13 @@ async function reply(db, eventId, event, { phone, contact, saveQuote, notifySale
             db, key: 'mz:' + phone, channel: 'mazbot', phone, text, images,
             createQuote: saveQuote,
             ...(client ? { client } : {}),
-            notifyHuman: async (summary) => {
+            notifyHuman: async (summary, team = null) => {
                 pause(db, phone);
                 leads.humanRequested(db, leads.phoneKey(phone), summary);
-                const alert = `🙋 عميل يطلب التواصل مع فريق المبيعات\n${contact.name || ''} — +${phone}\n\n${summary}`;
-                for (const to of mazbot.parseRecipients(settings.mazbot_recipients)) {
+                // A request for Panorama's team goes to its numbers (or the sales numbers when none are set)
+                const panorama = team === 'panorama_sales';
+                const alert = `🙋 عميل يطلب التواصل مع فريق ${panorama ? 'مبيعات بانوراما' : 'المبيعات'}\n${contact.name || ''} — +${phone}\n\n${summary}`;
+                for (const to of mazbot.parseRecipients((panorama && settings.panorama_recipients) || settings.mazbot_recipients)) {
                     const r = await mazbot.sendTextToPhone(to, alert);
                     if (!r.ok) console.error('[mazbot-inbox] alert', to, r.error);
                 }

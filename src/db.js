@@ -50,6 +50,8 @@ const DEFAULT_SETTINGS = {
     company_whatsapp: '',
     // Sales numbers that get the MazBot WhatsApp template for every calculator request
     mazbot_recipients: '76979066, 90660001',
+    // Who hears that a customer asks for Panorama's sales team (empty: the sales numbers above)
+    panorama_recipients: '',
     calculator_verify_phone: false, // the calculators send the customer a code on WhatsApp (MAZBOT_VERIFY_TEMPLATE_ID) before the request
     wo_rating_requests: true,       // the day after a work order is done the customer is asked to rate it (MAZBOT_RATING_TEMPLATE_ID)
     google_review_url: '',          // a 4–5 rating is thanked with this link (Google reviews), when set
@@ -760,6 +762,8 @@ function migrate(db) {
     addColumns('regions', { motor_installation_fee: 'REAL' });
     // MazBot webhook requests: the signature check result (verified / bad / missing / unchecked in local compatibility mode)
     addColumns('inbound_events', { signature: 'TEXT' });
+    // The agent's current business in a conversation (RADMA / PANORAMA) when Panorama's tools are on
+    addColumns('agent_conversations', { current_business: 'TEXT', context_json: 'TEXT' });
     // What MazBot answered when the reply was sent (its message id / status), to follow up a reply that never arrived
     addColumns('inbound_events', { reply_json: 'TEXT' });
     // Gate motors: sections added in the admin, and a profit % per item

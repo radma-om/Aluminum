@@ -2139,7 +2139,7 @@ window.switchTab = function (tabId) {
     if (tabId === 'backup' && ME && ME.role === 'manager') loadBackups().catch((err) => setStatus('backupStatus', err.message, 'err'));
     if (tabId === 'overhead') loadOverhead();
     if (tabId === 'motors') loadMotors();
-    if (tabId === 'integrations') { loadInbound().catch(() => {}); runDiagnose(); }
+    if (tabId === 'integrations') { loadInbound().catch(() => {}); runDiagnose(); if (ME && ME.role === 'manager' && typeof loadPanorama === 'function') loadPanorama(); }
     if (tabId === 'agent') loadKnowledge().catch(() => {});
 };
 
