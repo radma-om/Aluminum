@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.63.1', date: '2026-11-26',
+        ar: ['إصلاح: إرسال الـ Webhooks كان يفشل كله بالرسالة «Invalid IP address: undefined» على Node 22، ومنه زر «اختبار» وأحداث بانوراما. الآن يصل كل حدث، مع بقاء الحماية من تحويل الرابط إلى عنوان داخلي كما هي'],
+        en: ['Fix: every webhook delivery failed with «Invalid IP address: undefined» on Node 22, including the «Test» button and Panorama\'s events. Each event now goes out, with the protection against a link re-pointed to an internal address unchanged']
+    },
+    {
         version: '3.63.0', date: '2026-11-26',
         ar: ['المساعد الذكي يجيب عن الكاميرات والشبكات والانتركوم بمنتجات وأسعار بانوراما الحقيقية — يتعرف من كلمات الرسالة هل هي عن بوابات ردما أو منتجات بانوراما أو الاثنين، وأسئلة البوابات تبقى كما هي تماماً', 'ثلاثة أوضاع: معطّل (الافتراضي)، وتجريبي (يُكتب رد بانوراما المقترح في «الربط» للمراجعة ولا يُرسل للعميل)، ومفعّل', '«الربط» ← بطاقة «بانوراما» للمديرين: الحالة، و«اختبار الاتصال»، وآخر الاستدعاءات، وإحصاء الرسائل، والردود التجريبية، وأرقام مبيعات بانوراما لطلبات التحويل لموظف'],
         en: ['The AI assistant answers about cameras, networks and intercoms with Panorama\'s real products and prices — it tells from the message\'s words whether it is about Radma\'s gates, Panorama\'s products or both, and gate questions stay exactly as before', 'Three modes: off (default), trial (Panorama\'s suggested reply is written in «Integrations» for review and never sent to the customer), and on', '«Integrations» → a «Panorama» card for managers: status, «Test the connection», latest calls, message counts, trial replies, and Panorama\'s sales numbers for requests for a person']
