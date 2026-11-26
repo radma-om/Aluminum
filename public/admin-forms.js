@@ -24,7 +24,7 @@ function renderWaForms() {
         <td data-label="وصل"><small dir="ltr">${esc(muscatTime(s.received_at))}</small></td>
         <td data-label="العميل">${esc(s.name || '—')}${s.phone ? `<br><a href="https://wa.me/${esc(s.phone)}" target="_blank" rel="noopener" dir="ltr"><small>${esc(s.phone)}</small></a>` : ''}</td>
         <td data-label="الولاية/المنطقة">${esc(s.region || s.region_text || '—')}${s.region_text && !s.region ? '<br><small class="muted">لم تُطابق ولاية واحدة</small>' : ''}</td>
-        <td data-label="البوابة">${esc(s.gate_label || '—')}${s.width_cm ? `<br><small>العرض ${esc(s.width_cm)} سم</small>` : ''}</td>
+        <td data-label="البوابة">${esc(s.gate_label || '—')}${s.width_cm || s.height_cm ? `<br><small>${s.width_cm ? `العرض ${esc(s.width_cm)}` : 'العرض —'} × ${s.height_cm ? `الارتفاع ${esc(s.height_cm)}` : 'الارتفاع —'} سم</small>` : ''}</td>
         <td data-label="المعاينة والملاحظات">${s.inspection == null ? '' : s.inspection ? `🔎 يريد معاينة${s.service_request ? ` <small>(${esc(s.service_request.ref)})</small>` : ''}` : 'بلا معاينة'}
             ${s.notes ? `<br><small>${esc(s.notes)}</small>` : ''}
             ${s.unmatched.length ? `<br><small class="muted">لم يُفهم: ${s.unmatched.map((u) => esc(`${u.label}: ${u.value}`)).join(' / ')}</small>` : ''}
@@ -67,7 +67,7 @@ function openWaFormLead(leadId) {
     openLead(leadId);
 }
 
-/* The quote builder for this customer, with the gate of the form and its width (the height is the office's) */
+/* The quote builder for this customer, with the gate of the form and its size (what the form did not give, the office fills) */
 async function priceWaForm(id) {
     const s = waForms && waForms.submissions.find((x) => x.id === id);
     if (!s) return;
@@ -77,16 +77,17 @@ async function priceWaForm(id) {
     if (!s.gate_type || !c || !c[s.gate_type]) return;
     qbAddCalc(s.gate_type);
     const line = qbLines[qbLines.length - 1];
-    if (s.width_cm) {
-        if (s.gate_type === 'rolling_shutter') line.params.width_cm = s.width_cm;
-        else if (s.gate_type === 'overhead') {
-            // Overhead widths are a list per type and height: the smallest one that covers the opening (else the
-            // widest), in any type — the office checks it and picks the height
-            const all = c.overhead.gate_types.flatMap((t) => t.heights.flatMap((h) => h.widths.map((w) => ({ t: t.name, h: h.height_cm, w: Number(w) }))));
-            const covers = all.filter((x) => x.w >= s.width_cm).sort((a, b) => a.w - b.w);
-            const pick = covers[0] || all.sort((a, b) => b.w - a.w)[0];
-            if (pick) Object.assign(line.params, { gate_type: pick.t, height_cm: pick.h, width_cm: pick.w });
-        }
+    if (s.gate_type === 'rolling_shutter') {
+        if (s.width_cm) line.params.width_cm = s.width_cm;
+        if (s.height_cm) line.params.height_cm = s.height_cm;
+    } else if (s.gate_type === 'overhead' && (s.width_cm || s.height_cm)) {
+        // Overhead sizes are a list per type and height: the smallest that covers the opening (else the largest),
+        // in any type — the office checks it
+        const all = c.overhead.gate_types.flatMap((t) => t.heights.flatMap((h) => h.widths.map((w) => ({ t: t.name, h: Number(h.height_cm), w: Number(w) }))));
+        const fits = (x) => (!s.width_cm || x.w >= s.width_cm) && (!s.height_cm || x.h >= s.height_cm);
+        const covers = all.filter(fits).sort((a, b) => (a.h - b.h) || (a.w - b.w));
+        const pick = covers[0] || all.sort((a, b) => (b.h - a.h) || (b.w - a.w))[0];
+        if (pick) Object.assign(line.params, { gate_type: pick.t, height_cm: pick.h, width_cm: pick.w });
     }
     if (s.notes) $id('qbNotes').value = s.notes;
     renderQbLines();

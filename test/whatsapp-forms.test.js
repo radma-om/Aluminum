@@ -34,7 +34,10 @@ test('reading the answers from three shapes of data', () => {
     const a = forms.extract(FLAT);
     assert.deepEqual(a.unmatched, [], 'the WhatsApp contact is not read as an answer');
     assert.deepEqual({ ...a, unmatched: undefined }, { name: 'سالم الحارثي', phone: '96891111111', region_text: 'السيب', gate_type: 'rolling_shutter',
-        width_cm: 350, notes: 'بوابة كراج', inspection: 1, unmatched: undefined });
+        width_cm: 350, height_cm: null, notes: 'بوابة كراج', inspection: 1, unmatched: undefined });
+    // Sizes in metres or with units
+    const m = forms.extract({ data: { r: [{ label: 'Width (m)', value: '4.2' }, { label: 'الارتفاع', value: '٢٫٥ م' }, { label: 'رقم الجوال', value: '91234567' }] } });
+    assert.deepEqual([m.width_cm, m.height_cm], [420, 250]);
     const b = forms.extract(LIST);
     assert.equal(b.name, 'Khalid');
     assert.equal(b.phone, '96892222222', 'from the WhatsApp contact');
@@ -54,10 +57,10 @@ test('the shape MazBot really sends: {label, value} under each field id, a wilay
     const real = { id: 'evt-real', type: 'whatsapp_form.submitted', data: { form_id: 12, contact: { id: 7, phone: '96890000002' }, submitted_at: '2026-11-26T11:56:20+02:00',
         responses: { screen_0_TextInput_0: { label: 'الاسم', value: 'Mohammad' }, screen_0_PhoneNumber_1: { label: 'رقم الجوال', value: '76979066' },
             screen_0_TextInput_2: { label: 'الولاية أو المنطقة', value: 'Nizwa' }, screen_1_Dropdown_0: { label: 'نوع البوابة', value: { id: '0_رول_شتر', title: 'رول شتر' } },
-            screen_1_Number_1: { label: 'عرض الفتحة بالسم', value: '400' }, screen_1_TextArea_2: { label: 'ملاحظات إضافية', value: '' },
+            screen_1_Number_1: { label: 'عرض الفتحة بالسم', value: '400' }, screen_1_Number_4: { label: 'ارتفاع الفتحة بـ cm', value: '250' }, screen_1_TextArea_2: { label: 'ملاحظات إضافية', value: '' },
             screen_1_Radio_3: { label: 'هل تريد زيارة معاينة؟', value: '0_نعم' } } } };
     const f = forms.extract(real);
-    assert.deepEqual({ ...f }, { name: 'Mohammad', phone: '96876979066', region_text: 'Nizwa', gate_type: 'rolling_shutter', width_cm: 400, notes: null, inspection: 1, unmatched: [] });
+    assert.deepEqual({ ...f }, { name: 'Mohammad', phone: '96876979066', region_text: 'Nizwa', gate_type: 'rolling_shutter', width_cm: 400, height_cm: 250, notes: null, inspection: 1, unmatched: [] });
     assert.equal(forms.arabicWilayah('Nizwa'), 'نزوى');
     assert.equal(forms.arabicWilayah('Al Seeb'), 'السيب');
     assert.equal(forms.arabicWilayah('wilayat bahla'), 'بهلاء');
@@ -181,4 +184,13 @@ test('«Nizwa» in the form is the wilayah of نزوى', async () => {
     const r = forms.receive(db, { id: 'evt-nizwa', type: 'whatsapp_form.submitted', data: { responses: { a: { label: 'رقم الجوال', value: '76979066' }, b: { label: 'الولاية أو المنطقة', value: 'Nizwa' } } } });
     const s = await forms.processSubmission(db, r.id, { notifyStaff: false });
     assert.equal(s.region, 'نزوى، الداخلية');
+});
+
+test('a table kept before the height (3.62.1) gets its column', () => {
+    const db = openDatabase(':memory:');
+    db.exec(`CREATE TABLE whatsapp_form_submissions (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, account TEXT, form_id TEXT, raw_json TEXT NOT NULL,
+        name TEXT, phone TEXT, region_text TEXT, region_id INTEGER, gate_type TEXT, width_cm REAL, notes TEXT, inspection INTEGER, unmatched_json TEXT,
+        status TEXT NOT NULL DEFAULT 'new', lead_id INTEGER, service_request_id INTEGER, error TEXT, received_at TEXT NOT NULL DEFAULT (datetime('now')), processed_at TEXT, updated_at TEXT)`);
+    forms.ensureTable(db);
+    assert.ok(db.prepare('PRAGMA table_info(whatsapp_form_submissions)').all().some((c) => c.name === 'height_cm'));
 });

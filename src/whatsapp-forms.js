@@ -5,7 +5,7 @@
      delivery up to 5 times, and the same id again changes nothing.
    - The answers are read whatever their shape (MazBot's documentation does
      not show it): every key / label in the event is matched to name, mobile,
-     wilayah, gate type, width (cm), notes and the site visit — in Arabic or
+     wilayah, gate type, width and height (cm), notes and the site visit — in Arabic or
      English; what is not understood is kept for the office to see.
    - Processing: the customer joins «متابعة العملاء» (by the mobile), waiting
      for a person, with the answers in their log; a «yes» to the site visit is
@@ -40,6 +40,7 @@ function ensureTable(db) {
         region_id           INTEGER,
         gate_type           TEXT,
         width_cm            REAL,
+        height_cm           REAL,
         notes               TEXT,
         inspection          INTEGER,
         unmatched_json      TEXT,
@@ -51,6 +52,9 @@ function ensureTable(db) {
         processed_at        TEXT,
         updated_at          TEXT
     ); CREATE INDEX IF NOT EXISTS whatsapp_form_phone ON whatsapp_form_submissions (phone);`);
+    // Kept before the form asked for the height (3.62.2)
+    const cols = db.prepare('PRAGMA table_info(whatsapp_form_submissions)').all().map((c) => c.name);
+    if (!cols.includes('height_cm')) db.exec('ALTER TABLE whatsapp_form_submissions ADD COLUMN height_cm REAL');
 }
 
 /* The event is a form answer: its type, or MazBot's X-Mazbot-Event-Type header */
@@ -58,6 +62,12 @@ const isFormEvent = (event, headerType) => (event && event.type === TYPE) || Str
 
 /* ---------------- Reading the answers, whatever their shape ---------------- */
 
+/* A size in cm: «400», «٤٠٠ سم», «4 م» / «4.2» (metres: up to 10) */
+const cm = (value) => {
+    const n = Number(String(value ?? '').replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/٫/g, '.').replace(/[^\d.]/g, ''));
+    if (!(n > 0)) return null;
+    return Math.round((n <= 10 ? n * 100 : n) * 10) / 10;
+};
 const toAscii = (s) => String(s ?? '').replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/٫/g, '.');
 /* A value as text: a choice {id, title} → its title; a list → joined */
 function text(v) {
@@ -103,8 +113,9 @@ function pairs(node, out = []) {
     return out;
 }
 
-/* Which field a label is (the order matters: «عرض الفتحة» is the width, «نوع البوابة» the gate) */
+/* Which field a label is (the order matters: «عرض الفتحة» is the width, «ارتفاع الفتحة» the height, «نوع البوابة» the gate) */
 const FIELDS = [
+    ['height', /height|tall|ارتفاع|طول/i],
     ['inspection', /inspect|visit|survey|site|معاين|زيار/i],
     ['width', /width|wide|عرض/i],
     ['gate', /gate|door|product|shutter|نوع|بواب/i],
@@ -121,12 +132,12 @@ const yesNo = (raw) => {
 };
 
 /**
- * The answers of one event: { name, phone, region_text, gate_type, width_cm, notes, inspection, unmatched[] }.
+ * The answers of one event: { name, phone, region_text, gate_type, width_cm, height_cm, notes, inspection, unmatched[] }.
  * The mobile falls back to the WhatsApp contact that sent it.
  */
 function extract(event) {
     const data = (event && event.data) || {};
-    const out = { name: null, phone: null, region_text: null, gate_type: null, width_cm: null, notes: null, inspection: null, unmatched: [] };
+    const out = { name: null, phone: null, region_text: null, gate_type: null, width_cm: null, height_cm: null, notes: null, inspection: null, unmatched: [] };
     const contact = data.contact || data.customer || {};
     // The answers only: the WhatsApp contact that sent it is the fallback for the name and mobile, not an answer
     const answers = Object.fromEntries(Object.entries(data).filter(([k]) => !['contact', 'customer'].includes(k)));
@@ -137,9 +148,9 @@ function extract(event) {
         if (!value) continue;
         const field = (FIELDS.find(([, re]) => re.test(label)) || [])[0];
         if (field === 'inspection' && out.inspection == null && yesNo(value) != null) { out.inspection = yesNo(value); continue; }
-        if (field === 'width' && out.width_cm == null) {
-            const n = Number(toAscii(value).replace(/[^\d.]/g, ''));
-            if (n > 0) { out.width_cm = Math.round(n * 10) / 10; continue; }
+        if ((field === 'width' && out.width_cm == null) || (field === 'height' && out.height_cm == null)) {
+            const n = cm(value);
+            if (n) { out[field === 'width' ? 'width_cm' : 'height_cm'] = n; continue; }
         }
         if (field === 'gate' && !out.gate_type && gateOf(value)) { out.gate_type = gateOf(value); continue; }
         if (field === 'notes' && !out.notes) { out.notes = clip(value, 1000); continue; }
@@ -208,6 +219,7 @@ function summary(f, regionName) {
         regionName || f.region_text ? `الولاية/المنطقة: ${regionName || f.region_text}` : null,
         f.gate_type ? `نوع البوابة: ${GATES[f.gate_type]}` : null,
         f.width_cm ? `عرض الفتحة: ${f.width_cm} سم` : null,
+        f.height_cm ? `ارتفاع الفتحة: ${f.height_cm} سم` : null,
         f.notes ? `ملاحظات: ${f.notes}` : null,
         f.inspection == null ? null : `زيارة معاينة: ${f.inspection ? 'نعم' : 'لا'}`
     ].filter(Boolean).join('\n');
@@ -233,7 +245,7 @@ async function processSubmission(db, id, { notifyStaff = true } = {}) {
         if (matches.length !== 1 && arabicWilayah(f.region_text)) matches = doors.findRegions(db, arabicWilayah(f.region_text));
         if (matches.length === 1) { regionId = matches[0].id; regionName = `${matches[0].name}، ${matches[0].governorate}`; }
     }
-    const set = { name: f.name, phone: f.phone, region_text: f.region_text, region_id: regionId, gate_type: f.gate_type, width_cm: f.width_cm,
+    const set = { name: f.name, phone: f.phone, region_text: f.region_text, region_id: regionId, gate_type: f.gate_type, width_cm: f.width_cm, height_cm: f.height_cm,
         notes: f.notes, inspection: f.inspection, unmatched_json: JSON.stringify(f.unmatched) };
     if (!f.phone || f.phone.length < 8) {
         db.prepare(`UPDATE whatsapp_form_submissions SET ${Object.keys(set).map((k) => `${k} = ?`).join(', ')}, status = 'error', error = ?, processed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`)
@@ -244,7 +256,7 @@ async function processSubmission(db, id, { notifyStaff = true } = {}) {
     const lead = leads.touch(db, { key: leads.phoneKey(f.phone), channel: 'whatsapp', name: f.name, phone: f.phone });
     if (first) {
         leads.addMessage(db, lead, 'customer', summary(f, regionName));
-        leads.humanRequested(db, lead.contact_key, `نموذج واتساب: ${f.gate_type ? GATES[f.gate_type] : 'طلب عرض سعر'}${f.width_cm ? ` بعرض ${f.width_cm} سم` : ''}${regionName || f.region_text ? ` — ${regionName || f.region_text}` : ''}`);
+        leads.humanRequested(db, lead.contact_key, `نموذج واتساب: ${f.gate_type ? GATES[f.gate_type] : 'طلب عرض سعر'}${f.width_cm ? ` بعرض ${f.width_cm}${f.height_cm ? `×${f.height_cm}` : ''} سم` : ''}${regionName || f.region_text ? ` — ${regionName || f.region_text}` : ''}`);
     }
     let serviceRequestId = row.service_request_id;
     if (f.inspection === 1 && !serviceRequestId) {
@@ -282,7 +294,7 @@ function view(db, s, { raw = false } = {}) {
         id: s.id, event_id: s.event_id, account: s.account, form_id: s.form_id, received_at: s.received_at, processed_at: s.processed_at,
         status: s.status, status_label: STATUSES[s.status] || s.status, error: s.error,
         name: s.name, phone: s.phone, region_text: s.region_text, region_id: s.region_id, region: region ? [region.name, region.governorate].filter(Boolean).join('، ') : null,
-        gate_type: s.gate_type, gate_label: s.gate_type ? GATES[s.gate_type] : null, width_cm: s.width_cm, notes: s.notes, inspection: s.inspection,
+        gate_type: s.gate_type, gate_label: s.gate_type ? GATES[s.gate_type] : null, width_cm: s.width_cm, height_cm: s.height_cm, notes: s.notes, inspection: s.inspection,
         unmatched, lead_id: s.lead_id, service_request: sr, quote: quoteAfter(db, s),
         ...(raw ? { raw: (() => { try { return JSON.parse(s.raw_json); } catch { return s.raw_json; } })() } : {})
     };
