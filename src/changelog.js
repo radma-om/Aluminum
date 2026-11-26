@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.62.2', date: '2026-11-26',
+        ar: ['طلبات نموذج واتساب: يُقرأ الآن «ارتفاع الفتحة» ويظهر مع العرض، و«تسعير الآن» يملأ العرض والارتفاع معاً (وللأوفرهيد أصغر مقاس متاح يغطي الفتحة). المقاس بالمتر (مثل 4.2) يُحوَّل إلى سم'],
+        en: ['WhatsApp form requests: the «opening height» is now read and shown with the width, and «Price now» fills both (for overhead, the smallest available size that covers the opening). A size in metres (e.g. 4.2) is turned into cm']
+    },
+    {
         version: '3.62.1', date: '2026-11-26',
         ar: ['طلبات نموذج واتساب: تُقرأ الآن الإجابات بالشكل الذي يرسله MazBot فعلاً (اسم الحقل وقيمته معاً)، فيظهر الاسم والجوال والولاية ونوع البوابة والعرض والمعاينة بدل «لم يُفهم»', 'الولاية المكتوبة بالإنجليزية (مثل Nizwa) تُطابق ولايتها (نزوى). للطلبات التي وصلت قبل الإصلاح: اضغط «إعادة المعالجة»'],
         en: ['WhatsApp form requests: the answers are now read in the shape MazBot really sends (the field\'s name and its value together), so the name, mobile, wilayah, gate type, width and visit show instead of «not understood»', 'A wilayah written in English (e.g. Nizwa) is matched to its wilayah. For requests received before the fix: press «Reprocess»']
