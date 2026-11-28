@@ -485,7 +485,7 @@ function createApp(db, { agentClient } = {}) {
     quotePage.ensureColumns(db);
     phoneVerify.ensureTable(db);
     fieldtrack.ensureTable(db);
-    try { workorders.cancelOrphans(db); } catch (err) { console.error('[work-orders] orphans', err.message); }
+    try { for (const o of workorders.cancelOrphans(db)) webhooks.emit(db, 'work_order.status_changed', o); } catch (err) { console.error('[work-orders] orphans', err.message); }
     // Statistics: quotes / customers of cancelled invoices no longer counted as sold; no frozen unfinished month
     try { invoices.repairCancelled(db); require('./bonuses').dropUnfinished(db); } catch (err) { console.error('[stats] repair', err.message); }
     setInterval(() => { try { pruneOldLogs(db); } catch (err) { console.error('[prune]', err.message); } }, 24 * 3600_000).unref();
@@ -1631,6 +1631,11 @@ function createApp(db, { agentClient } = {}) {
         let notice = null;
         const moved = order.scheduled_date !== before.scheduled_date || order.scheduled_time !== before.scheduled_time
             || order.technician_id !== before.technician_id;
+        // Other systems hear of it: a status changed (e.g. scheduled once it has a technician and a day) →
+        // work_order.status_changed only; the same status with a new day, time or technician → work_order.updated.
+        // The address or description alone: nothing
+        if (order.status !== before.status) webhooks.emit(db, 'work_order.status_changed', order);
+        else if (moved) webhooks.emit(db, 'work_order.updated', order);
         if ((req.body || {}).notify_customer && moved && order.scheduled_date) {
             // The approved template (any time) when it is set; else the plain message as before (24-hour window)
             const r = await orderNotify.notify(db, order, 'scheduled', { origin: systemOrigin(req, db), by: staffName(req) });
@@ -1746,7 +1751,11 @@ function createApp(db, { agentClient } = {}) {
             technician_id: tech ? req.user.id : (b.technician_id || null), scheduled_date: leads.localToday()
         }, staffName(req), { notify: !tech });
         const { lines, invoice } = addServices(req, order, services);
-        if (b.done) workorders.setStatus(db, order.id, 'done', clip(b.note, 500) || lines.map((l) => l.description).join(' / '), req.user);
+        webhooks.emit(db, 'work_order.created', order);
+        if (b.done) {
+            const done = workorders.setStatus(db, order.id, 'done', clip(b.note, 500) || lines.map((l) => l.description).join(' / '), req.user);
+            webhooks.emit(db, 'work_order.status_changed', done);
+        }
         res.status(201).json({ lines, invoice: invoicePublic(invoices.get(db, invoice.id)), order: workorders.get(db, order.id), new_customer: !known });
     });
 

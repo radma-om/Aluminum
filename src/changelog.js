@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.65.0', date: '2026-11-28',
+        ar: ['أوامر العمل: الجدولة من نافذة «تعديل / جدولة» (فني وموعد) تُبلغ الأنظمة المرتبطة مثل بانوراما بأن الأمر صار «مجدولاً» فوراً', 'حدث جديد للـ Webhooks: تغيير موعد أمر العمل أو فنيه (work_order.updated)، يُعاد تلقائياً عند الفشل — أضفه إلى اشتراك بانوراما من «الربط»', 'زيارة الخدمة المنجزة في الموقع تُبلغ الأنظمة المرتبطة أيضاً'],
+        en: ['Work orders: scheduling from the «Edit / Schedule» window (technician and date) tells linked systems such as Panorama at once that the order is scheduled', 'A new webhook event: a work order\'s appointment or technician changed (work_order.updated), retried on failure — add it to Panorama\'s subscription in «Integrations»', 'A service visit done on site is reported to linked systems too']
+    },
+    {
         version: '3.64.0', date: '2026-11-28',
         ar: ['المساعد الذكي يستطيع على واتساب تسجيل طلب تركيب أو تجهيز عرض سعر من بانوراما، بعد أن يعرض التفاصيل والسعر ويوافق العميل صراحة — ولا يُكرَّر الطلب عند إعادة المحاولة', 'يعمل فقط بعد ضبط مفتاح الكتابة PANORAMA_WRITE_API_KEY، ولا يظهر في محادثة الموقع ولا في تجربة الإدارة، ولا يُرسل في الوضع التجريبي', 'بطاقة «بانوراما»: هل مفتاح الكتابة مضبوط، وعدد أدوات القراءة والكتابة، وعلامة ✍️ على استدعاءات الكتابة'],
         en: ['On WhatsApp the AI assistant can register an installation request or prepare a quote from Panorama, after showing the details and price and the customer\'s explicit consent — a retry never makes it twice', 'Only once the write key PANORAMA_WRITE_API_KEY is set; never in the website chat or the admin test, and never sent in trial mode', '«Panorama» card: whether the write key is set, the number of read and write tools, and ✍️ on write calls']
