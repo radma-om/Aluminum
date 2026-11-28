@@ -17,6 +17,8 @@ const EVENTS = [
     'payment.created',
     'work_order.created',
     'work_order.status_changed',
+    // The appointment or the technician changed with the status as it was (the «تعديل / جدولة» window)
+    'work_order.updated',
     'product.created',
     'product.updated',
     'product.deleted',
@@ -29,7 +31,7 @@ const EVENTS = [
 
 /* Events sent again after a failed delivery (after 1, then 5, then 15 minutes, the same payload with the same id);
    every other event is tried once, as before */
-const RETRY_EVENTS = ['lead.message', 'handoff.requested'];
+const RETRY_EVENTS = ['lead.message', 'handoff.requested', 'work_order.updated'];
 const RETRY_DELAYS_MIN = [1, 5, 15];
 const sqlTime = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
 
