@@ -2709,7 +2709,8 @@ function createApp(db, { agentClient } = {}) {
         if (panorama.missing().length) throw httpError(400, `ينقص: ${panorama.missing().join('، ')}`);
         try {
             const r = await panorama.listTools({ fresh: true, db });
-            res.json({ ok: true, count: r.tools.length, names: r.tools.map((t) => t.name), instructions: Boolean(r.instructions) });
+            res.json({ ok: true, count: r.tools.length, read: r.tools.filter((t) => t.kind !== 'write').length, write: r.tools.filter((t) => t.kind === 'write').length,
+                names: r.tools.map((t) => t.name), instructions: Boolean(r.instructions) });
         } catch (err) {
             res.json({ ok: false, error: err.name === 'TimeoutError' ? 'انتهت المهلة (5 ثوانٍ)' : err.message === 'http_401' ? 'مفاتيح بانوراما غير صحيحة (401)' : err.message });
         }

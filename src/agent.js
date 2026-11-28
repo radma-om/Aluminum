@@ -537,7 +537,12 @@ async function executeTool(name, input, ctx) {
             return { ok: true, message: 'تم إبلاغ فريق المبيعات' };
         }
         default:
-            if (/^panorama_/.test(name)) return require('./panorama-client').execute(name, input, panoramaContext(ctx), { db });
+            if (/^panorama_/.test(name)) {
+                const panorama = require('./panorama-client');
+                // A write tool only where it is offered (WhatsApp with the customer's number)
+                if (panorama.isWriteTool(name) && !canWrite(ctx.channel, ctx.phone)) return { status: 'forbidden', data: null, message_for_agent: 'التسجيل متاح عبر واتساب فقط؛ اعرض تحويل العميل لموظف' };
+                return panorama.execute(name, input, panoramaContext(ctx), { db });
+            }
             throw new Error(`أداة غير معروفة: ${name}`);
     }
 }
@@ -583,26 +588,32 @@ const REQUEST_HUMAN_TEAM = {
 };
 
 /* Rules added to the prompt only when Panorama's tools are in the round (Radma's prompt is never changed) */
-function panoramaSection(instructions, hasTools) {
+function panoramaSection(instructions, hasTools, hasWrite = false) {
     return '\n\nمنتجات بانوراما (كاميرات المراقبة، الشبكات، الانتركوم، أجهزة الحضور والانصراف…):'
         + (instructions ? '\n' + instructions : '')
         + '\n- لا تذكر سعراً أو منتجاً لبانوراما لم تُرجعه أداة تبدأ بـ panorama_، وأرسل رابط المنتج للعميل.'
         + '\n- لا تخلط أسعار ردما وبانوراما في عرض واحد.'
         + '\n- إذا لم يتضح هل يقصد العميل بوابات ردما أم منتجات بانوراما فاسأله أولاً.'
         + '\n- عند التحويل لموظف استخدم request_human مع team: panorama_sales لطلبات بانوراما، و radma_sales لطلبات ردما.'
-        + (hasTools ? '' : '\n- أدوات بانوراما غير متاحة الآن: لا تذكر أي سعر، واعرض على العميل تحويله لموظف (request_human مع team: panorama_sales).');
+        + (hasTools ? '' : '\n- أدوات بانوراما غير متاحة الآن: لا تذكر أي سعر، واعرض على العميل تحويله لموظف (request_human مع team: panorama_sales).')
+        + (hasWrite ? '\n- أدوات التسجيل (طلب تركيب، عرض سعر): اعرض التفاصيل والسعر المبدئي أولاً، واسأل العميل صراحة، ولا تستدعِها مع customer_confirmed=true إلا بعد أن يوافق في رسالته. إذا عاد الرد needs_confirmation فاسأل العميل ولا تكرر الاستدعاء.' : '');
 }
+
+/* Panorama's write tools: only where WhatsApp gave the customer's number (never the website or the admin test) */
+const canWrite = (channel, phone) => Boolean(phone) && ['mazbot', 'whatsapp'].includes(channel);
 
 /**
  * The tools and prompt of one message by its route. RADMA: exactly as without Panorama. PANORAMA: Panorama's tools
  * + request_human. MIXED: both. Returns { tools (Anthropic shape), panorama: [names], system(settings, db) }.
  */
-async function toolsetFor(route, db) {
+async function toolsetFor(route, db, { channel = null, phone = null } = {}) {
     if (route === 'RADMA') return { tools: TOOLS, panoramaNames: [], system: (st, d) => systemPrompt(st, d) };
     const { tools: remote, instructions } = await require('./panorama-client').listTools({ db });
-    const remoteTools = remote.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
+    const visible = remote.filter((t) => t.kind !== 'write' || canWrite(channel, phone));
+    const remoteTools = visible.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
+    const hasWrite = visible.some((t) => t.kind === 'write');
     const local = route === 'PANORAMA' ? [REQUEST_HUMAN_TEAM] : TOOLS.map((t) => (t.name === 'request_human' ? REQUEST_HUMAN_TEAM : t));
-    return { tools: [...local, ...remoteTools], panoramaNames: remoteTools.map((t) => t.name), system: (st, d) => systemPrompt(st, d) + panoramaSection(instructions, remoteTools.length > 0) };
+    return { tools: [...local, ...remoteTools], panoramaNames: remoteTools.map((t) => t.name), system: (st, d) => systemPrompt(st, d) + panoramaSection(instructions, remoteTools.length > 0, hasWrite) };
 }
 
 /* OpenAI's shape: Radma's tools strict as before; Panorama's not (optional fields) */
@@ -718,7 +729,7 @@ async function runChat({ db, key, channel, phone, text, images = [], createQuote
         if (forPanorama) shadowRun({ ...args, client: client || (provider() === 'openai' ? defaultOpenAIClient() : defaultClient()) }, history, route, result.reply, key);
         return result;
     }
-    const set = await toolsetFor(route.route, db);
+    const set = await toolsetFor(route.route, db, { channel, phone });
     const result = await run({ toolset: set, panoramaMode: pmode, routeKey: key });
     if (route.business) setBusiness(db, args.key, channel, route.business);
     if (forPanorama && CUSTOMER_CHANNELS.includes(channel)) {
@@ -738,10 +749,12 @@ function shadowRun(args, history, route, actualReply, originalKey) {
     const { db, channel, text } = args;
     const used = [];
     (async () => {
-        const set = await toolsetFor(route.route, db);
+        const set = await toolsetFor(route.route, db, { channel, phone: args.phone });
         const exec = async (name, input, ctx) => {
             used.push(name);
             if (DRY_RUN.has(name) || /^create_/.test(name)) return { ok: true, dry_run: true };
+            // Panorama's write tools are never sent in shadow
+            if (require('./panorama-client').isWriteTool(name)) return { status: 'ok', dry_run: true };
             return executeTool(name, input, ctx);
         };
         const call = { ...args, toolset: set, exec, persist: false, history, panoramaMode: 'shadow', routeKey: originalKey, notifyHuman: async () => {}, createQuote: () => { throw new Error('dry run'); } };

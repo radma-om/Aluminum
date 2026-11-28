@@ -13,12 +13,12 @@ async function loadPanorama() {
         set,
         `قاطع الدائرة: ${s.breaker.open ? `⛔ موقوف حتى ${muscatTime(String(s.breaker.open_until).replace('T', ' ').slice(0, 19))}` : '✓ يعمل'}`,
         `آخر فحص صحة: ${h ? `${h.ok ? '✓' : '✗'} ${muscatTime(String(h.at).replace('T', ' ').slice(0, 19))}${h.error ? ` — ${h.error}` : ''}` : 'لم يُفحص بعد'}`,
-        `الأدوات المحفوظة: ${s.tools_cached ? `${s.tools_cached.count} — ${s.tools_cached.names.join('، ')}` : '—'}`,
+        `الأدوات المحفوظة: ${s.tools_cached ? `${s.tools_cached.count} (قراءة ${s.tools_cached.read} · كتابة ${s.tools_cached.write}) — ${s.tools_cached.names.join('، ')}` : '—'}`,
         `التوجيه (آخر 7 أيام): ردما ${s.routes_7d.RADMA} · بانوراما ${s.routes_7d.PANORAMA} · مختلط ${s.routes_7d.MIXED}`
     ].join('\n');
     $id('panoramaRecipients').value = s.recipients || '';
     $id('panoramaCalls').innerHTML = s.calls.length ? s.calls.map((c) => `<tr>
-        <td data-label="الوقت"><small dir="ltr">${esc(muscatTime(c.created_at))}</small></td><td data-label="الأداة" dir="ltr">${esc(c.tool)}</td>
+        <td data-label="الوقت"><small dir="ltr">${esc(muscatTime(c.created_at))}</small></td><td data-label="الأداة" dir="ltr">${esc(c.tool)}${c.kind === 'write' ? ' ✍️' : ''}</td>
         <td data-label="النتيجة">${esc(c.status)}</td><td data-label="المدة">${c.duration_ms == null ? '' : `${Number(c.duration_ms)} ms`}</td><td data-label="القناة">${esc(c.channel || '')}</td></tr>`).join('')
         : '<tr><td colspan="5" class="empty">لا توجد استدعاءات بعد</td></tr>';
     $id('panoramaShadow').innerHTML = s.shadow.length ? s.shadow.map((r) => {
@@ -36,7 +36,7 @@ async function testPanorama() {
     setStatus('panoramaTestStatus', 'جاري الاختبار...');
     try {
         const r = await api('POST', '/api/admin/panorama/test');
-        setStatus('panoramaTestStatus', r.ok ? `✓ متصل — ${r.count} أداة: ${r.names.join('، ')}` : `✗ ${r.error}`, r.ok ? 'ok' : 'err');
+        setStatus('panoramaTestStatus', r.ok ? `✓ متصل — ${r.count} أداة (قراءة ${r.read} · كتابة ${r.write}): ${r.names.join('، ')}` : `✗ ${r.error}`, r.ok ? 'ok' : 'err');
         loadPanorama();
     } catch (err) { setStatus('panoramaTestStatus', err.message, 'err'); }
 }
