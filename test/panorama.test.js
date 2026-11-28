@@ -128,7 +128,7 @@ test('the signature Panorama checks; GET signs "<ts>.<rid>."; only read panorama
     panorama.setFetchForTests(net);
     const out = await panorama.execute('panorama_check_stock', { sku: 'X' }, { channel: 'website' });
     assert.deepEqual([out.status, out.data.echo, out.message_for_agent], ['ok', 'panorama_check_stock', null]);
-    assert.deepEqual(JSON.parse(net.seen.at(-1).body), { tool: 'panorama_check_stock', arguments: { sku: 'X' }, context: { channel: 'website' } });
+    assert.deepEqual(JSON.parse(net.seen.at(-1).body), { tool: 'panorama_check_stock', arguments: { sku: 'X' }, context: { channel: 'website', customer_consent: false } });
     // Wrong keys: 401, no retry
     process.env.PANORAMA_API_KEY = 'wrong';
     const before = net.seen.length;
@@ -239,7 +239,7 @@ test('circuit breaker: 3 failures → «unavailable» for 60 s without a request
     assert.equal((await panorama.execute('panorama_check_stock', {}, { channel: 'mazbot' }, { db })).status, 'ok', 'closed again after 60 s');
     // The log: tool, status, time, channel — no arguments, no phone
     const cols = db.prepare('PRAGMA table_info(remote_tool_calls)').all().map((c) => c.name);
-    assert.deepEqual(cols, ['id', 'request_id', 'tool', 'status', 'duration_ms', 'channel', 'created_at']);
+    assert.deepEqual(cols, ['id', 'request_id', 'tool', 'status', 'duration_ms', 'channel', 'created_at', 'kind']);
     assert.ok(db.prepare("SELECT 1 FROM remote_tool_calls WHERE status = 'circuit_open'").get());
 });
 
@@ -293,7 +293,7 @@ test('the panel: managers only; settings shown as set or not, never their values
     const s = await call('GET', '/api/admin/panorama');
     assert.equal(s.status, 200);
     assert.ok(!s.text.includes(KEY) && !s.text.includes(SECRET), 'no key in the panel');
-    assert.deepEqual(JSON.parse(s.text).settings, { PANORAMA_BASE_URL: true, PANORAMA_API_KEY: true, PANORAMA_HMAC_SECRET: true, PANORAMA_TOOL_TIMEOUT_MS: 8000 });
+    assert.deepEqual(JSON.parse(s.text).settings, { PANORAMA_BASE_URL: true, PANORAMA_API_KEY: true, PANORAMA_HMAC_SECRET: true, PANORAMA_WRITE_API_KEY: false, PANORAMA_TOOL_TIMEOUT_MS: 8000 });
     staff.create(db, { username: 'nour', display_name: 'نور', password: 'pass-12345', role: 'staff', permissions: ['integrations', 'leads', 'quotes'] });
     const tok = JSON.parse(await (await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'nour', password: 'pass-12345' }) })).text()).token;
     assert.equal((await call('GET', '/api/admin/panorama', tok)).status, 403);

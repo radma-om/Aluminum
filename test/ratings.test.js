@@ -122,6 +122,8 @@ test('through the templates webhook handler: a rating press is answered, «تت�
     const { db, order } = setup(t);
     order('91234567', '2026-11-20 08:00:00');
     await ratings.sendDue(db, AT_1030);
+    // The press goes through the handler at today's time (answers count within 7 days of the request): sent just now
+    db.prepare("UPDATE rating_requests SET sent_at = datetime('now')").run();
     const replies = [];
     const client = { sendTextToPhone: async (to, text) => { replies.push(text); return { ok: true }; } };
     const out = await notify.handleTemplatesEvent(db, { type: 'message.received', data: { contact: { phone: '96891234567' }, message: { value: '4 جيد جداً' } } }, { origin: 'https://x.test', client });
