@@ -647,7 +647,9 @@ npm start
 **أيضاً:**
 - التقرير الأسبوعي يذكر الأعمال المكتملة والمفتوحة، وما ينتظر الجدولة.
 - أوامر العمل ضمن النسخ الاحتياطية وسجل النشاط.
-- **أحداث Webhook:** `work_order.created` و`work_order.status_changed`.
+- **أحداث Webhook:** `work_order.created` و`work_order.status_changed` و`work_order.updated`.
+  - `work_order.status_changed` عند كل تغيير حالة فعلي: من «الحالة» و«إلغاء»، ومن نافذة «تعديل / جدولة» (مثل «مجدول» حين يكتمل الفني والموعد، أو «جديد» حين يزول أحدهما)، وإلغاء أوامر الفاتورة الملغاة، وزيارة الخدمة المنجزة في الموقع.
+  - `work_order.updated` (3.65.0) من نافذة «تعديل / جدولة» حين **تبقى الحالة كما هي** ويتغير الموعد (`scheduled_date`/`scheduled_time`) أو الفني (`technician_id`). البيانات كائن أمر العمل بنفس شكل `status_changed`. لا يُرسل الحدثان معاً لنفس التعديل. تعديل العنوان أو الوصف وحده لا يرسل شيئاً. يُعاد عند الفشل بعد 1 ثم 5 ثم 15 دقيقة بنفس `id`.
 - **صلاحية جديدة** للموظفين: «أوامر العمل (التركيب والصيانة)».
 
 ### طلبات المواعيد من العملاء (تركيب، صيانة، معاينة)
@@ -1641,7 +1643,7 @@ Content-Type: application/json
 ```
 حالة الأمر في `order_status`، لأن `status` هو نتيجة الطلب (`ok`).
 
-**أوامر العمل في الـ Webhooks:** لكل أمر عمل حقلان جديدان، `business` (`radma` افتراضياً) و`external_ref`. يظهران داخل `data` لحدثي `work_order.created` و`work_order.status_changed`، وتبقى كل الحقول القديمة كما هي.
+**أوامر العمل في الـ Webhooks:** لكل أمر عمل حقلان جديدان، `business` (`radma` افتراضياً) و`external_ref`. يظهران داخل `data` لأحداث `work_order.created` و`work_order.status_changed` و`work_order.updated`، وتبقى كل الحقول القديمة كما هي.
 
 **الحدثان الجديدان:**
 - `lead.message` و`handoff.requested` يُطلقان فقط عند `PANORAMA_TOOLS_ENABLED=1` (انظر «ربط وكيل بانوراما» أدناه).

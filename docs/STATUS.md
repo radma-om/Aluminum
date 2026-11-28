@@ -43,9 +43,10 @@
 التفاصيل والأمثلة في `README.md` ← «المسار الداخلي لبانوراما».
 
 ### أحداث Webhooks
-`quote.created` · `quote.status_changed` · `invoice.created` · `invoice.updated` · `invoice.cancelled` · `payment.created` · `work_order.created` · `work_order.status_changed` · `product.created` · `product.updated` · `product.deleted` · `purchase.created` · `settings.updated` · `database.restored` · `webhook.test`
+`quote.created` · `quote.status_changed` · `invoice.created` · `invoice.updated` · `invoice.cancelled` · `payment.created` · `work_order.created` · `work_order.status_changed` · `work_order.updated` · `product.created` · `product.updated` · `product.deleted` · `purchase.created` · `settings.updated` · `database.restored` · `webhook.test`
 
 - **جديد في `work_order.created` و`work_order.status_changed`:** داخل `data` حقلان إضافيان، `business` (`radma` أو `panorama`) و`external_ref`. كل الحقول القديمة كما هي.
+- **`work_order.updated` (جديد، 3.65.0):** من نافذة «تعديل / جدولة» حين تبقى الحالة كما هي ويتغير الموعد أو الفني. البيانات كائن أمر العمل بنفس شكل `work_order.status_changed`، ومعها `business` و`external_ref`. يُعاد بعد 1 ثم 5 ثم 15 دقيقة. وتغيير الحالة من هذه النافذة (مثل الجدولة) يرسل الآن `work_order.status_changed`، لا الحدثين معاً.
 - **`lead.message` و`handoff.requested` يُطلقان في الوضع `PANORAMA_TOOLS_ENABLED=1` فقط** (3.63.0): `lead.message` بعد كل رد على رسالة بانوراما أو مختلطة، و`handoff.requested` عند التحويل لفريق بانوراما. الشكل في `README.md` ← «ربط وكيل بانوراما».
   - عند فشل الإرسال يُعادان بعد 1 ثم 5 ثم 15 دقيقة، بنفس الـ payload ونفس `id`.
   - الأحداث الأخرى محاولة واحدة.
@@ -72,6 +73,7 @@
 ## آخر التغييرات
 | التاريخ | التغيير | PR |
 |---|---|---|
+| 2026-11-28 | 3.65.0: الجدولة من نافذة «تعديل / جدولة» ترسل `work_order.status_changed`، وحدث جديد `work_order.updated` لتغيير الموعد أو الفني. وصار الحدث يُرسل أيضاً لزيارة الخدمة في الموقع (`created` ثم `status_changed`) ولأوامر الفواتير الملغاة سابقاً عند بدء التشغيل | — |
 | 2026-11-28 | 3.64.0: أدوات الكتابة من بانوراما (طلب تركيب، عرض سعر) بموافقة العميل على واتساب فقط، مع `Idempotency-Key` ومتغير `PANORAMA_WRITE_API_KEY`. وإصلاح اختبار تقييم كان مرتبطاً بتاريخ ثابت. لا تغيير في أي endpoint أو حدث قائم | #224 |
 | 2026-11-26 | 3.63.1: إصلاح فشل كل إرسال Webhook على Node 22 (`Invalid IP address: undefined`) — دالة `lookup` المثبّتة تخدم الشكلين `{ all: true }` والمفرد. لا تغيير في شكل الأحداث ولا في حماية SSRF | #222 |
 | 2026-11-26 | 3.63.0: ربط وكيل ردما بأدوات بانوراما (الأوضاع `0`/`shadow`/`1`، التوجيه، قاطع الدائرة، الردود التجريبية، بطاقة «بانوراما»)، وإطلاق `lead.message`/`handoff.requested` في الوضع `1`. لا تغيير في أي endpoint أو شكل حدث قائم | #220 |
@@ -91,6 +93,7 @@
 
 ## قيد العمل / معلّق
 - اختبار الاتصال من كود بانوراما نفسه (مثل زر «اختبار الاتصال بردما»)، والتأكد أن `ALUMINUM_API_KEY` في بانوراما طوله 64 حرفاً بلا أي جزء زائد.
+- أضف `work_order.updated` إلى اشتراك «بانوراما» في «الربط» ← Webhooks (بعد نشر 3.65.0).
 - أدوات الكتابة: بعد دمج مهمة بانوراما «تسعير التركيب وطلبات التركيب وعروض الأسعار»، اضبط `PANORAMA_WRITE_API_KEY` (= `INTERNAL_WRITE_API_KEY`)، ثم «اختبار الاتصال» (يجب أن تظهر أداتا كتابة)، وجرّبها بالوضع `shadow` أولاً.
 - تفعيل ربط الوكيل في الإنتاج: ضبط متغيرات `PANORAMA_*` بالوضع `shadow`، ثم «اختبار الاتصال»، ومراجعة الردود التجريبية بعد نشر منتجات بانوراما، ثم الاشتراك في الحدثين بعنوان `https://commerce.tech-panorama.com/webhooks/aluminum` والانتقال إلى `1`.
 - نموذج واتساب: بعد نشر 3.62.1 اضغط «إعادة المعالجة» على أول طلب حقيقي وتأكد أن «لم يُفهم» فارغ.
