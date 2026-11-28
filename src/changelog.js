@@ -6,6 +6,11 @@
    ============================================================= */
 module.exports = [
     {
+        version: '3.64.0', date: '2026-11-28',
+        ar: ['المساعد الذكي يستطيع على واتساب تسجيل طلب تركيب أو تجهيز عرض سعر من بانوراما، بعد أن يعرض التفاصيل والسعر ويوافق العميل صراحة — ولا يُكرَّر الطلب عند إعادة المحاولة', 'يعمل فقط بعد ضبط مفتاح الكتابة PANORAMA_WRITE_API_KEY، ولا يظهر في محادثة الموقع ولا في تجربة الإدارة، ولا يُرسل في الوضع التجريبي', 'بطاقة «بانوراما»: هل مفتاح الكتابة مضبوط، وعدد أدوات القراءة والكتابة، وعلامة ✍️ على استدعاءات الكتابة'],
+        en: ['On WhatsApp the AI assistant can register an installation request or prepare a quote from Panorama, after showing the details and price and the customer\'s explicit consent — a retry never makes it twice', 'Only once the write key PANORAMA_WRITE_API_KEY is set; never in the website chat or the admin test, and never sent in trial mode', '«Panorama» card: whether the write key is set, the number of read and write tools, and ✍️ on write calls']
+    },
+    {
         version: '3.63.1', date: '2026-11-26',
         ar: ['إصلاح: إرسال الـ Webhooks كان يفشل كله بالرسالة «Invalid IP address: undefined» على Node 22، ومنه زر «اختبار» وأحداث بانوراما. الآن يصل كل حدث، مع بقاء الحماية من تحويل الرابط إلى عنوان داخلي كما هي'],
         en: ['Fix: every webhook delivery failed with «Invalid IP address: undefined» on Node 22, including the «Test» button and Panorama\'s events. Each event now goes out, with the protection against a link re-pointed to an internal address unchanged']
